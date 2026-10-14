@@ -1,0 +1,24 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Data" subtitle="StatCard, Money, DataTable" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:#fff;padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {StatCard,Money,DataTable,Badge,Card}=D;
+const rows=[{id:'FAC-A-2026-00412',c:'Inversiones Marlin SRL',u:'Torre Coral · 4B',t:1250,s:'pagado'},{id:'FAC-A-2026-00413',c:'María José Peña',u:'Villa Palmeras',t:2800,s:'parcial',v:true},{id:'FAC-B-2026-00088',c:'Luis Ortega',u:'Oficina 2 · Plaza Este',t:27900,cur:'DOP',s:'pendiente'}];
+return <div className="c">
+<div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
+<StatCard label="Facturado" icon="file-text" value="184.320 USD" meta="Octubre 2026"/>
+<StatCard label="Cobrado" icon="wallet" value="162.075 USD" meta="87,9%" tone="success"/>
+<StatCard label="Vencido" icon="circle-alert" value="9.480 USD" meta="23 facturas" tone="danger"/>
+<StatCard label="Ocupadas" icon="building-2" value="128/150" meta="6 reservadas"/>
+</div>
+<Card padded={false}><DataTable rows={rows} columns={[{key:'id',label:'Factura',render:r=><span style={{font:'var(--type-mono)',color:'var(--text-strong)'}}>{r.id}</span>},{key:'c',label:'Cliente'},{key:'u',label:'Unidad'},{key:'s',label:'Estado',render:r=><span className="r" style={{gap:4}}><Badge status={r.s}/>{r.v&&<Badge status="vencida"/>}</span>},{key:'t',label:'Importe',align:'right',render:r=><Money amount={r.t} currency={r.cur||'USD'}/>}]}/></Card>
+</div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

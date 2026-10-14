@@ -1,0 +1,3 @@
+/** Page rhythm: eyebrow (module) → 40px title → one-line description, actions right. Optional breadcrumbs above. */
+export interface PageHeaderProps { eyebrow?: string; title: React.ReactNode; description?: React.ReactNode; breadcrumbs?: { label: string; onClick?: () => void }[]; children?: React.ReactNode; style?: React.CSSProperties; }
+export declare function PageHeader(props: PageHeaderProps): JSX.Element;

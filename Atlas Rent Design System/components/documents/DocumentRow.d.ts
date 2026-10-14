@@ -1,0 +1,3 @@
+/** One generated PDF (cotización, contrato, inventario/anexo, factura, recibo) with download + send and its last delivery. */
+export interface DocumentRowProps { name: string; type?: 'cotizacion' | 'contrato' | 'inventario' | 'anexo' | 'factura' | 'recibo'; record?: string; date?: string; size?: string; /** e.g. "Leído por WhatsApp · hace 2h" */ sent?: string; onDownload?: () => void; onSend?: () => void; style?: React.CSSProperties; }
+export declare function DocumentRow(props: DocumentRowProps): JSX.Element;

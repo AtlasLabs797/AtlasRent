@@ -1,0 +1,3 @@
+/** Migration lote (§25.4): ID, file, entity, agent, counts (correctos/avisos/errores) and status. Final import always needs human approval. */
+export interface ImportBatchProps { id: string; file?: string; entity?: string; date?: string; by?: 'migracion' | string; counts?: { total?: number; ok?: number; warnings?: number; errors?: number }; status?: 'simulado' | 'aprobacion' | 'importado' | 'errores'; onReport?: () => void; onApprove?: () => void; style?: React.CSSProperties; }
+export declare function ImportBatch(props: ImportBatchProps): JSX.Element;

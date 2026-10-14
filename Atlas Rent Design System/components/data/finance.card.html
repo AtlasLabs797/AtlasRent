@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="1000x760" name="Finance" subtitle="InvoiceLines, PaymentAllocation, ExchangeRate, DepositSummary" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:var(--surface-app);padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:17px}.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:17px;align-items:start}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {InvoiceLines,PaymentAllocation,ExchangeRate,DepositSummary,Card}=D;
+const [l,setL]=React.useState([{concept:'Renta mensual',detail:'Octubre 2026',qty:1,price:1250},{concept:'Prorrateo',detail:'27–30 sep · 4/30 días',qty:1,price:166.67},{concept:'Mora',detail:'Septiembre',qty:1,price:35},{concept:'Descuento',detail:'Acuerdo gerencia',qty:1,price:50}]);
+const [inv,setInv]=React.useState([{id:'FAC-A-2026-00377',concept:'Renta',period:'Ago 2026',pending:450,applied:450,overdue:true},{id:'FAC-A-2026-00412',concept:'Renta',period:'Sep 2026',pending:1250,applied:1250,overdue:true},{id:'FAC-A-2026-00455',concept:'Renta',period:'Oct 2026',pending:1250,applied:300}]);
+return <div className="c">
+<Card title="Líneas · FAC-A-2026-00455" padded={false}><InvoiceLines editable lines={l} onChange={setL} rate={62}/></Card>
+<div className="g2">
+<Card title="Aplicar cobro · CT-0217"><PaymentAllocation amount={2100} invoices={inv} onChange={setInv}/></Card>
+<div className="c"><ExchangeRate variant="panel" market={60.35} margin={1.65} at="08/10/2026 08:00" source="API diaria · fallback manual" frozenIn="FAC-A-2026-00455"/>
+<DepositSummary contract="CT-0189 · Villa Palmeras" required={5600} count={2} collected={5600} status="devolucion" deductions={[{reason:'Faltante · 2 sillas de terraza',amount:180},{reason:'Daño · puerta de armario',amount:95}]}/></div>
+</div></div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

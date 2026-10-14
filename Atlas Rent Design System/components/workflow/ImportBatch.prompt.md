@@ -1,0 +1,1 @@
+Migración screen, one card per lote, paired with a Stepper of the 11-step flow. "Aprobar importación" stays disabled while errors > 0.

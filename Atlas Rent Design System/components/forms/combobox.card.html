@@ -1,0 +1,20 @@
+<!-- @dsCard group="Components" viewport="700x430" name="Combobox" subtitle="Buscar cliente por nombre, RNC o nº" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:#fff;padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:17px}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {Combobox,Select}=D;
+const opts=[{value:'CLI-01873',label:'Inversiones Marlin SRL',sub:'RNC 1-31-45678-2 · Torre Coral 4B',meta:'CLI-01873'},{value:'CLI-02011',label:'María José Peña',sub:'Cédula 402-2211876-3 · Villa Palmeras',meta:'CLI-02011'},{value:'CLI-01544',label:'Grupo Arrecife SRL',sub:'RNC 1-30-99812-7 · Oficina 3',meta:'CLI-01544'},{value:'CLI-00932',label:'Caribe Logística SA',sub:'RNC 1-01-22345-9 · Nave 2',meta:'CLI-00932'}];
+const [v,setV]=React.useState('CLI-01873');
+return <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:17,alignItems:'start',minHeight:390}}>
+<Combobox label="Cliente" required placeholder="Nombre, RNC o nº cliente" options={opts} value={v} onChange={setV} onCreate={()=>{}} createLabel="Crear cliente" hint="Busca por cualquiera de los tres datos."/>
+<Select label="Forma de pago" options={['Transferencia','Efectivo','Depósito bancario']}/>
+<Combobox label="Unidad" placeholder="Inmueble o unidad" options={[{value:'4B',label:'Torre Coral · 4B',sub:'Apartamento · Ocupado'},{value:'VP',label:'Villa Palmeras',sub:'Villa completa · Reservado'}]} error="Selecciona la unidad del contrato."/>
+</div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

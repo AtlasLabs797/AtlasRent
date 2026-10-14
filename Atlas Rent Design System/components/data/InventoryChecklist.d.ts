@@ -1,0 +1,4 @@
+/** Exit review of a contract's frozen inventory copy (§8.3): each item OK / Faltante / Dañado + importe a descontar. No photos by design. */
+export interface InventoryItem { name: string; qty?: number; state?: 'ok' | 'faltante' | 'danado'; amount?: number | string; note?: string; }
+export interface InventoryChecklistProps { items: InventoryItem[]; currency?: 'USD' | 'DOP'; editable?: boolean; onChange?: (items: InventoryItem[]) => void; /** e.g. "inventario base · 01/03/2025" */ frozenFrom?: string; style?: React.CSSProperties; }
+export declare function InventoryChecklist(props: InventoryChecklistProps): JSX.Element;

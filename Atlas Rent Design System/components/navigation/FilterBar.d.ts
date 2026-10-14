@@ -1,0 +1,3 @@
+/** List toolbar: search + filter selects (children) + removable chips for active filters. Sits flush at the top of a padded={false} Card. */
+export interface FilterBarProps { searchPlaceholder?: string; search?: string; onSearch?: (q: string) => void; filters?: { key: string; label: string; value: React.ReactNode }[]; onRemove?: (key: string) => void; onClear?: () => void; children?: React.ReactNode; style?: React.CSSProperties; }
+export declare function FilterBar(props: FilterBarProps): JSX.Element;

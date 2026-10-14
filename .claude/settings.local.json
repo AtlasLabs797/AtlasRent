@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la)",
+      "Bash(git --version)",
+      "Bash(npm -v)",
+      "Bash(dotnet --version)",
+      "Bash(gh --version)",
+      "Bash(psql --version)"
+    ]
+  }
+}

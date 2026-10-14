@@ -1,0 +1,1 @@
+If the unit has inventory, the baja can't close until every item is checked. The proposed total feeds DepositSummary deductions (applying it needs Gerente/Admin).

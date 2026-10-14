@@ -1,0 +1,18 @@
+<!-- @dsCard group="Components" viewport="900x520" name="Feedback · paneles" subtitle="Drawer, EmptyState, Textarea" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:var(--surface-app);padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:17px}.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:17px;align-items:start}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {Drawer,EmptyState,Textarea,Button,Card,Select,Input}=D;
+return <div className="g2">
+<Drawer inline width="100%" title="Anular factura" description="FAC-A-2026-00412 · Inversiones Marlin SRL" footer={<><Button variant="ghost">Cancelar</Button><Button variant="danger" icon="ban">Anular factura</Button></>}>
+<div className="c"><div style={{font:'var(--type-body-sm)',color:'var(--text-muted)'}}>Los cobros vinculados se revierten y dejan de afectar saldos. El número no se reutiliza y la operación queda en auditoría.</div><Textarea label="Motivo" required placeholder="Ej. Factura duplicada del periodo"/></div></Drawer>
+<Card padded={false}><EmptyState icon="inbox" title="No hay nada que revisar" action={<Button variant="secondary" size="sm">Ver historial</Button>}>Las operaciones que preparen los empleados aparecen aquí en cuanto se envían a revisión.</EmptyState></Card>
+</div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

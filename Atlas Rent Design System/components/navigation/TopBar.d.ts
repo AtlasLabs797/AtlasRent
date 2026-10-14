@@ -1,0 +1,3 @@
+/** Sticky frosted topbar: global search, live USD/DOP rate, notifications, Chat IA. Hide Chat IA when the user has IA disabled. */
+export interface TopBarProps { searchPlaceholder?: string; onSearch?: (q: string) => void; /** When set, search renders as a ⌘K pill that opens CommandPalette (preferred) */ onOpenSearch?: () => void; rate?: { market: number; margin: number; final?: number }; notifications?: number; onNotifications?: () => void; /** false = user has IA disabled (§22.2): button hidden. */ aiEnabled?: boolean; onChat?: () => void; children?: React.ReactNode; style?: React.CSSProperties; }
+export declare function TopBar(props: TopBarProps): JSX.Element;

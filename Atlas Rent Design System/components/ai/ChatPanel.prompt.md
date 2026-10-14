@@ -1,0 +1,1 @@
+Docked right of the main content. Tool chips use the MCP names (`listar_facturas`, `consultar_disponibilidad`). When the agent proposes something sensitive, render an ApprovalCard in `content`.

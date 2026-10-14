@@ -1,0 +1,43 @@
+# Variables de entorno de los servicios AtlasRent.Api y AtlasRent.Watchdog.
+# Los nombres definitivos se igualan a los de Atlas Balance en F1-01 (mismo patrón de configuración).
+# En producción se definen en el servicio (o protegidas con DPAPI). En desarrollo: dotnet user-secrets.
+# NUNCA valores reales en el repositorio.
+
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=https://0.0.0.0:443
+TZ_NEGOCIO=America/Santo_Domingo
+
+ConnectionStrings__Default=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_app;Password=<secreto>
+ConnectionStrings__Migraciones=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_migrador;Password=<secreto>
+ConnectionStrings__Backup=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_backup;Password=<secreto>
+
+Kestrel__Certificates__Default__Path=<ruta .pfx>
+Kestrel__Certificates__Default__Password=<secreto>
+
+Seguridad__JwtClave=<secreto 64 bytes base64>
+Seguridad__CifradoClave=<secreto 32 bytes base64>
+Seguridad__CifradoVersion=1
+Seguridad__HmacDocumentoClave=<secreto 32 bytes base64>
+Seguridad__IpListaBlanca=<IP oficina separadas por coma>
+Seguridad__ProxiesConfianza=<vacío si no hay proxy>
+
+Almacen__Documentos=C:\AtlasRent\data\documentos
+Backup__CarpetaLocal=C:\AtlasRent\data\backups
+Backup__GoogleDrive__Carpeta=<id carpeta propia de Atlas Rent>
+Backup__GoogleDrive__Credenciales=<secreto>
+Backup__ClaveCifrado=<secreto>
+Backup__Conservar=4
+
+Smtp__Host=smtp.gmail.com
+Smtp__Puerto=587
+Smtp__Usuario=<cuenta>
+Smtp__Password=<contraseña de aplicación>
+Smtp__Remitente=<email>
+
+TipoCambio__Url=https://v6.exchangerate-api.com/v6
+TipoCambio__ApiKey=<secreto>
+
+WhatsApp__Proveedor=<pendiente A1>
+WhatsApp__Token=<secreto>
+WhatsApp__AppSecret=<secreto>
+WhatsApp__VerifyToken=<secreto>

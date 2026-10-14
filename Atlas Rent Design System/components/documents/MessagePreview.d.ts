@@ -1,0 +1,3 @@
+/** Preview + delivery state of an outgoing WhatsApp/email message (§18–19): recordatorio consolidado, envío de factura/recibo/cotización. */
+export interface MessagePreviewProps { to: string; phone?: string; channel?: 'WhatsApp' | 'Email'; template?: string; text: string; attachments?: { name: string; size?: string }[]; status?: 'programado' | 'enviado' | 'entregado' | 'leido' | 'error'; time?: string; style?: React.CSSProperties; }
+export declare function MessagePreview(props: MessagePreviewProps): JSX.Element;

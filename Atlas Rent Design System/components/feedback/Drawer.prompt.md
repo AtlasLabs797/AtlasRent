@@ -1,0 +1,1 @@
+Use when the user needs the list behind for context. Footer: secondary Cancelar + one primary action.

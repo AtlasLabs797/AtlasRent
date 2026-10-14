@@ -1,0 +1,17 @@
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;font:var(--type-body);letter-spacing:var(--tracking-body);color:var(--text-primary);background:var(--surface-page);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+a{color:var(--text-link);text-decoration:none;transition:color var(--duration-fast) var(--ease-standard)}
+a:hover{color:var(--accent-solid-hover);text-decoration:underline;text-underline-offset:3px}
+[data-on-dark] a,.atl-on-dark a{color:var(--accent-on-dark)}
+::selection{background:var(--accent-soft-strong);color:var(--accent-text)}
+:focus-visible{outline:none;box-shadow:var(--ring-focus)}
+h1,h2,h3,h4,p{margin:0}
+h1{font:var(--type-title-1);letter-spacing:var(--tracking-display);text-wrap:balance}
+h2{font:var(--type-title-2);letter-spacing:var(--tracking-heading);text-wrap:balance}
+h3{font:var(--type-title-3);letter-spacing:var(--tracking-heading)}
+p{text-wrap:pretty}
+code,kbd,.atl-num{font:var(--type-mono);font-variant-numeric:tabular-nums}
+hr{border:0;border-top:1px solid var(--border-subtle);margin:0}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:var(--radius-full);border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}

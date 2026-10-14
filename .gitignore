@@ -1,0 +1,37 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+publish/
+appsettings.*.local.json
+# Node
+node_modules/
+src/web/dist/
+src/Alquileres.Api/wwwroot/
+coverage/
+# Secretos y certificados
+.env
+.env.*
+*.pfx
+*.pem
+*.key
+*.p12
+# Datos reales nunca en el repo
+imports/
+exports/
+backups/
+documentos/
+*.xlsx
+*.xls
+*.csv
+!tests/**/fixtures/*.csv
+*.dump
+*.backup
+# Varios
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
