@@ -9,9 +9,6 @@ Léelo entero al empezar. Cuando dos reglas choquen, el orden de prioridad es: s
 ## 1. Qué es
 
 App web interna de Atlas Labs que sustituye a Factusol para ~150 unidades de alquiler (mensual y corto por medio día / día completo) en República Dominicana. Una empresa, monedas USD y DOP, zona horaria de negocio `America/Santo_Domingo`. Accesible por internet con usuario y contraseña. Se despliega en Windows Server x64 como servicios de Windows, instalación nativa en `C:\AtlasRent`.
-
-Es un **proyecto independiente**: no reutiliza ni depende del código de otras aplicaciones (tampoco de Atlas Balance). Todo se construye y se prueba aquí.
-
 Es software de facturación y cobros con datos personales: un error de redondeo, de permisos o de numeración tiene consecuencias legales y económicas reales. Por eso el código de dinero, fechas, permisos y numeración se escribe con test primero y sin atajos.
 
 ---
