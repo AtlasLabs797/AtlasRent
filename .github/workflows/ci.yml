@@ -1,0 +1,45 @@
+name: CI
+# CI de Atlas Rent. Los jobs backend y frontend se activan solos cuando existen la solución y frontend/package.json (F1-01 / F1-13).
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  secretos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  backend:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('**/*.sln', '**/*.slnx') != '' }}   # se activa en F1-01
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { global-json-file: global.json }
+      - run: dotnet restore --locked-mode
+      - run: dotnet build -c Release -warnaserror --no-restore
+      - run: dotnet test -c Release --no-build   # integración con Testcontainers (Docker disponible en el runner)
+      - name: Paquetes vulnerables
+        run: |
+          dotnet list package --vulnerable --include-transitive | tee vuln.txt
+          ! grep -E "High|Critical" vuln.txt
+  frontend:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('frontend/package.json') != '' }}
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24.14.1', cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

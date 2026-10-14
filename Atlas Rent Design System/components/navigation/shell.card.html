@@ -1,0 +1,20 @@
+<!-- @dsCard group="Components" viewport="1100x560" name="Shell" subtitle="SideNav, TopBar, PageHeader, Breadcrumbs" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:var(--surface-app);padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:17px}.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:17px;align-items:start}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {SideNav,TopBar,PageHeader,Button,AIActionButton}=D;
+const [a,setA]=React.useState('contratos');
+const groups=[{label:'Operación',items:[{key:'inicio',icon:'layout-dashboard',label:'Inicio'},{key:'unidades',icon:'building-2',label:'Inmuebles y unidades'},{key:'clientes',icon:'users',label:'Clientes'},{key:'reservas',icon:'calendar-days',label:'Reservas'},{key:'contratos',icon:'scroll-text',label:'Contratos'}]},{label:'Finanzas',items:[{key:'facturas',icon:'file-text',label:'Facturas',count:23,countTone:'danger'},{key:'cobros',icon:'wallet',label:'Cobros'}]},{label:'Control',items:[{key:'ai',icon:'bot',label:'Aprobaciones IA',count:3,countTone:'ai'},{key:'rev',icon:'inbox',label:'Bandeja de revisión',count:2}]}];
+return <div style={{display:'flex',height:520,margin:-20,overflow:'hidden'}}>
+<SideNav groups={groups} active={a} onNavigate={setA} user={{name:'Carmen Reyes',role:'Gerente'}} style={{height:'100%'}}/>
+<div style={{flex:1,minWidth:0}}><TopBar rate={{market:60.35,margin:1.65}} notifications={4}/>
+<div style={{padding:'28px 32px'}}><PageHeader breadcrumbs={[{label:'Contratos'},{label:'Torre Coral · 4B'},{label:'CT-0217'}]} eyebrow="Operación" title="Contrato CT-0217" description="Inversiones Marlin SRL · 12 meses + renovación automática de 6 meses"><AIActionButton label="IA" actions={['Revisar','Detectar incoherencias','Preparar baja']}/><Button variant="secondary">Programar baja</Button><Button icon="check">Aprobar</Button></PageHeader></div></div>
+</div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

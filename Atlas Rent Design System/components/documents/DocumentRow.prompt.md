@@ -1,0 +1,1 @@
+Stack inside a padded={false} Card titled "Documentos" on any record detail.

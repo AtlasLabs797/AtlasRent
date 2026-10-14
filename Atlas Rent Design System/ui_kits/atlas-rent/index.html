@@ -1,0 +1,25 @@
+<!-- @dsCard group="Atlas Rent app" viewport="1440x900" name="Atlas Rent web app" subtitle="AppShell, ⌘K, dashboard, unidades, facturas + cobro, aprobaciones IA" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Atlas Rent</title><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script><script src="data.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel" src="Shell.jsx"></script><script type="text/babel" src="Dashboard.jsx"></script><script type="text/babel" src="Units.jsx"></script><script type="text/babel" src="Invoices.jsx"></script><script type="text/babel" src="Approvals.jsx"></script>
+<script type="text/babel">
+function Placeholder({route}){const {Card,EmptyState}=window.AtlasRentDesignSystem_75bc92;return <div><PageHead title={route[0].toUpperCase()+route.slice(1)}/><Card padded={false}><EmptyState icon="layout-template" title="Pantalla no incluida en este UI kit">Los componentes para esta pantalla están en la pestaña Design System.</EmptyState></Card></div>;}
+function App(){
+  const {Toast,AppShell,CommandPalette}=window.AtlasRentDesignSystem_75bc92;
+  const [route,setRoute]=React.useState(localStorage.getItem('ar-route')||'dashboard');
+  const [t,setT]=React.useState(null);const [ai,setAi]=React.useState(3);const [cmd,setCmd]=React.useState(false);
+  const go=r=>{setRoute(r);localStorage.setItem('ar-route',r);window.scrollTo(0,0);};
+  const toast=m=>{setT(m);clearTimeout(window.__t);window.__t=setTimeout(()=>setT(null),3500);};
+  const V={dashboard:<Dashboard go={go}/>,unidades:<Units/>,facturas:<Invoices toast={toast}/>,aprobaciones:<Approvals toast={toast} setCount={setAi}/>}[route]||<Placeholder route={route}/>;
+  return <>
+    <AppShell nav={{groups:navGroups({ai}),active:route,onNavigate:go,user:{name:'Carmen Reyes',role:'Gerente'}}} topbar={{rate:{market:60.35,margin:1.65},notifications:4,onOpenSearch:()=>setCmd(true),onChat:()=>toast('Chat IA: próximamente en este kit')}}>{V}</AppShell>
+    <CommandPalette open={cmd} onOpenChange={setCmd} groups={cmdGroups(window.AR_DATA)} onSelect={v=>go(v)}/>
+    {t&&<div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',zIndex:200}}><Toast tone={t.startsWith('Rechazado')?'info':'success'}>{t}</Toast></div>}
+  </>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

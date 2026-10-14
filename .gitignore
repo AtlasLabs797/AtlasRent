@@ -1,0 +1,42 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+publish/
+appsettings.*.local.json
+# Node
+node_modules/
+frontend/dist/
+backend/**/wwwroot/
+*.tsbuildinfo
+coverage/
+# Secretos y certificados
+.env
+.env.*
+*.pfx
+*.pem
+*.key
+*.p12
+*.crt
+*.cer
+# Datos reales nunca en el repo
+imports/
+exports/
+backups/
+documentos/
+*.xlsx
+*.xls
+*.csv
+!tests/**/fixtures/*.csv
+*.dump
+*.backup
+# Varios
+*.log
+logs/
+.claude/settings.local.json
+.DS_Store
+.vscode/*
+!.vscode/extensions.json

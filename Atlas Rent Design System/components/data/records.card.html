@@ -1,0 +1,25 @@
+<!-- @dsCard group="Components" viewport="900x700" name="Records" subtitle="KeyValueList, Timeline, AuditLog, InventoryChecklist, Avatar, RestrictedValue" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:var(--surface-app);padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:17px}.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:17px;align-items:start}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {KeyValueList,Timeline,AuditLog,InventoryChecklist,Avatar,RestrictedValue,Card,StatCard}=D;
+const [it,setIt]=React.useState([{name:'Sofá 3 plazas',state:'ok'},{name:'Sillas de terraza',qty:6,state:'faltante',amount:180,note:'Faltan 2'},{name:'Puerta de armario',state:'danado',amount:95},{name:'Nevera Samsung'}]);
+return <div className="c">
+<Card title="Cliente 01873"><KeyValueList columns={4} items={[{label:'Nº cliente',value:'01873',mono:true},{label:'Tipo',value:'Empresa'},{label:'RNC',value:'1-31-45678-9',mono:true},{label:'Teléfono',value:'+1 809 555 0142',mono:true},{label:'Canal preferido',value:'WhatsApp'},{label:'Idioma',value:'Español'},{label:'Email'},{label:'Contratos',value:'2 activos · 1 finalizado'}]}/></Card>
+<div className="g2">
+<Card title="Historial · CT-0217"><Timeline items={[{title:'Incremento de renta aplicado',body:'+4% · 1.200,00 USD → 1.250,00 USD',time:'01/10/2026',icon:'trending-up',tone:'accent'},{title:'Renovación automática',body:'+6 meses · hasta 31/03/2027',time:'01/04/2026',icon:'refresh-cw',tone:'success'},{title:'Contrato activado',body:'Aprobado por Carmen Reyes',time:'01/04/2025',icon:'check',tone:'success'},{title:'Borrador creado',body:'Luis Ortega desde reserva RES-0412',time:'24/03/2025',icon:'pencil'}]}/></Card>
+<Card title="Revisión de salida"><InventoryChecklist editable items={it} onChange={setIt} frozenFrom="inventario base · 01/04/2025"/></Card>
+</div>
+<div className="g2">
+<Card title="Auditoría"><AuditLog entries={[{actor:'Carmen Reyes',action:'modificó',record:'FAC-A-2026-00412',field:'Mora',before:'0,00 USD',after:'35,00 USD',reason:'Pago fuera de plazo',at:'08/10 09:42',origin:'manual'},{actor:'Agente de cobros',actorType:'agent',action:'propuso cobro en',record:'CT-0217',after:'2.100,00 USD',reason:'Transferencia Banco Popular ref. 88231',approval:'Carmen Reyes',at:'08/10 09:15',origin:'agente'},{actor:'Sistema',actorType:'system',action:'generó',record:'FAC-A-2026-00455',at:'01/10 07:00',origin:'auto'}]}/></Card>
+<div className="c"><div className="r"><Avatar name="Carmen Reyes"/><Avatar name="Luis Ortega" size={40}/><Avatar name="Agente" kind="agent"/><Avatar name="Sistema" kind="system"/></div>
+<StatCard label="Cobrado · vista empleado" value={<RestrictedValue/>} meta="Individuales visibles en Facturas"/></div>
+</div></div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

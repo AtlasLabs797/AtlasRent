@@ -1,0 +1,3 @@
+/** Rentable resource tile (inmueble completo o unidad): state, modalities (Mensual · Diario · Por horas), current client, standard price. */
+export interface UnitCardProps { name: string; property?: string; type?: string; status?: 'disponible' | 'reservado' | 'ocupado' | 'mantenimiento' | 'fuera'; rent?: number; currency?: 'USD' | 'DOP'; period?: string; modalities?: string[]; client?: string; until?: string; alert?: string; selected?: boolean; onClick?: () => void; style?: React.CSSProperties; }
+export declare function UnitCard(props: UnitCardProps): JSX.Element;

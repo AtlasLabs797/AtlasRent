@@ -1,0 +1,1 @@
+Contract detail sidebar and baja flow. Deductions usually come from InventoryChecklist. A partial return needs a motivo per deduction. After close with status "devolucion" the dashboard keeps a persistent alert.

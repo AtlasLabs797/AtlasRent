@@ -1,0 +1,9 @@
+:root{
+--space-0:0px;--space-1:2px;--space-2:4px;--space-3:6px;--space-4:8px;--space-5:10px;--space-6:12px;--space-7:17px;--space-8:20px;--space-9:24px;--space-10:32px;--space-11:40px;--space-12:48px;--space-13:64px;--space-14:80px;
+/* Apple radii grammar: 5 / 8 / 11 / 18 / pill. Nothing in between. */
+--radius-xs:5px;--radius-sm:8px;--radius-md:11px;--radius-lg:18px;--radius-xl:18px;--radius-pill:999px;
+--radius-field:11px;--radius-card:18px;--radius-control:999px;--radius-band:0px;
+--control-h-sm:32px;--control-h-md:44px;--control-h-lg:52px;
+--pad-card:24px;--pad-card-compact:20px;--gutter-page:32px;--section-y:80px;
+--sidebar-w:264px;--topbar-h:64px;--row-h:56px;--row-h-compact:44px;--content-max:1440px;--content-narrow:980px;
+}

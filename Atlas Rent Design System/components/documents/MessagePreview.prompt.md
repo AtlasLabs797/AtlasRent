@@ -1,0 +1,1 @@
+Neutral styling — no third-party brand colours. Reminders: one consolidated message per property listing factura, periodo, concepto, pendiente and total pendiente.

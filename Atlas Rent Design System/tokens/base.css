@@ -1,0 +1,12 @@
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{font:var(--type-body);letter-spacing:var(--tracking-body);color:var(--text-body);background:var(--surface-app);-webkit-font-smoothing:antialiased}
+.num,.tnum{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+a{color:var(--text-link);text-decoration:none}
+a:hover{color:var(--accent-press);text-decoration:underline}
+:focus-visible{outline:none;box-shadow:var(--ring-focus)}
+::selection{background:var(--accent-soft-strong)}
+*{scrollbar-width:thin;scrollbar-color:var(--gray-300) transparent}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:999px;border:3px solid transparent;background-clip:content-box}::-webkit-scrollbar-track{background:transparent}
+h1,h2,h3{text-wrap:balance}p{text-wrap:pretty}

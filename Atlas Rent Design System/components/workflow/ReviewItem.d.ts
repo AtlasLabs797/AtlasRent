@@ -1,0 +1,3 @@
+/** Bandeja de revisión row (§21): an operation an Empleado left pending for Gerente/Admin. Shows who, type, record, date, motivo; renotifies at 30 days. */
+export interface ReviewItemProps { preparedBy: string; type: string; title: string; record?: string; date: string; days?: number; reason?: string; onApprove?: () => void; onReject?: () => void; onOpen?: () => void; style?: React.CSSProperties; }
+export declare function ReviewItem(props: ReviewItemProps): JSX.Element;

@@ -1,0 +1,3 @@
+/** USD/DOP rate as market + margen → aplicado (§15). Inline for topbar/forms, panel for invoice/cobro detail. frozenIn marks a historical, non-recalculated rate. */
+export interface ExchangeRateProps { market: number; margin?: number; final?: number; at?: string; source?: string; /** Record that froze this rate, e.g. FAC-A-2026-00412. Shows a lock. */ frozenIn?: string; variant?: 'inline' | 'panel'; style?: React.CSSProperties; }
+export declare function ExchangeRate(props: ExchangeRateProps): JSX.Element;

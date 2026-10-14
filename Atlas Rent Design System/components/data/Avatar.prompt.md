@@ -1,0 +1,1 @@
+Actor marker in audit logs, review items and the sidebar. `kind="agent"` for any IA agent so automated actions are recognisable at a glance.

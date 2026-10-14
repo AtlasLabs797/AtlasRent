@@ -1,0 +1,19 @@
+# SOLO DESARROLLO. En el servidor PostgreSQL es nativo (DOC_TECNICA §9).
+# Se usa la versión mínima soportada (16) para garantizar compatibilidad con la instancia de producción.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: solo_local_cambiar
+      POSTGRES_DB: postgres
+      TZ: UTC
+    ports: ["127.0.0.1:5433:5432"]   # 5433: el 5432 lo ocupa otro PostgreSQL en esta máquina. Nunca expuesto fuera de la máquina
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:

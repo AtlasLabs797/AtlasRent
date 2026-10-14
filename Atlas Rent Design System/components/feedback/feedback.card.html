@@ -1,0 +1,25 @@
+<!-- @dsCard group="Components" viewport="700x420" name="Feedback" subtitle="Alert, Toast, Tooltip, Dialog" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:#fff;padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {Alert,Toast,Tooltip,Dialog,Button,IconButton,Input}=D;
+return <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,alignItems:'start'}}>
+<div className="c">
+<Alert tone="warning" title="Reserva con más de 7 días" action={<Button size="sm" variant="secondary">Revisar</Button>}>Torre Coral · 4B · desde 29/09</Alert>
+<Alert tone="danger" title="Fianza pendiente de devolución">Contrato CT-0192 cerrado el 30/09</Alert>
+<Alert tone="ai" title="3 autorizaciones IA pendientes"/>
+<Toast onClose={()=>{}}>Cobro registrado · 450,00 USD</Toast>
+<div className="r" style={{paddingTop:30}}><Tooltip content="Duplicar factura" open><IconButton icon="copy" label="Duplicar" variant="secondary"/></Tooltip></div>
+</div>
+<div style={{background:'var(--overlay-scrim)',padding:14,borderRadius:'var(--radius-lg)'}}>
+<Dialog inline title="Anular factura" description="FAC-A-2026-00412 · 1.250,00 USD" footer={<><Button variant="secondary" size="sm">Cancelar</Button><Button variant="danger" size="sm">Anular</Button></>}><Input label="Motivo" required placeholder="Obligatorio"/></Dialog>
+</div></div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

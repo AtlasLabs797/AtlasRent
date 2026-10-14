@@ -1,0 +1,4 @@
+/** General AI chat (§23.1), 420px panel. Assistant turns can show the MCP/API tools they called; sensitive actions end in an approval, never a direct write. */
+export interface ChatMessage { role: 'user' | 'assistant'; text?: string; content?: React.ReactNode; tools?: string[]; }
+export interface ChatPanelProps { title?: string; context?: string; messages: ChatMessage[]; suggestions?: string[]; typing?: boolean; /** Global "Pausar IA" or IA disabled for the user. */ paused?: boolean; onSend?: (text: string) => void; onClose?: () => void; style?: React.CSSProperties; }
+export declare function ChatPanel(props: ChatPanelProps): JSX.Element;

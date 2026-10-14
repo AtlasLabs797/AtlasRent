@@ -1,0 +1,1977 @@
+PROYECTO: SISTEMA INTERNO DE GESTIÓN DE ALQUILERES Y RENTAS
+ESPECIFICACIÓN FUNCIONAL, TÉCNICA Y DE ARQUITECTURA
+Versión de trabajo consolidada
+Fecha: 08/10/2026
+
+======================================================================
+1. DESCRIPCIÓN GENERAL DEL PROYECTO
+======================================================================
+
+El proyecto consiste en desarrollar una aplicación interna para sustituir Factusol en la gestión operativa de aproximadamente 150 propiedades/unidades de alquiler a medio y largo plazo, incorporando además alquileres por día y por horas en determinados espacios, como oficinas y salas de reuniones.
+
+La aplicación debe centralizar:
+
+- Clientes.
+- Inmuebles y unidades alquilables.
+- Cotizaciones.
+- Reservas.
+- Contratos.
+- Renovaciones automáticas.
+- Facturación recurrente y manual.
+- Cobros.
+- Saldos a favor.
+- Fianzas.
+- Inventarios.
+- Bajas y liquidaciones.
+- Recordatorios y alertas.
+- Documentos PDF.
+- Envíos por WhatsApp.
+- Informes y dashboards.
+- Usuarios, roles y permisos.
+- Auditoría.
+- Integración con IA.
+- API propia.
+- MCP para agentes externos.
+- Migración histórica desde Factusol/Excel.
+
+La aplicación debe ser “agent-native”: desde su diseño inicial debe permitir que agentes de IA puedan consultar información, preparar tareas, detectar problemas y ejecutar determinadas acciones bajo un sistema estricto de permisos, aprobaciones y auditoría.
+
+La aplicación NO será, inicialmente, el sistema de facturación electrónica fiscal e-CF. Cuando una operación requiera factura electrónica/fiscal, esta se emitirá mediante otro programa externo. La aplicación interna podrá guardar la referencia del documento fiscal externo.
+
+======================================================================
+2. PRINCIPIOS DE DISEÑO
+======================================================================
+
+2.1. Separación entre datos maestros y operaciones
+---------------------------------------------------
+Debe existir separación clara entre:
+
+- Cliente.
+- Inmueble.
+- Unidad.
+- Contrato.
+- Reserva.
+- Factura.
+- Cobro.
+- Fianza.
+- Inventario.
+- Documentos.
+- Empresa propietaria.
+- Empresa facturadora.
+
+2.2. API-first
+--------------
+Toda la lógica de negocio debe exponerse mediante una API interna versionada.
+
+La interfaz web, los agentes de IA, las importaciones y el MCP deben reutilizar la misma lógica de negocio. No debe existir una lógica especial que permita a los agentes saltarse validaciones.
+
+2.3. MCP
+--------
+Debe existir un servidor MCP construido encima de la API.
+
+El MCP servirá para conectar de forma controlada:
+
+- ChatGPT.
+- Agentes externos.
+- Agentes internos.
+- Herramientas de migración.
+- Automatizaciones futuras.
+
+MCP no sustituye la API. La API es la base del sistema.
+
+2.4. Auditoría
+--------------
+Toda acción sensible debe quedar registrada:
+
+- Usuario o agente.
+- Fecha y hora.
+- Acción.
+- Registro afectado.
+- Valores anteriores.
+- Valores nuevos.
+- Motivo.
+- Aprobación asociada, si aplica.
+- Origen de la operación.
+- Resultado.
+
+No se deben realizar borrados físicos de información financiera sensible desde la interfaz ordinaria. Cuando el usuario “borre” una factura o un cobro, debe excluirse de la operativa pero conservarse el registro de auditoría.
+
+======================================================================
+3. ESTRUCTURA DE INMUEBLES Y UNIDADES
+======================================================================
+
+3.1. Modelo flexible
+--------------------
+La aplicación debe soportar dos casos:
+
+A) Inmueble con varias unidades:
+   Ejemplo: edificio con 20 apartamentos.
+
+B) Inmueble directamente alquilable:
+   Ejemplo: una villa que se alquila completa.
+
+No se debe obligar a crear artificialmente una “unidad” adicional cuando el inmueble completo es el recurso alquilable.
+
+Conceptualmente debe existir un “recurso alquilable” que pueda ser:
+
+- El inmueble completo.
+- Una unidad dentro de un inmueble.
+
+3.2. Datos del inmueble
+-----------------------
+Como mínimo:
+
+- Nombre.
+- Dirección.
+- Tipo.
+- Empresa propietaria.
+- Notas.
+- Estado general.
+- Documentación asociada.
+- Unidades, si tiene.
+
+3.3. Datos de la unidad/recurso alquilable
+------------------------------------------
+Obligatorios o estructurales:
+
+- Inmueble padre, cuando exista.
+- Nombre/número de unidad.
+- Tipo de unidad.
+- Empresa propietaria.
+- Empresa facturadora por defecto.
+- Precio estándar/referencia.
+- Modalidades de alquiler permitidas:
+  - Mensual.
+  - Diario.
+  - Por horas.
+  - Selección múltiple.
+- Estado operativo.
+
+Opcionales según tipo:
+
+- Metros cuadrados.
+- Capacidad.
+- Habitaciones.
+- Baños.
+- Número de medidor eléctrico.
+- Inventario.
+- Notas.
+- Otros datos descriptivos.
+
+3.4. Precio estándar
+--------------------
+El precio estándar es obligatorio.
+
+Debe proponerse automáticamente al crear un contrato, pero gerente/administrador podrán modificarlo cuando corresponda.
+
+3.5. Estados
+------------
+Estados principales:
+
+- Disponible.
+- Reservado.
+- Ocupado.
+- En mantenimiento.
+- Fuera de servicio.
+
+No se necesitan varios tipos de “reservado”.
+
+======================================================================
+4. CLIENTES
+======================================================================
+
+4.1. Número de cliente
+----------------------
+Los clientes actuales deben conservar exactamente su número de cliente de Factusol.
+
+Para clientes nuevos:
+
+- Se debe obtener el número de cliente más alto existente.
+- El nuevo cliente recibe el siguiente número.
+- Nunca se reutilizan números.
+- El número de cliente visible es independiente del ID técnico interno.
+
+4.2. Tipos de cliente
+---------------------
+- Persona física.
+- Empresa.
+
+4.3. Campos
+-----------
+Obligatorios:
+
+- Número de cliente.
+- Nombre / razón social.
+- Tipo de cliente.
+- Documento identificativo/fiscal cuando corresponda:
+  - Cédula.
+  - RNC.
+  - Pasaporte, según caso.
+- Teléfono.
+
+Opcionales:
+
+- Email.
+- Segundo teléfono.
+- Dirección.
+- Nacionalidad.
+- Notas.
+- Documentos.
+- Canal preferido de comunicación.
+- Idioma preferido.
+
+4.4. Relaciones
+---------------
+Un cliente puede tener:
+
+- Varios contratos.
+- Varias propiedades/unidades.
+- Contratos activos y finalizados simultáneamente.
+- Varias facturas.
+- Varios cobros.
+- Fianzas.
+- Reservas.
+- Saldos a favor.
+
+La baja de un contrato NO implica dar de baja al cliente.
+
+======================================================================
+5. COTIZACIONES
+======================================================================
+
+Debe existir un módulo para generar cotizaciones.
+
+Las cotizaciones:
+
+- Se vinculan a cliente o prospecto.
+- Pueden vincularse a una unidad.
+- Deben poder generarse en PDF.
+- Deben poder enviarse por WhatsApp.
+- No crean reserva automáticamente.
+- La creación de la reserva es manual.
+
+Pendiente de cerrar en detalle:
+- Estados exactos de cotización.
+- Vigencia.
+- Conversión exacta a reserva/contrato.
+
+======================================================================
+6. RESERVAS
+======================================================================
+
+6.1. Creación
+-------------
+La reserva es manual.
+
+Debe incluir:
+
+- Cliente.
+- Unidad/recurso alquilable.
+- Fecha de reserva.
+- Fecha de entrada.
+- Fecha de salida.
+- Hora de inicio y fin cuando sea reserva por horas.
+- Observaciones.
+- Importe entregado como reserva, si existe.
+
+El importe de reserva puede ser 0.
+
+6.2. Reservas por horas
+-----------------------
+Para oficinas/salas:
+
+- Deben poder definirse franjas horarias.
+- Puede haber varias reservas el mismo día.
+- No puede haber solape real de horas en el mismo recurso.
+
+6.3. Bloqueo
+------------
+La reserva bloquea la disponibilidad para las fechas/horas indicadas.
+
+6.4. Alerta de reserva antigua
+------------------------------
+Una reserva no caduca automáticamente por antigüedad.
+
+A partir de 7 días en estado reservado:
+
+- Aparece una alerta interna persistente.
+- No se repite semanalmente.
+- Se mantiene hasta que se resuelva.
+
+6.5. Conversión a contrato
+--------------------------
+Al convertir reserva a contrato:
+
+- Se arrastra cliente.
+- Se arrastra unidad.
+- Se arrastran fechas.
+- El anticipo queda relacionado con el contrato.
+- Puede utilizarse después como saldo a favor.
+
+6.6. Paso a ocupado
+-------------------
+El cambio Reservado -> Ocupado es automático en la fecha de inicio SOLO si el contrato está aprobado/activo.
+
+Si llega la fecha y el contrato sigue en borrador:
+
+- NO pasa a ocupado.
+- La unidad vuelve a estar disponible cuando la reserva ya no deba bloquearla.
+
+======================================================================
+7. CONTRATOS
+======================================================================
+
+7.1. Campos obligatorios
+------------------------
+- Cliente.
+- Unidad/recurso alquilable.
+- Empresa facturadora.
+- Fecha de inicio.
+- Duración inicial.
+- Renta.
+- Moneda.
+- Día habitual de pago/vencimiento.
+- Fianza / número de fianzas cuando corresponda.
+- Regla de renovación automática.
+- Duración de cada renovación.
+- Plantilla de contrato aplicable.
+
+7.2. Flujo
+----------
+Los contratos se crean inicialmente como:
+
+- Borrador / pendiente de revisión.
+
+Un empleado puede:
+
+- Crear el borrador.
+- Modificar el borrador.
+- Dejarlo preparado.
+
+Solo gerente o administrador pueden:
+
+- Aprobar.
+- Activar.
+- Modificar contrato activo.
+- Programar/cerrar baja.
+
+7.3. Aprobación
+---------------
+El gerente/administrador debe poder:
+
+- Aprobar.
+- Rechazar.
+- Incluir comentario de rechazo.
+
+7.4. Renovación automática
+--------------------------
+La renovación NO genera un anexo.
+
+Ejemplo:
+
+- Duración inicial: 12 meses.
+- Renovación automática: bloques de 6 meses.
+- Continúa renovándose hasta que se cancele.
+
+La renovación:
+
+- Es automática.
+- Queda registrada en el historial.
+- No requiere nueva firma.
+- No genera anexo.
+
+7.5. Cancelación
+----------------
+- Preaviso recomendado: 30 días.
+- Si no se cumple el preaviso, igualmente se puede cancelar.
+- Sin penalización.
+- Solo gerente o administrador pueden cancelar.
+- Debe registrarse la fecha efectiva de fin.
+- La unidad queda disponible inmediatamente después de la fecha efectiva de fin.
+
+7.6. Incrementos de renta
+-------------------------
+Una subida prevista en contrato puede ser:
+
+- Porcentaje.
+- Importe fijo.
+
+Debe incluir:
+
+- Valor.
+- Fecha de aplicación.
+
+Si está configurada:
+
+- Se aplica automáticamente.
+- Se conserva histórico de rentas.
+- Puede generar aviso interno.
+- No requiere aprobación adicional.
+
+7.7. Plantillas de contrato
+---------------------------
+La plantilla se determina según la propiedad/unidad.
+
+Debe poder haber distintas plantillas:
+
+- Apartamento.
+- Villa.
+- Nave.
+- Oficina.
+- Etc.
+
+======================================================================
+8. INVENTARIO
+======================================================================
+
+8.1. Inventario base
+--------------------
+El inventario pertenece a la unidad/recurso alquilable.
+
+Una propiedad puede:
+
+- Tener inventario.
+- No tener inventario.
+
+8.2. Contrato
+-------------
+Al iniciar un contrato:
+
+- Se toma el inventario base.
+- Se crea una copia congelada.
+- Esa copia queda vinculada al contrato.
+- Los cambios futuros en el inventario base no alteran contratos antiguos.
+
+8.3. Salida
+-----------
+Si la unidad tiene inventario:
+
+- La revisión de salida es obligatoria.
+- Debe comprobarse cada elemento.
+- Se pueden indicar faltantes o daños.
+- Se puede indicar importe a descontar.
+- Se puede añadir una observación.
+
+No se quieren fotografías de daños.
+
+Si la unidad no tiene inventario:
+- La revisión no bloquea el cierre.
+
+======================================================================
+9. ANEXOS
+======================================================================
+
+El contrato puede incluir:
+
+- Inventario.
+- Anexos fijos de la propiedad.
+- Anexos opcionales.
+
+Debe existir un catálogo de anexos.
+
+Se requiere:
+
+- Un único modelo activo por tipo de anexo.
+- Algunos anexos se adjuntan automáticamente por propiedad.
+- Otros se seleccionan manualmente al crear contrato.
+
+Ejemplos:
+
+- Formas de pago.
+- Cuentas bancarias.
+- Condiciones especiales.
+- Otros anexos operativos.
+
+La renovación automática no genera anexo.
+
+======================================================================
+10. FACTURACIÓN
+======================================================================
+
+10.1. Monedas
+-------------
+Monedas soportadas:
+
+- USD.
+- DOP.
+
+Moneda base principal del sistema:
+
+- USD.
+
+10.2. Series
+------------
+La numeración funciona POR SERIE.
+
+Cada serie:
+
+- Tiene su propio contador.
+- No depende de empresa.
+- Debe ser transaccional para evitar duplicados.
+
+Las facturas importadas:
+
+- Conservan su número original.
+- Ese número se almacena como número/origen histórico.
+- No consumen números del contador nuevo.
+
+10.3. Facturación periódica
+---------------------------
+No se genera automáticamente en segundo plano.
+
+Debe existir un botón, por ejemplo:
+
+“Generar facturas periódicas”
+
+Al pulsarlo:
+
+- Busca contratos recurrentes/activos correspondientes.
+- Genera las facturas mensuales.
+- Las facturas se crean directamente como definitivas.
+- Obtienen número definitivo de serie.
+- No son borradores.
+
+Debe impedir duplicar accidentalmente el mismo periodo/contrato.
+
+10.4. Modificación de factura definitiva
+-----------------------------------------
+Gerente y administrador pueden modificar una factura definitiva.
+
+Se puede modificar:
+
+- Cliente/relación si procede.
+- Conceptos.
+- Cantidades.
+- Precios.
+- Líneas.
+- Descuentos.
+- Mora.
+- Ajustes.
+- Otros campos permitidos.
+
+NO se puede modificar:
+
+- Número de factura.
+
+Cada cambio debe quedar auditado.
+
+10.5. Líneas de factura
+-----------------------
+La factura no debe ser solo un importe.
+
+Debe tener líneas editables.
+
+Ejemplo:
+
+- Renta mensual.
+- Mora.
+- Ajuste.
+- Servicio.
+- Cargo adicional.
+- Descuento.
+
+10.6. Duplicar factura
+----------------------
+Debe existir “Duplicar factura”.
+
+Al duplicar:
+
+- Copia líneas y datos.
+- Asigna un nuevo número de serie.
+- La copia puede editarse.
+
+10.7. Eliminar factura
+----------------------
+Gerente y administrador pueden eliminar/anular operativamente una factura.
+
+Regla acordada:
+
+- Al borrar la factura, también se eliminan/revierten operativamente los cobros vinculados.
+- No deben seguir afectando saldos.
+- Debe mantenerse trazabilidad interna.
+- El número de factura no se reutiliza.
+
+10.8. Factura manual
+--------------------
+Debe poder crearse una factura manual sin partir de facturación periódica.
+
+Flujos posibles:
+
+A) Empezar por unidad:
+   - Seleccionar unidad.
+   - El sistema propone el cliente del contrato activo.
+   - Usuario añade líneas y precios.
+
+B) Empezar por cliente:
+   - Seleccionar cliente.
+   - Seleccionar contrato/unidad si procede.
+   - Añadir líneas.
+
+Las facturas manuales deben permitir todos los conceptos necesarios.
+
+10.9. Primera factura de contrato
+---------------------------------
+Al activar el contrato no se crea automáticamente.
+
+Solo gerente/administrador pueden pulsar una acción tipo:
+
+“Generar primera factura”
+
+10.10. Electricidad, agua y extras
+----------------------------------
+Se crean como facturas separadas.
+
+No se mezclan obligatoriamente con la factura mensual de renta.
+
+Ejemplos:
+
+- Renta: factura A.
+- Electricidad: factura B.
+- Agua: factura C.
+
+El importe de suministros se introduce manualmente.
+
+El vencimiento utiliza el mismo día de pago del contrato.
+
+Si se crea después del vencimiento de ese mes:
+- Vence en el siguiente ciclo.
+
+10.11. Facturación fiscal/e-CF
+------------------------------
+La aplicación NO implementará inicialmente e-CF.
+
+Cuando se necesite:
+
+- Se utilizará otro programa.
+- La aplicación podrá marcar “requiere factura fiscal externa”.
+- Podrá guardar:
+  - Número fiscal externo.
+  - NCF/e-CF.
+  - Referencia.
+  - Fecha.
+  - Documento asociado.
+
+======================================================================
+11. ESTADOS DE FACTURA
+======================================================================
+
+Se separan dos dimensiones.
+
+11.1. Estado del documento
+--------------------------
+- Emitido/definitivo.
+- Eliminado/anulado operativamente.
+
+Puede existir borrador para casos auxiliares, pero la facturación periódica genera directamente definitiva.
+
+11.2. Estado de cobro
+---------------------
+- Pendiente.
+- Parcial.
+- Pagado.
+
+11.3. Vencida
+-------------
+“Vencida” no debe ser un estado exclusivo.
+
+Es una condición calculada:
+
+- Tiene saldo pendiente.
+- Ha superado fecha de vencimiento.
+
+Así una factura puede ser:
+
+- Emitida.
+- Parcialmente pagada.
+- Vencida.
+
+======================================================================
+12. PRORRATEOS
+======================================================================
+
+Los prorrateos se aplican:
+
+- Al inicio.
+- Al final.
+
+Reglas acordadas:
+
+- Los días son inclusivos.
+- Se divide por los días reales del mes.
+- Se cobra desde la fecha de entrada/salida según corresponda.
+
+Fórmula general:
+
+Renta mensual / número real de días del mes × días facturables.
+
+La lógica debe respetar el día habitual de pago/ciclo del contrato.
+
+======================================================================
+13. COBROS
+======================================================================
+
+13.1. Registro manual
+---------------------
+En la primera versión, la operativa principal será manual.
+
+El usuario revisa el banco y registra los cobros uno a uno.
+
+13.2. Quién puede cobrar
+------------------------
+Solo:
+
+- Gerente.
+- Administrador.
+
+El empleado NO puede registrar cobros.
+
+13.3. Datos del cobro
+---------------------
+- Cliente.
+- Contrato/unidad.
+- Fecha efectiva del pago.
+- Importe.
+- Moneda.
+- Forma de pago.
+- Referencia.
+- Cuenta bancaria receptora si aplica.
+- Facturas aplicadas.
+
+13.4. Formas de pago
+--------------------
+Configurables.
+
+Ejemplos:
+
+- Efectivo.
+- Transferencia.
+- Depósito bancario.
+- Otros.
+
+13.5. Asignación
+----------------
+Por defecto:
+
+- Se aplica a la deuda más antigua del mismo contrato/unidad.
+
+Se permite:
+
+- Cambiar manualmente la asignación.
+- Un pago parcial.
+- Un pago a varias facturas.
+- Un pago superior al saldo.
+
+No se mueve automáticamente dinero entre contratos distintos del mismo cliente.
+
+13.6. Saldo a favor
+-------------------
+Si sobra importe:
+
+- Queda como saldo a favor.
+- Se mantiene asociado al contrato/unidad.
+- Puede aplicarse a futuras facturas.
+
+13.7. Modificar/anular cobro
+----------------------------
+Solo gerente/administrador.
+
+La corrección debe:
+
+- Revertir la asignación anterior.
+- Restaurar saldos.
+- Mantener historial.
+- Registrar quién y por qué corrigió.
+
+13.8. Recibo PDF
+----------------
+El recibo PDF es opcional.
+
+Si se genera debe incluir:
+
+- Cliente.
+- Unidad.
+- Factura(s).
+- Periodo/mes pagado.
+- Importe.
+- Fecha.
+- Forma de pago.
+- Referencia.
+- Saldo pendiente, cuando proceda.
+
+Puede enviarse por WhatsApp.
+
+======================================================================
+14. FIANZAS
+======================================================================
+
+14.1. Modelo independiente
+--------------------------
+La fianza NO debe modelarse como factura de renta.
+
+Debe ser una entidad financiera independiente.
+
+Sin embargo, en la vista de movimientos/pagos del cliente debe aparecer junto a las facturas para comprobar fácilmente si está pagada.
+
+14.2. Datos
+-----------
+- Importe exigido.
+- Número de fianzas.
+- Moneda.
+- Importe cobrado.
+- Fecha.
+- Forma de pago.
+- Saldo pendiente.
+- Estado.
+- Contrato asociado.
+
+14.3. Devolución
+----------------
+Al cerrar contrato:
+
+- Indicar si se devuelve completa o parcialmente.
+- Importe inicial.
+- Descuentos.
+- Motivos.
+- Importe final devuelto.
+- Fecha.
+- Forma:
+  - Efectivo.
+  - Transferencia.
+  - Otra.
+- Observación.
+
+Si la devolución es parcial:
+- Motivo obligatorio.
+- Importe descontado obligatorio.
+
+14.4. Daños
+-----------
+Los daños/faltantes del inventario pueden proponer automáticamente descuentos.
+
+Aplicar dinero contra la fianza requiere gerente/administrador.
+
+14.5. Alerta
+------------
+Tras el cierre del contrato:
+
+- Fianza pendiente de devolución genera una alerta persistente.
+- Sin plazo máximo automático acordado.
+
+======================================================================
+15. MULTIMONEDA Y TIPO DE CAMBIO
+======================================================================
+
+15.1. Moneda base
+-----------------
+USD.
+
+15.2. Tipo de cambio
+--------------------
+Debe obtenerse diariamente mediante una API externa.
+
+Se guarda:
+
+- Cambio de mercado/referencia.
+- Fecha/hora.
+- Margen aplicado.
+- Tipo final aplicado.
+
+15.3. Margen
+------------
+La empresa puede sumar “puntos” al cambio.
+
+Ejemplo:
+- Cambio mercado: 60.35 DOP/USD.
+- Margen: +1.65.
+- Cambio cliente: 62.00.
+
+Debe poder configurarse un margen por defecto.
+
+Gerente/administrador pueden modificarlo por operación.
+
+15.4. Conversión en factura
+---------------------------
+Ejemplo:
+
+Renta: 450 USD.
+Tipo aplicado: 62 DOP/USD.
+Importe equivalente: 27,900 DOP.
+
+El documento puede mostrar:
+
+- Importe original.
+- Tipo aplicado.
+- Equivalente en DOP.
+
+15.5. Histórico
+---------------
+Una vez emitida la factura:
+
+- El cambio guardado queda congelado.
+- No se recalcula con el cambio de días posteriores.
+
+15.6. Pago en moneda distinta
+-----------------------------
+Si factura USD y pago DOP:
+
+- El sistema propone cambio del día + margen.
+- Gerente/admin pueden introducir el cambio real.
+- Ese cambio queda guardado en el cobro.
+
+======================================================================
+16. INFORMES
+======================================================================
+
+16.1. Resumen global
+--------------------
+Moneda base: USD.
+
+Debe mostrar al menos:
+
+- Total facturado.
+- Total cobrado.
+- Total pendiente.
+- Total vencido.
+- Total de fianzas retenidas.
+
+16.2. Desglose por moneda
+-------------------------
+Bloque USD:
+
+- USD facturados.
+- USD cobrados.
+- USD pendientes.
+- USD vencidos.
+
+Bloque DOP:
+
+- DOP facturados.
+- DOP cobrados.
+- DOP pendientes.
+- DOP vencidos.
+
+16.3. Consolidado
+-----------------
+El consolidado global en USD debe usar el tipo histórico guardado en cada operación, no el tipo actual.
+
+16.4. Diferencia de cambio
+--------------------------
+La diferencia/margen de cambio será dato informativo.
+
+No se contabiliza como renta en los informes internos.
+
+16.5. Filtros
+-------------
+Como mínimo:
+
+- Fecha.
+- Empresa facturadora.
+- Empresa propietaria.
+- Inmueble.
+- Unidad.
+- Cliente.
+- Contrato.
+- Moneda.
+- Estado.
+- Serie.
+
+======================================================================
+17. DASHBOARD Y ALERTAS
+======================================================================
+
+17.1. Indicadores
+-----------------
+Según permisos:
+
+- Disponibles.
+- Reservadas.
+- Ocupadas.
+- Mantenimiento/fuera de servicio.
+- Facturado.
+- Cobrado.
+- Pendiente.
+- Vencido.
+- Fianzas retenidas.
+- Contratos activos.
+
+17.2. Empleados
+---------------
+El empleado:
+
+- Puede ver facturas individuales.
+- Puede ver importe individual.
+- Puede ver pagado/pendiente por factura.
+- Puede ver el número de cobros/facturas vencidas.
+- NO puede ver totales económicos agregados.
+
+17.3. Alertas
+-------------
+- Facturas vencidas.
+- Contratos con baja programada.
+- Propiedades que quedarán libres en 30 días.
+- Reservas con más de 7 días.
+- Fianzas pendientes.
+- Contratos con incidencias.
+- Pendientes de revisión.
+- Autorizaciones IA pendientes.
+
+======================================================================
+18. RECORDATORIOS DE COBRO
+======================================================================
+
+Regla inicial:
+
+- Primer recordatorio: 5 días después del vencimiento.
+- Después: cada 15 días mientras siga pendiente.
+- Se detiene al quedar pagado.
+
+Si hay pago parcial:
+
+- Continúa.
+- Solo menciona saldo pendiente.
+
+Si existen varias facturas vencidas:
+
+- Un único mensaje consolidado POR PROPIEDAD.
+- Debe incluir:
+  - Número de factura.
+  - Periodo.
+  - Concepto.
+  - Importe pendiente.
+  - Total pendiente.
+
+======================================================================
+19. DOCUMENTOS Y WHATSAPP
+======================================================================
+
+PDFs:
+
+- Cotización.
+- Contrato.
+- Inventario/anexo.
+- Factura.
+- Recibo.
+
+WhatsApp:
+
+- Envío de PDFs.
+- Recordatorios automáticos.
+- Mensajes predefinidos.
+- Historial de envío.
+
+El texto automático de recibo puede ser fijo.
+
+======================================================================
+20. USUARIOS, ROLES Y PERMISOS
+======================================================================
+
+20.1. Administrador
+-------------------
+Puede:
+
+- Ver todo.
+- Hacer todo.
+- Configuración.
+- Usuarios.
+- Roles.
+- Permisos.
+- IA.
+- Seguridad.
+- Cobros.
+- Facturación.
+- Contratos.
+- Anulaciones.
+- Auditoría.
+
+MFA obligatorio.
+
+20.2. Gerente
+-------------
+Puede:
+
+- Ver toda la operación.
+- Ver totales económicos.
+- Registrar cobros.
+- Corregir/anular cobros.
+- Modificar facturas.
+- Borrar facturas operativamente.
+- Duplicar facturas.
+- Aprobar contratos.
+- Activar/cerrar contratos.
+- Gestionar fianzas.
+
+No puede:
+
+- Cambiar configuración global.
+- Cambiar roles/permisos.
+- Administrar seguridad.
+
+20.3. Empleado
+--------------
+Puede según permisos:
+
+- Ver clientes.
+- Ver unidades.
+- Ver reservas.
+- Preparar contratos.
+- Editar contratos en borrador.
+- Preparar información.
+- Ver facturas individuales.
+- Ver importes individuales.
+
+No puede:
+
+- Registrar cobros.
+- Modificar/anular cobros.
+- Ejecutar devoluciones.
+- Modificar facturas definitivas.
+- Ver totales financieros agregados.
+- Activar/cerrar contratos.
+- Cambiar configuración.
+
+20.4. Permisos configurables
+----------------------------
+Los empleados pueden tener permisos adicionales/reducidos dentro de sus límites.
+
+======================================================================
+21. BANDEJA DE REVISIÓN
+======================================================================
+
+Cuando un empleado deja una operación pendiente:
+
+- Se crea notificación inmediata.
+- Gerente/admin ven:
+  - Quién lo preparó.
+  - Tipo.
+  - Fecha.
+  - Datos.
+  - Motivo.
+- Pueden aprobar/rechazar.
+
+Canales configurables:
+
+- App.
+- Email.
+- Push móvil.
+
+Si sigue pendiente 30 días:
+
+- Se vuelve a notificar.
+
+La alerta permanece hasta resolverse.
+
+======================================================================
+22. IA / AGENT-NATIVE
+======================================================================
+
+22.1. Principio
+---------------
+La aplicación debe ser nativamente utilizable por agentes.
+
+Cada agente:
+
+- Tiene identidad propia.
+- Tiene permisos.
+- Tiene alcance.
+- Tiene auditoría.
+- No accede directamente a la base de datos.
+- Usa API/MCP.
+- No puede saltarse validaciones.
+
+22.2. Control de IA por usuario
+-------------------------------
+Cada usuario tendrá una configuración:
+
+- IA habilitada.
+- IA deshabilitada.
+
+Si está deshabilitada:
+
+- No ve botones IA.
+- No puede usar chat IA.
+
+Administrador:
+
+- Puede activar/desactivar IA por usuario.
+- Dispone de interruptor global “Pausar IA”.
+
+22.3. Agentes propuestos
+------------------------
+1. Agente de cobros.
+2. Agente de contratos.
+3. Agente de facturación.
+4. Agente de operaciones.
+5. Agente supervisor.
+6. Agente de migración/importación.
+
+22.4. Agente de cobros
+----------------------
+Puede:
+
+- Detectar vencidos.
+- Preparar recordatorios.
+- Proponer aplicación de pagos.
+- Preparar devolución de fianza.
+- Detectar incoherencias.
+
+Requiere aprobación para:
+
+- Registrar cobro.
+- Modificar/anular cobro.
+- Ejecutar devolución de fianza.
+
+22.5. Agente de contratos
+-------------------------
+Puede:
+
+- Revisar borradores.
+- Detectar solapes.
+- Preparar contratos.
+- Revisar renovaciones.
+- Preparar bajas.
+
+Requiere aprobación para:
+
+- Activar contrato.
+- Modificar activo.
+- Cerrar contrato.
+
+22.6. Agente de facturación
+---------------------------
+Puede:
+
+- Revisar facturas.
+- Preparar borradores/ajustes.
+- Detectar anomalías.
+- Calcular prorrateos.
+
+Requiere aprobación para acciones económicas sensibles.
+
+22.7. Agente de operaciones
+---------------------------
+Puede:
+
+- Comprobar disponibilidad.
+- Gestionar tareas.
+- Revisar reservas.
+- Revisar inventarios.
+- Detectar conflictos.
+
+22.8. Supervisor
+----------------
+Principalmente lectura/control.
+
+Debe:
+
+- Detectar anomalías.
+- Detectar duplicados.
+- Detectar acciones sin permiso.
+- Detectar fallos.
+- Alertar.
+
+No debe ejecutar operaciones económicas.
+
+22.9. Agente de migración
+-------------------------
+Puede:
+
+- Leer Excel/CSV.
+- Mapear columnas.
+- Detectar duplicados.
+- Transformar formatos.
+- Enlazar clientes/facturas/pagos.
+- Preparar lote.
+- Simular importación.
+- Generar informe.
+
+Importación definitiva:
+- Requiere aprobación humana.
+
+22.10. Aprobaciones IA
+----------------------
+Bandeja específica.
+
+Debe mostrar:
+
+- Agente.
+- Acción.
+- Motivo.
+- Registro.
+- Valor actual.
+- Valor propuesto.
+- Impacto.
+- Riesgo.
+- Fecha/hora.
+- Usuario origen.
+
+Acciones:
+
+- Aprobar.
+- Rechazar.
+- Modificar y aprobar.
+
+Si cambian los datos antes de aprobar:
+- La autorización caduca.
+- Debe recalcularse.
+
+22.11. Regla fundamental
+------------------------
+El agente no decide si necesita aprobación.
+
+Lo decide el motor de permisos/políticas.
+
+======================================================================
+23. INTERACCIÓN CON IA
+======================================================================
+
+Deben existir dos vías.
+
+23.1. Chat general
+------------------
+Para:
+
+- Preguntas.
+- Análisis.
+- Tareas complejas.
+- Resúmenes.
+- Consultas cruzadas.
+
+23.2. Botones contextuales
+--------------------------
+Dashboard:
+
+- Preguntar a IA.
+- Revisar pendientes.
+- Detectar anomalías.
+- Priorizar tareas.
+- Generar resumen.
+
+Cliente:
+
+- Resumir situación.
+- Revisar deuda.
+- Revisar contratos.
+- Preparar comunicación.
+- Detectar incidencias.
+
+Unidad:
+
+- Comprobar disponibilidad.
+- Revisar reservas.
+- Detectar conflictos.
+- Revisar inventario.
+
+Reserva:
+
+- Comprobar conflicto.
+- Proponer alternativa.
+- Preparar confirmación.
+- Convertir a contrato.
+
+Contrato:
+
+- Revisar.
+- Detectar incoherencias.
+- Preparar baja.
+- Revisar renovación.
+- Simular impacto.
+- Preparar aprobación.
+
+Factura:
+
+- Revisar.
+- Explicar importes.
+- Simular prorrateo.
+- Preparar ajuste.
+- Preparar anulación.
+
+Cobro:
+
+- Proponer aplicación.
+- Preparar corrección.
+
+======================================================================
+24. EVENTOS DEL SISTEMA
+======================================================================
+
+El sistema debe emitir eventos de negocio, como:
+
+- Contrato creado.
+- Contrato enviado a revisión.
+- Contrato aprobado.
+- Contrato activado.
+- Renovación.
+- Baja programada.
+- Contrato finalizado.
+- Factura creada.
+- Factura modificada.
+- Factura vencida.
+- Factura eliminada.
+- Cobro propuesto.
+- Cobro registrado.
+- Cobro corregido.
+- Cobro eliminado.
+- Fianza pendiente.
+- Fianza devuelta.
+- Reserva creada.
+- Reserva modificada.
+- Reserva cancelada.
+- Unidad disponible.
+- Unidad ocupada.
+- Inventario creado.
+- Inventario revisado.
+- Pendiente de revisión.
+- Autorización IA solicitada.
+- Autorización aprobada/rechazada/caducada.
+- Error de agente.
+
+Los eventos deben ser idempotentes:
+- Un mismo evento no puede provocar dos facturas, dos cobros o dos notificaciones duplicadas.
+
+======================================================================
+25. MIGRACIÓN DESDE FACTUSOL
+======================================================================
+
+25.1. Estrategia
+----------------
+Migración híbrida.
+
+Propuesta:
+
+- Situación actual completa.
+- Histórico reciente (12-24 meses, a determinar).
+- Saldos abiertos.
+- Fianzas.
+- Cobros.
+- Facturas.
+- Clientes.
+- Contratos activos.
+- Propiedades/unidades.
+
+25.2. Fuente
+------------
+Principalmente:
+
+- Excel.
+- CSV.
+
+No se recomienda depender directamente de la base interna de Factusol.
+
+25.3. Flujo
+-----------
+1. Exportación.
+2. Carga en zona temporal.
+3. Agente de migración analiza.
+4. Mapeo.
+5. Duplicados.
+6. Inconsistencias.
+7. Simulación.
+8. Informe.
+9. Aprobación.
+10. Importación.
+11. Conciliación.
+
+25.4. Lotes
+-----------
+Cada importación debe tener:
+
+- ID de lote.
+- Fecha.
+- Usuario/agente.
+- Registros.
+- Errores.
+- Resultado.
+- Trazabilidad.
+
+25.5. Fecha de corte
+--------------------
+La intención es realizar el cambio a principio de año, idealmente:
+
+- Cierre sistema antiguo: 31/12.
+- Inicio operativo sistema nuevo: 01/01.
+
+Debe evitarse operar simultáneamente en ambos sistemas durante un periodo largo.
+
+======================================================================
+26. PROCEDENCIA DE LOS REGISTROS
+======================================================================
+
+Cada registro importante debe indicar su origen:
+
+- Importado de Factusol.
+- Creado manualmente.
+- Generado automáticamente.
+- Creado por agente.
+- Importado desde Excel/API.
+
+======================================================================
+27. INTEGRACIONES
+======================================================================
+
+Requeridas o previstas:
+
+- API de tipo de cambio.
+- WhatsApp Business/Cloud API.
+- Email.
+- Push móvil.
+- API propia.
+- MCP.
+- Proveedor de IA.
+- Almacenamiento de documentos.
+- Sistema externo de e-CF/facturación fiscal cuando corresponda.
+
+Futura:
+
+- Conciliación bancaria.
+
+======================================================================
+28. ARQUITECTURA TÉCNICA RECOMENDADA
+======================================================================
+
+IMPORTANTE:
+Este apartado es una propuesta técnica recomendada. No todas estas tecnologías se han decidido funcionalmente en las conversaciones.
+
+28.1. Frontend
+--------------
+Recomendación:
+
+- Next.js.
+- TypeScript.
+- React.
+- Tailwind CSS o equivalente.
+
+Motivos:
+
+- Aplicación web rápida.
+- Buen soporte de componentes.
+- Integración sencilla con API.
+- PWA posible.
+- Buen ecosistema.
+
+28.2. Backend
+-------------
+Recomendación:
+
+- NestJS con TypeScript.
+
+Alternativa válida:
+- FastAPI con Python.
+
+Para este proyecto, NestJS ofrece una estructura especialmente adecuada para:
+
+- Módulos.
+- Roles.
+- API.
+- Jobs.
+- Eventos.
+- WebSockets.
+- MCP.
+- Auditoría.
+- Integraciones.
+
+28.3. Base de datos
+-------------------
+- PostgreSQL.
+
+Necesaria para:
+
+- Transacciones.
+- Integridad.
+- Numeradores de series.
+- Relaciones.
+- Auditoría.
+- Consultas financieras.
+
+28.4. Redis
+-----------
+Recomendado para:
+
+- Colas.
+- Locks.
+- Cache.
+- Evitar duplicados.
+- Jobs programados.
+- Idempotencia.
+
+28.5. Cola de tareas
+--------------------
+Recomendación:
+
+- BullMQ si backend Node/NestJS.
+
+Usos:
+
+- Recordatorios.
+- Notificaciones.
+- Agentes.
+- Procesos de migración.
+- Informes.
+- Cambio diario.
+- Reintentos.
+
+28.6. Almacenamiento documental
+-------------------------------
+Compatible con S3.
+
+Opciones:
+
+- Amazon S3.
+- Cloudflare R2.
+- Backblaze B2.
+- MinIO local.
+
+Para:
+
+- Contratos.
+- PDFs.
+- Anexos.
+- Facturas.
+- Recibos.
+- Importaciones.
+
+28.7. PDFs
+----------
+Opciones recomendadas:
+
+- Playwright/Chromium para HTML -> PDF.
+- Puppeteer como alternativa.
+
+Permite:
+- Plantillas profesionales.
+- Logo.
+- CSS.
+- Documentos dinámicos.
+
+28.8. Autenticación
+-------------------
+Necesario:
+
+- Sesiones seguras.
+- RBAC/ABAC.
+- MFA administrador.
+- Tokens API por scopes.
+- Service accounts para agentes.
+
+Opciones:
+- Auth.js.
+- Keycloak.
+- Auth0.
+- Clerk.
+- Autenticación propia bien implementada.
+
+28.9. Notificaciones
+--------------------
+Email:
+- SMTP o proveedor transaccional.
+
+Push:
+- Firebase Cloud Messaging o equivalente.
+
+WhatsApp:
+- Meta WhatsApp Cloud API o proveedor BSP.
+
+28.10. Tipo de cambio
+---------------------
+Una API diaria USD/DOP.
+
+Debe existir:
+- Job diario.
+- Cache.
+- Persistencia histórica.
+- Fallback manual si la API falla.
+
+28.11. IA
+---------
+Arquitectura desacoplada del proveedor.
+
+Debe soportar:
+
+- OpenAI/ChatGPT u otros LLM.
+- Tool calling.
+- API.
+- MCP.
+- Permisos por agente.
+- Aprobaciones.
+- Registro de acciones.
+
+28.12. MCP
+----------
+Servidor MCP separado o módulo del backend.
+
+Debe exponer solo tools autorizadas.
+
+Ejemplos:
+
+- buscar_cliente
+- obtener_contrato
+- listar_facturas
+- preparar_factura
+- preparar_cobro
+- consultar_disponibilidad
+- crear_reserva
+- preparar_baja
+- importar_excel
+- validar_migracion
+
+Acciones de alto riesgo no deben ejecutarse directamente sin token/autorización humana válida.
+
+======================================================================
+29. SOFTWARE / DEPENDENCIAS A INSTALAR
+======================================================================
+
+Para desarrollo local recomendado:
+
+1. Git.
+2. Node.js LTS.
+3. pnpm o npm.
+4. Docker Desktop en Windows / Docker Engine en Linux.
+5. PostgreSQL (preferentemente mediante Docker).
+6. Redis (preferentemente mediante Docker).
+7. VS Code u otro IDE.
+8. Navegador Chromium/Chrome para pruebas.
+9. Playwright y sus navegadores para generación/pruebas PDF.
+10. Cliente PostgreSQL opcional:
+    - DBeaver.
+    - pgAdmin.
+11. Herramientas de migración CSV/XLSX.
+12. Runtime MCP.
+13. Certificados/variables de entorno para APIs externas.
+14. Cuenta/proyecto de WhatsApp Business Cloud API.
+15. Servicio SMTP/email.
+16. Servicio push, si se implementa.
+17. Proveedor de almacenamiento S3 compatible.
+18. Proveedor/API de tipos de cambio.
+19. Proveedor de IA/API LLM para los agentes.
+
+Dependencias backend recomendadas si se usa NestJS:
+
+- @nestjs/core
+- @nestjs/common
+- @nestjs/config
+- @nestjs/jwt
+- @nestjs/passport
+- class-validator
+- class-transformer
+- Prisma o TypeORM
+- PostgreSQL driver
+- BullMQ
+- Redis client
+- Zod opcional
+- OpenAPI/Swagger
+- librería XLSX
+- SDK S3
+- Playwright
+- logger estructurado
+- librería TOTP/WebAuthn para MFA
+- librería MCP/SDK compatible
+
+Dependencias frontend recomendadas:
+
+- next
+- react
+- typescript
+- librería de formularios
+- validación con Zod
+- componente de tablas
+- librería de fechas
+- cliente API/query cache
+- componentes UI accesibles
+- visualización/gráficos para informes
+
+======================================================================
+30. DESPLIEGUE RECOMENDADO
+======================================================================
+
+Contenedores separados:
+
+- frontend
+- backend
+- worker
+- postgres
+- redis
+- MCP
+- almacenamiento si es local
+
+Con:
+
+- HTTPS.
+- Reverse proxy.
+- Backups automáticos.
+- Monitorización.
+- Logs.
+- Alertas.
+- Rotación de secretos.
+
+No guardar secretos en repositorio.
+
+======================================================================
+31. SEGURIDAD
+======================================================================
+
+Obligatorio:
+
+- HTTPS.
+- Hash seguro de contraseñas.
+- MFA para administradores.
+- Permisos backend, no solo frontend.
+- Rate limiting.
+- Auditoría.
+- Tokens por scopes.
+- Service accounts para agentes.
+- Protección CSRF si aplica.
+- Protección XSS.
+- Validación de inputs.
+- SQL parametrizado/ORM seguro.
+- Secret manager.
+- Backups.
+- Cifrado de datos sensibles en reposo cuando corresponda.
+- Bloqueo de acciones IA no autorizadas.
+- Idempotencia financiera.
+- Control de concurrencia en numeración de facturas.
+- No permitir que agentes escriban directamente en PostgreSQL.
+
+======================================================================
+32. BACKUPS Y RECUPERACIÓN
+======================================================================
+
+Debe contemplarse:
+
+- Backup diario de base de datos.
+- Retención.
+- Backup de documentos.
+- Restauración probada.
+- Exportación completa.
+- Registro de migraciones.
+- Procedimiento de recuperación ante desastre.
+
+======================================================================
+33. PUNTOS TODAVÍA PENDIENTES DE DEFINICIÓN
+======================================================================
+
+Aunque el proyecto está bastante definido, todavía quedan algunos puntos funcionales por cerrar:
+
+1. Estados exactos y flujo completo de cotizaciones.
+2. Qué ocurre exactamente con un anticipo de reserva si la reserva se cancela.
+3. Reglas de modificación/cancelación de reservas.
+4. Campos finales de todos los tipos de inmueble/unidad.
+5. Catálogo final de series.
+6. Formato/convención de numeración de cada serie desde 2027.
+7. Histórico exacto a migrar:
+   - 12 meses.
+   - 24 meses.
+   - Otro.
+8. Estructura exacta de los Excel exportados desde Factusol.
+9. Fecha exacta de corte.
+10. Diseño visual final de PDFs.
+11. Proveedor concreto de WhatsApp.
+12. Proveedor concreto de tipo de cambio.
+13. Proveedor/arquitectura concreta de IA.
+14. Si gerente tendrá MFA opcional o seguirá sin MFA.
+15. Lista final de permisos configurables por empleado.
+16. Catálogo definitivo de botones IA.
+17. Qué informes adicionales se necesitan además del dashboard financiero.
+18. Política exacta para borrar/restaurar facturas y cobros desde auditoría.
+19. Tratamiento del anticipo de reserva respecto a fianza o primera factura.
+20. Posible conciliación bancaria futura.
+21. Política de retención documental.
+22. Hosting/infraestructura final:
+    - servidor local,
+    - VPS,
+    - cloud,
+    - híbrido.
+
+======================================================================
+34. PRIORIDAD DE IMPLEMENTACIÓN RECOMENDADA
+======================================================================
+
+FASE 1 - FUNDACIÓN
+- Usuarios.
+- Roles.
+- Seguridad.
+- Empresas.
+- Clientes.
+- Inmuebles/unidades.
+- API.
+- Auditoría.
+- Base de datos.
+
+FASE 2 - OPERACIÓN DE ALQUILER
+- Reservas.
+- Contratos.
+- Inventario.
+- Anexos.
+- Renovaciones.
+- Bajas.
+- Disponibilidad.
+
+FASE 3 - FINANZAS
+- Series.
+- Facturas.
+- Facturación periódica.
+- Factura manual.
+- Multimoneda.
+- Cobros.
+- Saldos.
+- Fianzas.
+- Tipo de cambio.
+
+FASE 4 - DOCUMENTOS Y COMUNICACIONES
+- PDFs.
+- WhatsApp.
+- Email.
+- Notificaciones.
+- Recordatorios.
+
+FASE 5 - INFORMES
+- Dashboard.
+- Informes.
+- Filtros.
+- Exportaciones.
+
+FASE 6 - AGENTES
+- Orquestador.
+- Agentes especializados.
+- Aprobaciones.
+- Chat.
+- Botones IA.
+- Supervisor.
+- MCP.
+
+FASE 7 - MIGRACIÓN
+- Importador.
+- Agente de migración.
+- Pruebas.
+- Simulación.
+- Conciliación.
+- Corte a producción.
+
+FASE 8 - FUTURO
+- Conciliación bancaria.
+- Más automatizaciones.
+- Integraciones adicionales.
+
+======================================================================
+35. CONCLUSIÓN
+======================================================================
+
+La aplicación debe ser un sistema interno de gestión de alquileres completo, orientado a unas 150 propiedades/unidades, con control centralizado de contratos, rentas, cobros, fianzas, reservas y documentos.
+
+Sus tres características arquitectónicas principales serán:
+
+1. Gestión inmobiliaria/rentas adaptada al flujo real de la empresa.
+2. API-first + MCP para integraciones y agentes.
+3. Agent-native con permisos, aprobaciones y auditoría desde el primer día.
+
+La aplicación debe evitar depender de Factusol en la operativa diaria, manteniendo únicamente un sistema externo cuando sea necesaria la emisión fiscal/electrónica.
+
+El diseño debe priorizar:
+
+- Trazabilidad.
+- Seguridad.
+- Automatización controlada.
+- Flexibilidad.
+- Multimoneda.
+- Prevención de duplicados.
+- Facilidad de uso.
+- Migración segura.
+- Capacidad futura de agentes de IA.

@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="900x480" name="Documents" subtitle="MessagePreview, DocumentRow" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:var(--surface-app);padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:17px}.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:17px;align-items:start}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {MessagePreview,DocumentRow,Card}=D;
+return <div className="g2">
+<MessagePreview to="María José Peña" phone="+1 829 555 0187" template="Recordatorio consolidado" status="leido" time="08/10 10:02" text={'Hola María José, le recordamos el saldo pendiente de Villa Palmeras:\n· FAC-A-2026-00377 · Agosto · Renta · 450,00 USD\n· FAC-C-2026-00121 · Septiembre · Electricidad · 86,40 USD\nTotal pendiente: 536,40 USD'} attachments={[{name:'Estado de cuenta · Villa Palmeras.pdf',size:'84 KB'}]}/>
+<Card title="Documentos" padded={false}>
+<DocumentRow type="contrato" name="Contrato de arrendamiento · Torre Coral 4B" record="CT-0217" date="01/04/2025" size="212 KB"/>
+<DocumentRow type="inventario" name="Inventario y anexos" record="CT-0217" date="01/04/2025" size="96 KB"/>
+<DocumentRow type="factura" name="Factura octubre 2026" record="FAC-A-2026-00455" date="01/10/2026" sent="Leído por WhatsApp"/>
+<DocumentRow type="recibo" name="Recibo de cobro" record="REC-2026-00988" date="08/10/2026"/>
+<DocumentRow type="cotizacion" name="Cotización Sala Coral · 3 días" record="COT-0142" date="06/10/2026"/>
+</Card></div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

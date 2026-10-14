@@ -1,0 +1,3 @@
+/** Fianza as its own financial entity (§14): exigido/cobrado/pendiente, plus liquidación with descuentos and importe devuelto at contract close. */
+export interface DepositSummaryProps { required: number; count?: number; collected?: number; currency?: 'USD' | 'DOP'; contract?: string; status?: 'retenida' | 'pendiente' | 'devolucion' | 'devuelta' | 'parcial'; deductions?: { reason: string; amount: number }[]; returned?: number; returnedAt?: string; method?: string; style?: React.CSSProperties; }
+export declare function DepositSummary(props: DepositSummaryProps): JSX.Element;

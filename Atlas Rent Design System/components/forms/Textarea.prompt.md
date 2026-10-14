@@ -1,0 +1,1 @@
+Every destructive or correcting action (anular factura, corregir cobro, rechazar contrato, devolución parcial de fianza) requires a Motivo — use `<Textarea label="Motivo" required/>`.

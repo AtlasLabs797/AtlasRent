@@ -1,0 +1,3 @@
+/** 560px right-side panel for record detail and long forms (registrar cobro, baja de contrato, revisión de salida). Dialog is for short confirmations. */
+export interface DrawerProps { open?: boolean; title: React.ReactNode; description?: React.ReactNode; children?: React.ReactNode; footer?: React.ReactNode; onClose?: () => void; width?: number; /** Render in place (no scrim), for cards/specimens. */ inline?: boolean; style?: React.CSSProperties; }
+export declare function Drawer(props: DrawerProps): JSX.Element;

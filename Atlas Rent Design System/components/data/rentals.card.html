@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="900x620" name="Rentals" subtitle="UnitCard, OccupancyBar, HourSlots, ProvenanceTag" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{background:var(--surface-app);padding:20px}.r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.c{display:grid;gap:17px}.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:17px;align-items:start}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const D=window.AtlasRentDesignSystem_75bc92;
+function App(){
+const {UnitCard,OccupancyBar,HourSlots,ProvenanceTag,Card}=D;const [sel,setSel]=React.useState('4B');
+return <div className="c">
+<div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:17}}>
+<UnitCard name="4B" property="Torre Coral" type="Apartamento · 2 hab" status="ocupado" rent={1250} modalities={['Mensual']} client="Inversiones Marlin SRL" until="31/03/2027" selected={sel==='4B'} onClick={()=>setSel('4B')}/>
+<UnitCard name="Villa Palmeras" type="Villa completa" status="reservado" rent={2800} modalities={['Mensual','Diario']} alert="Reserva con más de 7 días" selected={sel==='VP'} onClick={()=>setSel('VP')}/>
+<UnitCard name="Sala Coral" property="Plaza Este" type="Sala · 8 pax" status="disponible" rent={25} period="hora" modalities={['Diario','Por horas']} selected={sel==='SC'} onClick={()=>setSel('SC')}/>
+</div>
+<Card title="Ocupación"><OccupancyBar counts={{disponible:2,reservado:6,ocupado:128,mantenimiento:9,fuera:5}}/></Card>
+<Card title="Salas · miércoles 08/10" actions={<div className="r" style={{gap:6}}><ProvenanceTag origin="factusol"/><ProvenanceTag origin="manual"/><ProvenanceTag origin="auto"/><ProvenanceTag origin="agente"/><ProvenanceTag origin="excel"/></div>}><HourSlots resources={[{name:'Sala Coral',meta:'Plaza Este · 8 pax',bookings:[{start:'09:00',end:'11:00',label:'Marlin SRL'},{start:'15:00',end:'17:30',label:'L. Ortega',status:'ocupado'}]},{name:'Oficina 2',meta:'Plaza Este · 4 pax',bookings:[{start:'08:00',end:'13:00',label:'Peña & Asoc.'}]}]} proposed={{resource:'Sala Coral',start:'10:00',end:'12:00'}}/></Card>
+</div>;}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>
