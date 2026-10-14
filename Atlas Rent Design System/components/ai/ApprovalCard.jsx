@@ -7,7 +7,7 @@ export function ApprovalCard({ agent, action, reason, record, current, proposed,
   const KV = ({ k, v }) => <div><div className="ar-approval__k">{k}</div><div className="ar-approval__v">{v}</div></div>;
   return <div className="ar-approval" style={style}>
     <div className="ar-approval__head">
-      <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--ai)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="bot" size={16} /></span>
+      <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--ai-solid)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="bot" size={16} /></span>
       <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: 'var(--type-subhead)', letterSpacing: 'var(--tracking-body)', color: 'var(--text-strong)' }}>{action}</div><div style={{ font: 'var(--type-caption)', color: 'var(--ai-text)' }}>{agent}{requestedAt && <span style={{ color: 'var(--text-muted)' }}> · {requestedAt}</span>}</div></div>
       <Badge tone={rt}>Riesgo {risk}</Badge>
     </div>

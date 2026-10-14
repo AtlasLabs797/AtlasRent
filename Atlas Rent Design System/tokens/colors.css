@@ -54,11 +54,11 @@
 /* Status — bg / border / text triplets */
 --success:var(--green-600);--success-soft:var(--green-50);--success-border:var(--green-100);
 --warning:var(--amber-600);--warning-soft:var(--amber-50);--warning-border:var(--amber-100);
---danger:var(--crimson-600);--danger-hover:var(--crimson-700);--danger-soft:var(--crimson-50);--danger-border:var(--crimson-100);
+--danger:var(--crimson-600);--danger-solid:var(--crimson-600);--danger-hover:var(--crimson-700);--danger-soft:var(--crimson-50);--danger-border:var(--crimson-100);
 --info:var(--cobalt-700);--info-soft:var(--cobalt-50);--info-border:var(--cobalt-100);
 --neutral:var(--gray-600);--neutral-soft:var(--gray-100);--neutral-border:var(--gray-200);
 /* AI channel — violet in every Atlas app, never the accent */
---ai:var(--violet-600);--ai-hover:var(--violet-700);--ai-text:var(--violet-700);--ai-soft:color-mix(in srgb,var(--violet-500) 8%,var(--white));--ai-border:color-mix(in srgb,var(--violet-500) 24%,var(--white));
+--ai:var(--violet-600);--ai-solid:var(--violet-600);--ai-hover:var(--violet-700);--ai-text:var(--violet-700);--ai-soft:color-mix(in srgb,var(--violet-500) 8%,var(--white));--ai-border:color-mix(in srgb,var(--violet-500) 24%,var(--white));--ai-soft-hover:var(--violet-100);
 /* Money */
 --amount-positive:var(--green-600);--amount-negative:var(--crimson-600);
 /* Domain — unit states (accent is not a state colour) */

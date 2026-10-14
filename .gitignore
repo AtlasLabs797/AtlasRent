@@ -9,8 +9,9 @@ publish/
 appsettings.*.local.json
 # Node
 node_modules/
-src/web/dist/
-src/Alquileres.Api/wwwroot/
+frontend/dist/
+backend/**/wwwroot/
+*.tsbuildinfo
 coverage/
 # Secretos y certificados
 .env
@@ -19,6 +20,8 @@ coverage/
 *.pem
 *.key
 *.p12
+*.crt
+*.cer
 # Datos reales nunca en el repo
 imports/
 exports/
@@ -32,6 +35,8 @@ documentos/
 *.backup
 # Varios
 *.log
+logs/
+.claude/settings.local.json
 .DS_Store
 .vscode/*
 !.vscode/extensions.json

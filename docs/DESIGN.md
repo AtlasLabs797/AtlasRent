@@ -4,38 +4,40 @@ Fuente única de verdad para construir la UI de **Atlas Rent** (producto de la f
 
 ---
 
-## 1. Instalación en el repositorio
+## 1. Dónde está el design system y cómo se usa
+
+Los tokens, componentes y fichas de diseño están en:
+
+**`C:\Proyectos\Atlas Rent Dev\Atlas Rent Design System`** (en el repo: `Atlas Rent Design System/`)
 
 ```
-/design-system
-  styles.css              ← único CSS que se enlaza (solo @import)
+Atlas Rent Design System/
+  DESIGN.md  readme.md  SKILL.md   ← reglas del DS (este archivo parte de su DESIGN.md)
+  styles.css              ← único CSS que se enlaza (solo @import de tokens/)
   tokens/                 ← fonts, colors, typography, spacing, effects, base, components*.css
   components/             ← primitivas React (.jsx + .d.ts + .prompt.md por componente)
     core/ forms/ navigation/ data/ feedback/ ai/ documents/ workflow/
   guidelines/             ← fichas visuales de fundamentos (HTML)
-  ui_kits/atlas-rent/     ← app de referencia navegable
-  _ds_bundle.js           ← build precompilado (window.AtlasRent… ) para HTML estático
-  DESIGN.md  readme.md  SKILL.md
+  ui_kits/atlas-rent/     ← app de referencia navegable (composición de pantallas; no es código de producción)
+  uploads/                ← material de origen (no copiar al frontend)
+  _ds/  _ds_bundle.js  _ds_manifest.json  _adherence.oxlintrc.json   ← artefactos generados y DS padre Atlas Labs; no canónicos
 ```
 
-**Next.js / React**
+Antes de usar un componente, lee su `.d.ts` (contrato de props) y su `.prompt.md` (cuándo usarlo). Para componer una pantalla, mira primero `ui_kits/atlas-rent/`.
 
-```js
-// app/layout.tsx
-import '@/design-system/styles.css';
-// uso
-import { Button } from '@/design-system/components/core/Button';
-```
+**Prioridad:** en tokens y componentes manda el design system; en cómo se integran con el stack (abajo) manda este archivo. Si discrepan, anótalo en `CHANGELOG.md` y pregunta.
 
-Los `.jsx` son React puro sin dependencias (solo `react`). Los `.d.ts` son el contrato de props; los `.prompt.md` explican cuándo usar cada uno.
+### Integración en el frontend (React 19 + TypeScript + Vite, CSS nativo)
 
-**HTML estático**: cargar React 18 + `styles.css` + `_ds_bundle.js`, y leer los componentes del namespace global.
+Se hace en F1 y se documenta en `docs/DOC_TECNICA.md`:
 
-**Iconos**: Lucide 0.470.0 por CDN (`unpkg.com/lucide-static@0.470.0/icons/<name>.svg`) vía `<Icon name="…" />`. Si se instala `lucide-react`, sustituir dentro de `Icon.jsx` y nada más.
-
-**Fuentes**: Geist + Geist Mono desde Google Fonts (`tokens/fonts.css`). En Next.js se puede cambiar por `next/font/google` manteniendo los nombres de familia.
-
----
+1. Copiar `styles.css`, `tokens/` y `components/` a `frontend/src/design-system/` e importar `styles.css` una sola vez en `main.tsx`. No copiar `_ds*`, `uploads/` ni `ui_kits/`.
+2. Portar los `.jsx` a `.tsx` usando los `.d.ts` como contrato. Los `.d.ts` usan `JSX.Element`, que React 19 ya no expone como global: sustituir por `React.JSX.Element` o `ReactNode`.
+3. `Icon.jsx` carga los SVG de Lucide desde un CDN (unpkg) por `mask`: reescribirlo con `lucide-react` (dependencia del stack) manteniendo la API `<Icon name="…" />`. Nada de recursos de red en tiempo de ejecución.
+4. Fuentes Geist / Geist Mono: autoalojadas con `@fontsource/geist-sans` y `@fontsource/geist-mono` (pesos 300/400/600/700; mono 400/600), importadas en `main.tsx`. En la copia del frontend, `tokens/fonts.css` deja de importar Google Fonts y queda vacío: `--font-sans` ya incluye "Geist Sans", el nombre de familia que registra `@fontsource/geist-sans`.
+5. Tema claro/oscuro: mecanismo en §3.1 y en `docs/DOC_TECNICA.md` §3.1.
+6. Sin Tailwind, Bootstrap, shadcn ni CSS-in-JS. Clases del DS con prefijo `ar-` (BEM) y variables CSS de `tokens/`.
+7. Cuando se cambie algo del DS (tokens o componentes), se cambia primero en `Atlas Rent Design System/` y después se copia al frontend, para que las dos copias no diverjan.
 
 ## 2. Principios
 
@@ -104,26 +106,20 @@ Geist (UI) + Geist Mono (cifras). Pesos **300 / 400 / 600 / 700** — el 500 no 
 - Hover = cambia superficie. Press = `scale(.95)`. Foco = anillo 3px `--accent-ring`.
 - Menús: fade + 4px. Diálogos: fade + 8px. Drawers: slide 24px. Nada anima al cargar. Respeta `prefers-reduced-motion`.
 
-### Mapeo Tailwind (opcional)
-
-```js
-// tailwind.config.js
-theme: { extend: {
-  colors: {
-    accent: { DEFAULT: 'var(--accent)', hover: 'var(--accent-hover)', soft: 'var(--accent-soft)' },
-    surface: { app: 'var(--surface-app)', card: 'var(--surface-card)', sunken: 'var(--surface-sunken)' },
-    ink: { DEFAULT: 'var(--text-strong)', muted: 'var(--text-muted)', subtle: 'var(--text-subtle)' },
-    line: { subtle: 'var(--border-subtle)', DEFAULT: 'var(--border-default)', strong: 'var(--border-strong)' },
-    success: 'var(--success)', warning: 'var(--warning)', danger: 'var(--danger)', info: 'var(--info)', ai: 'var(--ai)',
-  },
-  fontFamily: { sans: 'var(--font-sans)', mono: 'var(--font-mono)' },
-  borderRadius: { xs: '5px', sm: '8px', field: '11px', card: '18px', pill: '999px' },
-  boxShadow: { none: 'none', menu: 'var(--shadow-lg)', dialog: 'var(--shadow-xl)' },
-  transitionTimingFunction: { atlas: 'cubic-bezier(.22,1,.36,1)' },
-}}
-```
-
 ---
+
+### 3.1 Temas claro y oscuro
+
+Paridad completa (D31 de la especificación). Los tokens del tema oscuro están en `Atlas Rent Design System/tokens/themes.css`, basados en el tema oscuro de la familia Atlas Labs.
+
+- **Mecanismo:** `<html data-theme="light|dark">`, fijado siempre por la app. Preferencia del usuario: Claro / Oscuro / Sistema (por defecto Sistema), en un control de la `TopBar`; se guarda en ese navegador. "Sistema" se resuelve con `matchMedia('(prefers-color-scheme: dark)')` antes del primer pintado, sin parpadeo.
+- **Regla de oro:** ningún componente ni pantalla usa colores fuera de los tokens semánticos (`--surface-*`, `--text-*`, `--border-*`, `--accent*`, estados, `--amount-*`, `--unit-*`). Nada de hex, `rgba()` ni rampas (`--gray-500`, `--green-300`…) en código de pantallas. Así el oscuro funciona sin tocar cada vista.
+- **Fondos con texto blanco** (botón peligro, contadores, avatar de agente): usar `--danger-solid` y `--ai-solid`, no `--danger` ni `--ai`. En oscuro, `--danger`, `--success`, `--warning`, `--info` y `--ai` pasan a tonos claros pensados para texto e indicadores sobre fondo oscuro.
+- **Superficies en oscuro:** fondo app `#000000`, tarjeta `#1D1D1F`, hundido `#151517`. `--surface-inverse` (toasts, tooltips, KPI destacado, slot ocupado) sigue siendo una superficie oscura con texto blanco, un paso más clara que la tarjeta (`#3A3A3C`).
+- **Acento en oscuro:** sólido `hibisco-500`, texto y enlaces `hibisco-300`. Sigue siendo el único acento.
+- **Contraste mínimo** (WCAG 2.2 AA) en ambos temas: texto 4,5:1; texto grande, iconos, bordes de controles y anillo de foco 3:1.
+- **Gráficos (Recharts):** colores desde tokens CSS leídos en tiempo de ejecución, nunca hex fijos en el componente.
+- **PDF:** siempre en claro, independientemente del tema del usuario (§7).
 
 ## 4. Componentes
 
@@ -170,7 +166,22 @@ theme: { extend: {
 
 Sin logo suministrado. Lockup: marca cuadrada redondeada 26px en acento con "AR" + **Atlas Rent** (Geist 600 21px, "Rent" en acento) + "by Atlas Labs" en caption.
 
-## 7. Pendiente
+## 7. Documentos PDF (factura, proforma, recibo, estado de cuenta, cotización, contrato)
+
+Diseño base **[Supuesto, A2]**: se ajusta cuando el responsable aporte los ejemplos actuales por serie (F0-06). Se genera con QuestPDF, por código, sin HTML.
+
+- **Página:** Carta (8,5 × 11 in), márgenes 18 mm, siempre en claro (fondo blanco, texto `#1D1D1F`).
+- **Fuentes:** Geist (texto) y Geist Mono (importes, fechas, números de documento), incrustadas en el PDF. Cuerpo 9,5 pt; títulos 600.
+- **Cabecera:** a la izquierda, lockup de Atlas Rent (o el logo de la empresa facturadora cuando exista) y datos de la empresa facturadora (nombre, RNC, dirección, teléfono, email). A la derecha, tipo de documento en grande, número en mono, fecha de emisión y vencimiento, comprobante fiscal si lo tiene y moneda del documento.
+- **Cliente:** bloque con nombre, documento (completo, D16), dirección y contacto; unidad o contrato asociado si aplica.
+- **Líneas:** tabla sin bandas de color; cabecera en overline gris; descripción a la izquierda, cantidades e importes a la derecha en mono; separadores de 0,5 pt.
+- **Totales:** a la derecha: subtotal, ITBIS, retenciones, total en 600 y, si hay cobros, pagado y pendiente. Importes con el formato de §5 (`1.250,00 USD`).
+- **Color:** solo el acento en la marca y una línea fina bajo la cabecera. Estados (Pagada, Anulada) como texto, nunca como bloque de color; "ANULADA" se imprime como marca de agua gris.
+- **Pie:** condiciones de pago, cuentas bancarias de la serie, referencia de e-factura externa si tiene valor, "Página x de y".
+- Los textos de usuario (descripciones, notas) se escriben como texto plano; nunca se interpretan como formato.
+
+## 8. Pendiente
 
 - Logo real (SVG) y fuentes propias si existen → `assets/` + `tokens/fonts.css`.
-- Sustituir iconos CDN por `lucide-react` si el repo lo prefiere.
+- Ajustar el diseño de PDF con los ejemplos por serie de F0-06.
+- Accesibilidad: el DS cubre contraste, `:focus-visible` e iconos `aria-hidden`. Roles ARIA y navegación por teclado se verifican al portar cada componente (F1-13).

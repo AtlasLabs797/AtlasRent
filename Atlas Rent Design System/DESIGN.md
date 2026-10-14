@@ -2,6 +2,8 @@
 
 Fuente única de verdad para construir la UI de **Atlas Rent** (producto de la familia Atlas Labs). Léelo antes de escribir cualquier pantalla. Si algo no está aquí, no se inventa: se pregunta.
 
+> **En el repositorio de Atlas Rent** la integración (Vite + React 19 + TypeScript, CSS nativo, sin Tailwind ni Next.js), los temas claro/oscuro y las reglas de PDF están en `docs/DESIGN.md`, que manda sobre §1 y sobre el mapeo Tailwind de este archivo. Tema oscuro: `tokens/themes.css` (`<html data-theme="dark">`).
+
 ---
 
 ## 1. Instalación en el repositorio

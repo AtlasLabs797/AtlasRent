@@ -1,18 +1,18 @@
-# Plan de ejecución con Claude Code — Atlas Rent
+# Plan de ejecución — Atlas Rent
 
-**Base:** stack y código de Atlas Balance V-03.01. Toda la Fase 1 es mayoritariamente **copiar y adaptar**; solo se construye desde cero lo que no existe allí.
+**Base:** proyecto independiente; todo se construye en este repositorio sobre el stack de `docs/DOC_TECNICA.md` §2.
 
 Varias personas, avance progresivo, **sin fechas fijas** (D24). El plan fija **orden y dependencias**; cada persona toma la siguiente tarea libre cuyas dependencias estén HECHAS.
 
 Estados: `PENDIENTE` · `EN CURSO (persona)` · `BLOQUEADA (motivo)` · `HECHA (dd/mm/aaaa)`
 
 ## Cómo se trabaja una tarea
-1. Rama `tarea/<ID>-<nombre-corto>`. En Claude Code: `/siguiente` o `Ejecuta la tarea F2-03`.
-2. Claude lee `CLAUDE.md`, la tarea y la sección citada de la especificación; marca EN CURSO; propone en 5 líneas qué hará.
-3. Implementa con tests; ejecuta la verificación de `CLAUDE.md` §7.
-4. `/cerrar-tarea <ID>`: CHANGELOG, PLAN, documentación.
+1. Rama `tarea/<ID>-<nombre-corto>` y arranque según `docs/PROCEDIMIENTOS.md` §1.
+2. Quien ejecuta la tarea (persona o agente) lee `AGENTS.md`, la tarea y la sección citada de la especificación; marca EN CURSO; propone en 5 líneas qué hará y espera confirmación.
+3. Implementa con tests; ejecuta la verificación de `AGENTS.md` §8.
+4. Cierre según `docs/PROCEDIMIENTOS.md` §2: CHANGELOG, PLAN, documentación.
 5. PR a `main`. Otra persona revisa el diff y prueba la aceptación. Si falla → `BUGS.md`.
-6. Al terminar cada fase: `/revision-seguridad` sobre lo construido.
+6. Al terminar cada fase: revisión de seguridad (`docs/PROCEDIMIENTOS.md` §5) sobre lo construido.
 
 Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide antes de empezar y se anota aquí.
 
@@ -24,26 +24,27 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 | F0-01 | Contador: formato/rangos del comprobante (A3), % de ITBIS y retenciones (A4), confirmar no modificar importes de facturas con comprobante | F3-03, F3-04 | PENDIENTE |
 | F0-02 | Exportar muestras reales de Factusol: clientes, unidades, contratos, facturas series 1/2/3/4/9, cobros, fianzas (A5) | FM-01 | PENDIENTE |
 | F0-03 | Dominio público y DNS para el certificado (A6) | FP-02 | PENDIENTE |
-| F0-04 | Cuenta/carpeta de Google Drive para backups de Atlas Rent (separada de la de Atlas Balance) | F1-12 | PENDIENTE |
-| F0-05 | Repositorio privado `AtlasLabs797/AtlasRent`, protección de `main`, revisores, secretos de CI; dar acceso de lectura a `AtlasBalance` a quien use Claude Code | F1-01 | PENDIENTE |
+| F0-04 | Cuenta/carpeta de Google Drive para backups de Atlas Rent | F1-12 | PENDIENTE |
+| F0-05 | Repositorio privado `AtlasLabs797/AtlasRent`, protección de `main`, revisores, secretos de CI | F1-01 | PENDIENTE |
 | F0-06 | Ejemplos de PDF actuales por serie (A2) | F4-01 | PENDIENTE |
 | F0-07 | Elegir proveedor de WhatsApp (A1) | F4-04, F4-05 | PENDIENTE |
 
 ## Fase 1 · Fundación
 | ID | Tarea | Spec | Aceptación | Depende | Estado |
 |---|---|---|---|---|---|
-| F1-01 | **Esqueleto desde Atlas Balance:** solución `backend/` (Api, Watchdog, Tests) y `frontend/` con las mismas versiones (`global.json`, `.csproj`, `package-lock.json`), Program.cs, CI, scripts PowerShell, tokens CSS y componentes base; renombrar a `AtlasRent`; quitar módulos financieros propios de Balance. Rellenar DOC_TECNICA §3.1 | 4 | CI verde; `dotnet run` sirve la web vacía con login de Balance; versiones idénticas a Balance | F0-05 | PENDIENTE |
+| F1-01 | **Esqueleto backend:** solución `backend/` (Api, Watchdog, Tests) con las versiones de DOC_TECNICA §2 (`global.json`, `.csproj`), `Program.cs` con el pipeline base, Serilog, health check, conexión a PostgreSQL de desarrollo, CI completo (build, tests, auditoría de paquetes) | 4 | CI verde; `dotnet run` arranca y `/health` responde; versiones = DOC_TECNICA §2 | — | PENDIENTE |
 | F1-02 | Tipos de dominio: `Dinero` (decimal + moneda), redondeo, fechas de negocio, zona horaria | 5 | Tests de redondeo y meses 28/29/30/31 | F1-01 | PENDIENTE |
-| F1-03 | BD base: roles (`db/scripts`), migración inicial, `btree_gist`/`pgcrypto`, auditoría append-only + firma e integridad (de Balance), RLS base (de Balance) | 5, 7 | Test: UPDATE/DELETE/TRUNCATE en `auditoria` con rol app fallan; verificación de integridad detecta una fila alterada | F1-01 | PENDIENTE |
-| F1-04 | Auth de Balance (JWT + cookies HttpOnly + CSRF + BCrypt) adaptada: comprobación HaveIBeenPwned, inactividad 30 min / máx. 12 h, validación de sesión en BD para revocación inmediata | 7 | Usuario desactivado → 401 en la siguiente petición | F1-03 | PENDIENTE |
-| F1-05 | Rate limiting de Balance + bloqueo de cuenta (5 → 30 min) + **bloqueo de IP escalado** (nuevo), lista blanca, aviso de IP nueva, pantalla admin de desbloqueo | 7 | 5 fallos bloquean cuenta; N fallos desde una IP la bloquean aunque cambie de usuario; IP en lista blanca no se bloquea | F1-04 | PENDIENTE |
-| F1-06 | MFA/TOTP de Balance: obligatorio para admin, interruptor desactivado para gerente, códigos de recuperación, break-glass | 7 | Admin sin MFA configurado solo puede configurarlo | F1-04 | PENDIENTE |
+| F1-03 | BD base: roles (`db/scripts`), migración inicial, `btree_gist`/`pgcrypto`, auditoría append-only + firma e integridad, RLS base | 5, 7 | Test: UPDATE/DELETE/TRUNCATE en `auditoria` con rol app fallan; verificación de integridad detecta una fila alterada | F1-01 | PENDIENTE |
+| F1-04 | Auth (JWT + cookies HttpOnly + refresco rotatorio + CSRF + BCrypt): comprobación HaveIBeenPwned, inactividad 30 min / máx. 12 h, validación de sesión en BD para revocación inmediata | 7 | Usuario desactivado → 401 en la siguiente petición | F1-03 | PENDIENTE |
+| F1-05 | Rate limiting + bloqueo de cuenta (5 → 30 min) + **bloqueo de IP escalado** (nuevo), lista blanca, aviso de IP nueva, pantalla admin de desbloqueo | 7 | 5 fallos bloquean cuenta; N fallos desde una IP la bloquean aunque cambie de usuario; IP en lista blanca no se bloquea | F1-04 | PENDIENTE |
+| F1-06 | MFA/TOTP: obligatorio para admin, interruptor desactivado para gerente, códigos de recuperación, break-glass | 7 | Admin sin MFA configurado solo puede configurarlo | F1-04 | PENDIENTE |
 | F1-07 | `IPolicyService` + roles + permisos por usuario (techo del rol) + auditoría de denegaciones | 2 | Matriz de permisos de la spec convertida en tests de API | F1-04 | PENDIENTE |
 | F1-08 | Configuración: series, numerador de comprobante, ITBIS, retenciones, formas de pago, cuentas, subempresas, tolerancias, modo recordatorios | 3.7, 3.9 | Sin cifras fiscales en código; todo editable por admin | F1-07 | PENDIENTE |
 | F1-09 | Clientes, contactos, prospectos; cifrado AES-256-GCM del documento + índice ciego de búsqueda; secuencia de número | 3.2 | Números concurrentes sin duplicar; documento cifrado en BD y visible completo en pantalla | F1-07 | PENDIENTE |
 | F1-10 | Inmuebles, unidades, tarifas, documentos PDF (subida validada, descarga con permiso) | 3.1 | Empleado recibe 403 en documentos de propiedad | F1-07 | PENDIENTE |
-| F1-11 | Layout, navegación y menú de Atlas Rent sobre los componentes y temas de Balance; textos centralizados | DESIGN | Revisión visual | F1-04 | PENDIENTE |
-| F1-12 | Backups de Balance (Hangfire + Google Drive cifrado) adaptados: BD + documentos, conservar 4; Watchdog y sistema de actualizaciones de Balance | 7 | Backup generado, cifrado, rotado a 4 y subido; fallo → alerta; actualización con copia previa | F1-03, F0-04 | PENDIENTE |
+| F1-11 | Layout, navegación y menú sobre `AppShell` del design system; selector de tema Claro / Oscuro / Sistema (D31); textos centralizados | DESIGN | Revisión visual en claro y oscuro; preferencia recordada; sin parpadeo al cargar | F1-04, F1-13 | PENDIENTE |
+| F1-12 | Backups (Hangfire + Google Drive cifrado): BD + documentos, conservar 4; Watchdog y sistema de actualizaciones | 7 | Backup generado, cifrado, rotado a 4 y subido; fallo → alerta; actualización con copia previa | F1-03, F0-04 | PENDIENTE |
+| F1-13 | **Esqueleto frontend:** `frontend/` (Vite + React + TS) con las versiones de DOC_TECNICA §2; design system integrado según DESIGN.md §1 (tokens, componentes portados a TSX, `Icon` con lucide-react, fuentes autoalojadas); mecanismo de tema claro/oscuro (DOC_TECNICA §3.1); el backend sirve el build | 4, DESIGN | `lint`, `typecheck`, `test` y `build` en verde; página de muestra de componentes correcta en claro y oscuro | F1-01 | PENDIENTE |
 
 ## Fase 2 · Operación de alquiler
 | ID | Tarea | Spec | Aceptación | Depende | Estado |
@@ -62,7 +63,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 ## Fase 3 · Finanzas
 | ID | Tarea | Spec | Aceptación | Depende | Estado |
 |---|---|---|---|---|---|
-| F3-01 | Tipo de cambio de Balance (ExchangeRate-API) adaptado: histórico, fallback manual | 3.12 | Fallo de API → alerta y carga manual | F1-08 | PENDIENTE |
+| F3-01 | Tipo de cambio (ExchangeRate-API): histórico, fallback manual | 3.12 | Fallo de API → alerta y carga manual | F1-08 | PENDIENTE |
 | F3-02 | Facturas: borrador, líneas, ITBIS por línea, emisión con número transaccional, cambio congelado | 3.8 | 50 emisiones concurrentes: números únicos y sin huecos por fallo | F1-08, F3-01 | PENDIENTE |
 | F3-03 | Comprobante fiscal: asignación en emisión, alertas, bloqueo por agotado/vencido, referencia e-factura manual | 3.7 | 50 emisiones concurrentes en serie 3: comprobantes únicos; agotado → emisión bloqueada sin consumir número de factura | F3-02, F0-01 | PENDIENTE |
 | F3-04 | Retenciones y comprobante de retención | 3.9 | cobro + retención = total ⇒ Pagada; indicador sin comprobante | F3-02, F0-01 | PENDIENTE |
@@ -99,14 +100,14 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 ## Fase P · Puesta en producción
 | ID | Tarea | Aceptación | Estado |
 |---|---|---|---|
-| FP-01 | `/revision-seguridad todo` + cierre de ABIERTOS en SEGURIDAD.md | Sin abiertos Altos/Críticos | PENDIENTE |
-| FP-02 | Instalación con `scripts/install.ps1` (de Balance) en `C:\AtlasRent`: BD y roles en la instancia PostgreSQL, servicios, certificado o Caddy, firewall solo 443; convivencia con Atlas Balance si comparten servidor | Checklist DOC_TECNICA §9 completo | PENDIENTE |
+| FP-01 | Revisión de seguridad completa (`docs/PROCEDIMIENTOS.md` §5) + cierre de ABIERTOS en SEGURIDAD.md | Sin abiertos Altos/Críticos | PENDIENTE |
+| FP-02 | Instalación con `scripts/install.ps1` en `C:\AtlasRent`: BD y roles en la instancia PostgreSQL, servicios, certificado o Caddy, firewall solo 443; convivencia con otras aplicaciones si comparten servidor | Checklist DOC_TECNICA §9 completo | PENDIENTE |
 | FP-03 | Prueba de restauración de backup en otra máquina | Restaurado y verificado; fecha anotada en SEGURIDAD.md | PENDIENTE |
 | FP-04 | Piloto: un ciclo mensual completo en paralelo con Factusol | Mismas facturas y saldos | PENDIENTE |
 | FP-05 | Corte: cierre de Factusol, importación final, conciliación | Saldos y fianzas conciliados antes de operar | PENDIENTE |
 
 ## Fase 6 · IA (después del corte)
-Reutiliza la integración de IA de Atlas Balance (OpenAI / OpenRouter / MiniMax, límites, auditoría, seudonimización) y OpenClaw con tokens delimitados. F6-01 solo lectura · F6-02 propuestas con aprobación · F6-03 asistente en la app. Detalle en ESPECIFICACION 3.18.
+Integración de IA con proveedores configurables (se eligen al empezar la fase) y agentes externos con tokens delimitados. F6-01 solo lectura · F6-02 propuestas con aprobación · F6-03 asistente en la app. Detalle en ESPECIFICACION 3.18.
 
 ---
 
@@ -114,6 +115,6 @@ Reutiliza la integración de IA de Atlas Balance (OpenAI / OpenRouter / MiniMax,
 1. **Exposición a internet** sin VPN y gerente sin MFA: depende de que F1-05 (bloqueos) y F1-04 (sesión) estén bien hechos. Revisión de seguridad obligatoria antes de abrir el puerto.
 2. Calidad de los datos de Factusol (serie 9).
 3. Proveedor de WhatsApp sin decidir: bloquea F4-04.
-4. Divergencia con Atlas Balance: las piezas copiadas no se actualizan solas. Cuando Balance corrija algo de seguridad, revisar si aplica aquí (anotado en SEGURIDAD.md).
+4. Seguridad construida desde cero: auth, sesiones, MFA y bloqueos no parten de código ya probado. Tests de API por rol en cada tarea y revisión de seguridad obligatoria al cerrar la Fase 1.
 5. Varias personas en paralelo: conflictos en migraciones de EF. Regla: una migración por PR, rebasar antes de fusionar.
 6. Ampliar alcance: cada idea nueva se añade como tarea aquí, no dentro de otra.

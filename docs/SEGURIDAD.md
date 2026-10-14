@@ -1,11 +1,11 @@
 # SEGURIDAD.md — Control y registro de seguridad
 
-**(A) Checklist**: se revisa en cada `/revision-seguridad`, al cerrar cada fase y antes de producción. **(B) Riesgos aceptados**: decisiones del responsable con riesgo conocido. **(C) Registro**: cada problema detectado y cómo se resolvió. Lo más reciente arriba. No se borran entradas.
+**(A) Checklist**: se revisa en cada revisión de seguridad (`docs/PROCEDIMIENTOS.md` §5), al cerrar cada fase y antes de producción. **(B) Riesgos aceptados**: decisiones del responsable con riesgo conocido. **(C) Registro**: cada problema detectado y cómo se resolvió. Lo más reciente arriba. No se borran entradas.
 
 **Gravedad:** Crítica (exposición de datos o dinero, ejecución remota, saltarse permisos) · Alta · Media · Baja.
 **Estado:** ABIERTO · MITIGADO · CORREGIDO · ACEPTADO (con motivo y quién lo acepta)
 
-> Base: los controles de seguridad de **Atlas Balance V-03.01** se reutilizan. Cuando Atlas Balance corrija una vulnerabilidad en una pieza compartida, se abre aquí una entrada para revisar si aplica.
+> Atlas Rent es un proyecto independiente: todos los controles se implementan y se prueban en este repositorio.
 >
 > Contexto: la app está **expuesta a internet** (sin VPN) en un Windows Server propio, con datos personales (cédulas, RNC, pasaportes), títulos de propiedad y caja. Eso hace que los controles de acceso de A.2 sean la primera línea de defensa.
 
@@ -21,10 +21,10 @@
 - [ ] TLS 1.2+ únicamente; HSTS.
 - [ ] Panel de Hangfire deshabilitado en producción. Swagger/OpenAPI deshabilitado en producción.
 - [ ] Watchdog sin puerto accesible desde la red.
-- [ ] Actualizaciones solo desde GitHub Releases con verificación de integridad y firma (sistema de Atlas Balance).
+- [ ] Actualizaciones solo desde GitHub Releases con verificación de integridad y firma.
 - [ ] Windows Server con actualizaciones automáticas de seguridad; antivirus/Defender activo.
 - [ ] Servicios ejecutándose con cuentas de servicio sin privilegios de administrador.
-- [ ] Si se usa Caddy delante (opción de Atlas Balance): Kestrel solo en localhost y `ForwardedHeaders` limitado a Caddy.
+- [ ] Si se usa Caddy delante: Kestrel solo en localhost y `ForwardedHeaders` limitado a Caddy.
 - [ ] Recomendado: proxy de Cloudflare delante (oculta la IP del servidor, filtra ataques volumétricos). Opcional.
 
 ### A.2 Acceso y sesión
@@ -50,9 +50,9 @@
 
 ### A.4 Datos
 - [ ] Roles de BD separados: `rent_owner` (propietario), `rent_migrador` (DDL), `rent_app` (DML, sin DDL ni superusuario).
-- [ ] `auditoria`: REVOKE UPDATE/DELETE/TRUNCATE para `rent_app` + trigger que rechaza cambios + firma de registros y verificación diaria de integridad (Atlas Balance).
+- [ ] `auditoria`: REVOKE UPDATE/DELETE/TRUNCATE para `rent_app` + trigger que rechaza cambios + firma de registros y verificación diaria de integridad.
 - [ ] RLS activo en `documento_inmueble` y `auditoria`; la API fija usuario/rol en la sesión de BD en cada conexión.
-- [ ] Si se comparte instancia con Atlas Balance: ningún rol de Atlas Rent accede a la BD de Balance ni al revés.
+- [ ] Si se comparte instancia PostgreSQL con otras aplicaciones: ningún rol de Atlas Rent accede a otras bases ni al revés.
 - [ ] Documento de identidad cifrado AES-256-GCM con clave fuera de la BD; índice ciego HMAC para búsqueda exacta. Visible completo en pantalla para quien tiene permiso (D16).
 - [ ] Clave de cifrado protegida con DPAPI (máquina) o variable de entorno del servicio; nunca en el repositorio ni en `appsettings.json`.
 - [ ] Serilog con redacción: sin contraseñas, tokens, documentos de identidad, teléfonos, emails de clientes ni cuerpos de petición.
@@ -60,7 +60,7 @@
 - [ ] Exportaciones neutralizan fórmulas (`=`, `+`, `-`, `@`, tabulador al inicio de celda).
 
 ### A.5 Entradas y salidas
-- [ ] Validación de entradas en todos los DTO con el mecanismo de Atlas Balance; rechazo de campos desconocidos.
+- [ ] Validación de entradas en todos los DTO con la validación de modelo de ASP.NET Core; rechazo de campos desconocidos (`JsonUnmappedMemberHandling.Disallow`).
 - [ ] EF Core parametrizado; SQL crudo solo con parámetros y revisado.
 - [ ] PDFs con QuestPDF (por código, sin HTML ni navegador).
 - [ ] Plantillas de email/mensaje: variables escapadas; sin HTML libre de usuarios.
@@ -83,7 +83,7 @@
 - [ ] Datos reales de Factusol y backups nunca en el repositorio.
 
 ### A.8 Continuidad
-- [ ] Backup diario cifrado (BD + documentos) por Hangfire, como Atlas Balance; se conservan **4**; copia cifrada en Google Drive (cuenta/carpeta propia de Atlas Rent).
+- [ ] Backup diario cifrado (BD + documentos) por Hangfire; se conservan **4**; copia cifrada en Google Drive (cuenta/carpeta propia de Atlas Rent).
 - [ ] Alerta si un backup falla o no se ejecuta.
 - [ ] Restauración probada en otra máquina (última prueba: ____ ).
 - [ ] Runbook de recuperación y de "admin bloqueado" (break-glass) documentado.
@@ -117,7 +117,7 @@
 ### SEC-000 · Título corto
 - Fecha detectado: · Fecha resuelto:
 - Gravedad: · Estado: · Componente:
-- Detectado por: (revisión / test / herramienta / Claude / externo)
+- Detectado por: (revisión / test / herramienta / agente / externo)
 - Descripción: qué podía pasar y quién podía explotarlo.
 - Evidencia: cómo se comprobó (sin secretos ni datos reales).
 - Solución: qué se cambió.

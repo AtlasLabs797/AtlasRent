@@ -10,7 +10,7 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 ### BUG-000 · Título corto
 - Fecha detectado: dd/mm/aaaa · Fecha corregido: dd/mm/aaaa
 - Gravedad: · Estado: · Módulo:
-- Detectado por: (persona / test / Claude / usuario)
+- Detectado por: (persona / test / agente / usuario)
 - Síntoma: qué se ve.
 - Cómo reproducir: pasos mínimos.
 - Causa raíz: por qué pasaba (no el síntoma).

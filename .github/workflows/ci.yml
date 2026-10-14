@@ -1,5 +1,5 @@
 name: CI
-# Base: workflow de Atlas Balance. En F1-01 se sustituye por el suyo adaptado (incluye verificación de versiones, releases y firma).
+# CI de Atlas Rent. Los jobs backend y frontend se activan solos cuando existen la solución y frontend/package.json (F1-01 / F1-13).
 on:
   pull_request:
   push:

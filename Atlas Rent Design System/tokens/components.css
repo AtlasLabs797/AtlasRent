@@ -15,10 +15,10 @@
 .ar-btn--ghost{background:transparent;color:var(--text-strong)}
 .ar-btn--ghost:hover:not(:disabled){background:var(--surface-hover)}
 .ar-btn--ghost:active:not(:disabled){background:var(--surface-active)}
-.ar-btn--danger{background:var(--danger);color:var(--white)}
+.ar-btn--danger{background:var(--danger-solid);color:var(--white)}
 .ar-btn--danger:hover:not(:disabled){background:var(--danger-hover)}
 .ar-btn--ai{background:var(--ai-soft);color:var(--ai-text);border-color:var(--ai-border)}
-.ar-btn--ai:hover:not(:disabled){background:var(--violet-100)}
+.ar-btn--ai:hover:not(:disabled){background:var(--ai-soft-hover)}
 .ar-btn--icon{padding:0;width:var(--control-h-md)}
 .ar-btn--icon.ar-btn--sm{width:var(--control-h-sm)}
 .ar-btn--icon.ar-btn--lg{width:var(--control-h-lg)}
@@ -59,7 +59,7 @@
 .ar-switch button[aria-checked=true]{background:var(--accent)}
 .ar-switch button span{width:22px;height:22px;border-radius:50%;background:#fff;transition:transform var(--dur-base) var(--ease-out)}
 .ar-switch button[aria-checked=true] span{transform:translateX(18px)}
-.ar-switch--ai button[aria-checked=true]{background:var(--ai)}
+.ar-switch--ai button[aria-checked=true]{background:var(--ai-solid)}
 .ar-tabs{display:flex;gap:var(--space-7);border-bottom:1px solid var(--border-default)}
 .ar-tab{position:relative;display:inline-flex;align-items:center;gap:6px;padding:0 0 12px;border:0;background:none;font:var(--type-label);letter-spacing:var(--tracking-label);color:var(--text-muted);cursor:pointer;transition:color var(--dur-fast) var(--ease-out)}
 .ar-tab:hover{color:var(--text-strong)}

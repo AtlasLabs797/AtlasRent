@@ -1,6 +1,6 @@
 # Documentación técnica — Atlas Rent
 
-> Estado inicial: diseño previsto. Cada sección se actualiza al implementar (Claude, en `/cerrar-tarea`). Lo funcional está en `ESPECIFICACION.md`; aquí solo el cómo. El stack y la organización son los de **Atlas Balance V-03.01** para reutilizar su código.
+> Estado inicial: diseño previsto. Cada sección se actualiza al implementar (al cerrar cada tarea, `docs/PROCEDIMIENTOS.md` §2). Lo funcional está en `ESPECIFICACION.md`; aquí solo el cómo. Atlas Rent es un proyecto independiente: todo se construye y se prueba en este repositorio.
 
 ## 1. Arquitectura
 Navegador → React SPA → API REST ASP.NET Core → EF Core → PostgreSQL.
@@ -19,40 +19,46 @@ Navegador ──HTTPS 443──▶ AtlasRent.Api (servicio Windows, Kestrel; Cad
 Salidas: SMTP (Google) · ExchangeRate-API · Google Drive (backups cifrados) · GitHub Releases (actualizaciones) · proveedor WhatsApp
 ```
 
-## 2. Versiones (las de Atlas Balance V-03.01, 14/10/2026)
+## 2. Versiones (consultadas en npm y NuGet el 14/10/2026)
 | Componente | Versión |
 |---|---|
-| .NET SDK | 10.0.112 (`global.json`) |
-| ASP.NET Core / EF Core | 10 / 10.0.12 |
+| .NET SDK | 10.0.302 (`global.json`, `rollForward: latestFeature`) |
+| ASP.NET Core / EF Core | 10.0 / 10.0.13 |
 | Npgsql.EntityFrameworkCore.PostgreSQL | 10.0.3 |
-| EFCore.NamingConventions | 10 |
-| Hangfire / Hangfire.PostgreSql | 1.8 / la de Atlas Balance |
-| Serilog | 10 |
-| MailKit / MimeKit | 4.17 |
-| ClosedXML | 0.105 |
-| QuestPDF | última estable — **nueva; [Verificar] licencia Community según facturación** |
-| PostgreSQL | ≥16 (instancia existente) o 18 si se instala nueva |
-| Node.js / npm | 24.14.1 |
-| React | 19.2.8 |
-| TypeScript | 5.6.3 |
-| Vite | 8.0.16 |
-| React Router | 8.3.0 |
-| Zustand | 5.0.14 |
-| TanStack Query / Virtual | 5 / 3 |
-| Axios | 1.16 |
-| React Hook Form | 7 |
-| Recharts | 3 |
-| Lucide React, QRCode | las de Atlas Balance |
-| ESLint | 10 |
-| xUnit / FluentAssertions / Testcontainers | v3 / la de Atlas Balance **[Verificar: FluentAssertions ≥ 8 requiere licencia comercial]** / la de Atlas Balance |
-| Playwright | la de Atlas Balance |
+| EFCore.NamingConventions | 10.0.1 |
+| Hangfire.AspNetCore / Hangfire.PostgreSql | 1.8.25 / 1.21.1 |
+| Serilog.AspNetCore | 10.0.0 |
+| MailKit / MimeKit | 4.18.1 |
+| ClosedXML | 0.105.1 |
+| QuestPDF | 2026.9.1 — **[Verificar licencia]**: Community gratuita solo con facturación bruta anual < 1 M USD |
+| BCrypt.Net-Next | 4.2.0 (12 rondas) |
+| Otp.NET | 1.4.1 (TOTP; el QR se dibuja en el frontend) |
+| PostgreSQL | ≥16 (desarrollo: imagen 16; producción: instancia existente ≥16 o 18 si se instala nueva) |
+| Node.js / npm | 24.15.0 / 11.12.1 |
+| React / React DOM | 19.3.1 |
+| TypeScript | 6.0.3 (typescript-eslint aún no admite TypeScript 7) |
+| Vite / @vitejs/plugin-react | 8.3.4 / 6.1.2 |
+| React Router | 8.4.0 |
+| Zustand | 5.0.15 |
+| TanStack Query / Virtual | 5.104.2 / 3.14.19 |
+| Axios | 1.20.0 |
+| React Hook Form | 7.90.0 |
+| Recharts | 3.10.1 |
+| Lucide React | 1.57.0 |
+| qrcode | 1.5.4 |
+| @fontsource/geist-sans / @fontsource/geist-mono | 5.3.0 / 5.3.0 |
+| ESLint / typescript-eslint | 10.12.0 / 8.71.2 |
+| xunit.v3 / AwesomeAssertions / Testcontainers.PostgreSql | 4.0.2 / 9.6.0 / 4.16.0 |
+| Playwright | 1.64.1 |
 
-Las versiones exactas se copian de los `.csproj`, `global.json` y `package-lock.json` de Atlas Balance en F1-01. Cualquier cambio de versión se propone y se anota aquí.
+AwesomeAssertions sustituye a FluentAssertions porque esta pasó a licencia comercial desde la 8 (AwesomeAssertions es su continuación con licencia Apache 2.0 y la misma API).
+
+En F1-01 estas versiones se fijan en `global.json`, los `.csproj` y `package-lock.json`. Cualquier cambio posterior se propone y se anota aquí.
 
 ## 3. Estructura
 ```
 backend/AtlasRent.Api/
-  Program.cs        pipeline (copiado de Atlas Balance y adaptado)
+  Program.cs        pipeline (orden en §7)
   Controllers/      finos; delegan en Services
   Services/         <Dominio>Service: reglas de negocio, transacciones
   DTOs/             contratos de entrada/salida
@@ -63,19 +69,18 @@ backend/AtlasRent.Api/
   Authorization/    roles, permisos por usuario, políticas ([Accion("factura.emitir")])
 backend/AtlasRent.Watchdog/
 backend/AtlasRent.Tests/
-frontend/src/       pages (lazy), components, stores (Zustand), api (Axios + TanStack Query), styles (tokens)
-scripts/            PowerShell: install, update, start, uninstall (de Atlas Balance)
+frontend/src/       pages (lazy), components, design-system (tokens y componentes del DS), stores (Zustand), api (Axios + TanStack Query)
+scripts/            PowerShell: install, update, start, uninstall
 db/scripts/         SQL de roles y auditoría
 ```
 Dominios: `Auth`, `Usuarios`, `Configuracion`, `Clientes`, `Inmuebles`, `Cotizaciones`, `Reservas`, `Contratos`, `Facturacion`, `Comprobantes`, `Cobros`, `Fianzas`, `TipoCambio`, `Documentos`, `Mensajeria`, `Informes`, `Alertas`, `Aprobaciones`, `Importacion`, `Backups`.
 
-### 3.1 Piezas reutilizadas de Atlas Balance (se completa en F1-01/F1-02)
-| Pieza | Origen en Atlas Balance | Destino | Adaptaciones |
-|---|---|---|---|
-| _(rellenar al copiar)_ | | | |
+### 3.1 Frontend: design system y temas
+- Los tokens y componentes vienen de `Atlas Rent Design System/` y se integran en `frontend/src/design-system/` como indica `docs/DESIGN.md` §1.
+- Tema: `<html data-theme="light|dark">`. Un script en línea en `index.html` lee la preferencia guardada (`light` / `dark` / `system`, por defecto `system`) y resuelve `system` con `matchMedia('(prefers-color-scheme: dark)')` antes del primer pintado, para que no haya parpadeo. Un store de Zustand expone la preferencia y escucha los cambios del sistema.
 
 ## 4. Base de datos
-### 4.1 Roles (alineados con la separación de credenciales de Atlas Balance)
+### 4.1 Roles (credenciales separadas por función)
 | Rol | Uso | Permisos |
 |---|---|---|
 | `rent_owner` | propietario de esquemas y tablas | NOLOGIN |
@@ -83,12 +88,12 @@ Dominios: `Auth`, `Usuarios`, `Configuracion`, `Clientes`, `Inmuebles`, `Cotizac
 | `rent_app` | Api y Watchdog | DML en tablas de negocio; solo INSERT/SELECT en `auditoria`; sujeto a RLS |
 | `rent_backup` | backup | solo lectura |
 
-Si se comparte la instancia con Atlas Balance: base de datos y roles propios; ningún rol de una app tiene acceso a la base de la otra.
+Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles propios; ningún rol de Atlas Rent accede a otras bases ni al revés.
 
 ### 4.2 Convenciones
 - PK `uuid`; número visible aparte. Nombres `snake_case` (EFCore.NamingConventions).
 - Dinero `numeric(18,2)`, cambio `numeric(18,6)`, fechas de negocio `date`, marcas `timestamptz`.
-- Comunes: `origen`, `created_at/by`, `updated_at/by`; concurrencia optimista (mecanismo de Atlas Balance).
+- Comunes: `origen`, `created_at/by`, `updated_at/by`; concurrencia optimista con la columna de sistema `xmin` (`UseXminAsConcurrencyToken` / `IsRowVersion` en Npgsql); conflicto → 409 con el estado actual.
 - Económicos: estado anulado, nunca borrado. Resto: `deleted_at`, `deleted_by`.
 
 ### 4.3 Piezas críticas en SQL
@@ -97,8 +102,8 @@ Si se comparte la instancia con Atlas Balance: base de datos y roles propios; ni
 - **Contador de serie:** `UPDATE serie SET siguiente = siguiente + 1 WHERE id = @id RETURNING siguiente - 1`; `UNIQUE (serie_id, numero)`.
 - **Comprobante:** `UPDATE secuencia_comprobante SET siguiente = siguiente + 1 WHERE serie_id = @id AND siguiente <= rango_hasta AND vence >= current_date RETURNING siguiente - 1`; sin fila → excepción "Comprobantes agotados o vencidos" y rollback completo.
 - **Periódica:** índice único parcial `(contrato_id, periodo, concepto) WHERE estado <> 'anulada'`.
-- **Auditoría:** append-only (`db/scripts/03_auditoria_append_only.sql`) + **firma de registros** y job de verificación de integridad, reutilizados de Atlas Balance.
-- **RLS:** activado en `documento_inmueble` (solo gerente/admin) y `auditoria` (lectura solo admin/gerente), con el patrón de Atlas Balance (variable de sesión con usuario y rol fijada por la API en cada conexión).
+- **Auditoría:** append-only (`db/scripts/03_auditoria_append_only.sql`) + **firma de registros** (hash encadenado SHA-256 por fila) y job diario de verificación de integridad.
+- **RLS:** activado en `documento_inmueble` (solo gerente/admin) y `auditoria` (lectura solo admin/gerente), con variable de sesión (`set_config('app.usuario_id', …, true)` y `app.rol`) fijada por la API al abrir cada transacción mediante un interceptor de EF Core.
 - **Número de cliente:** `SEQUENCE` iniciada en `max(Factusol)+1`.
 - **Índice ciego de documento:** `documento_hmac` = HMAC-SHA256(documento normalizado); índice único.
 
@@ -113,17 +118,17 @@ Si se comparte la instancia con Atlas Balance: base de datos y roles propios; ni
 
 ## 6. API
 - REST `/api/v1`, JSON, errores `ProblemDetails` con código de referencia.
-- Listas paginadas con el formato de Atlas Balance; ordenación `?sortBy=&sortDir=`.
+- Listas paginadas: `{ data, total, page, pageSize, totalPages }`; ordenación `?sortBy=campo&sortDir=asc|desc`.
 - Mutaciones sensibles aceptan `Idempotency-Key`.
 - Todo endpoint con `[Accion("...")]`; política global de denegar sin atributo.
-- Frontend: TanStack Query para lecturas/caché/invalidación; Axios con cookies y cabecera CSRF (cliente de Atlas Balance).
+- Frontend: TanStack Query para lecturas/caché/invalidación; Axios con `withCredentials`, cabecera `X-CSRF-Token` e interceptor que renueva la sesión una vez ante 401 y, si falla, lleva al login.
 - Tabla de endpoints por módulo: se añade al implementarlos.
 
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
-- **Base:** la de Atlas Balance (JWT en cookies HttpOnly, CSRF, BCrypt, MFA/TOTP, rate limiting, cabeceras, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens).
+- **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
 - **Añadido para Atlas Rent (expuesta a internet):**
   - Validación de sesión contra BD en cada petición (revocación inmediata), caché ≤ 30 s.
-  - Bloqueo de cuenta 5 → 30 min (si Atlas Balance ya lo tiene, se reutiliza).
+  - Bloqueo de cuenta 5 → 30 min.
   - `IpBanMiddleware`: tabla `bloqueo_ip`, escalado 1 h → 24 h → indefinido, lista blanca, desbloqueo admin.
   - Aviso al admin de entrada desde IP nueva.
   - Cifrado AES-256-GCM del documento de identidad con clave fuera de la BD.
@@ -134,7 +139,7 @@ Si se comparte la instancia con Atlas Balance: base de datos y roles propios; ni
 ## 8. Jobs
 | Job | Dónde | Frecuencia | Idempotencia |
 |---|---|---|---|
-| Backup cifrado BD + documentos → local (4) + Google Drive | Hangfire (como Atlas Balance) | diario 02:00 AST | por fecha |
+| Backup cifrado BD + documentos → local (4) + Google Drive | Hangfire | diario 02:00 AST | por fecha |
 | Tipo de cambio | Hangfire | diario 08:00 AST | `UNIQUE (fecha, par)` |
 | Renovaciones e incrementos | Hangfire | diario 00:15 AST | por (contrato, bloque) / (contrato, incremento) |
 | Alertas | Hangfire | cada hora | dedupe por (tipo, entidad) |
@@ -146,26 +151,26 @@ Si se comparte la instancia con Atlas Balance: base de datos y roles propios; ni
 | Comprobación de actualizaciones | Hangfire | diario | — |
 | Restauración y actualización | Watchdog | bajo demanda | copia previa obligatoria |
 
-## 9. Despliegue (Windows Server x64, como Atlas Balance)
+## 9. Despliegue (Windows Server x64)
 1. PostgreSQL: usar la instancia existente (≥16) o instalar la última estable; `listen_addresses='localhost'`, `pg_hba` solo local con `scram-sha-256`.
 2. `db/scripts/01_roles.sql` y `02_basedatos.sql` como superusuario; contraseñas generadas en el momento y guardadas en el gestor de contraseñas de la empresa.
 3. Paquete ZIP x64 (backend self-contained + frontend compilado + Watchdog + scripts).
-4. `scripts/install.ps1` (adaptado de Atlas Balance): instala en `C:\AtlasRent`, crea servicios `AtlasRent.Api` y `AtlasRent.Watchdog` con cuentas sin privilegios, variables de entorno, reglas de firewall (solo 443), migraciones con `rent_migrador`.
-5. Certificado: HTTPS directo en Kestrel (win-acme / Let's Encrypt o certificado de la empresa) o Caddy delante, igual que Atlas Balance.
+4. `scripts/install.ps1`: instala en `C:\AtlasRent`, crea servicios `AtlasRent.Api` y `AtlasRent.Watchdog` con cuentas sin privilegios, variables de entorno, reglas de firewall (solo 443), migraciones con `rent_migrador`.
+5. Certificado: HTTPS directo en Kestrel (win-acme / Let's Encrypt o certificado de la empresa) o Caddy delante.
 6. Router: reenviar solo 443.
 7. Comprobar checklist A.1 de SEGURIDAD.md.
 
-**Actualizaciones:** sistema de Atlas Balance (GitHub Releases, validación de integridad y firma, copia previa, recuperación ante error) mediante `scripts/update.ps1` y Watchdog.
+**Actualizaciones:** paquetes publicados en GitHub Releases (, validación de integridad y firma, copia previa, recuperación ante error) mediante `scripts/update.ps1` y Watchdog.
 
-**Si comparte servidor con Atlas Balance:** puertos distintos o el mismo 443 con Caddy enrutando por subdominio; carpetas, servicios, roles de BD y claves separados.
+**Si comparte servidor con otras aplicaciones:** puertos distintos o el mismo 443 con Caddy enrutando por subdominio; carpetas, servicios, roles de BD y claves separados.
 
-## 10. Pruebas (igual que Atlas Balance)
-- Backend: xUnit v3 + FluentAssertions; integración con Testcontainers PostgreSQL (obligatorio para exclusiones, triggers, RLS, numeración, auditoría); EF InMemory solo para lógica sin SQL específico.
+## 10. Pruebas
+- Backend: xUnit v3 + AwesomeAssertions; integración con Testcontainers PostgreSQL (obligatorio para exclusiones, triggers, RLS, numeración, auditoría); EF InMemory solo para lógica sin SQL específico.
 - Frontend: ESLint 10, `tsc --noEmit`, Node.js Test Runner, Playwright E2E (reserva → contrato → factura → cobro en otra moneda).
 - Casos obligatorios: ver ESPECIFICACION §8.
 - CI (GitHub Actions): build, tests, auditoría npm y NuGet, verificación de versiones, escaneo de secretos, releases y firma de paquetes.
 
 ## 11. Operación
 - Restaurar backup: runbook (FP-03).
-- Admin bloqueado / sin MFA: procedimiento break-glass (F1-06; reutilizar el de Atlas Balance si existe).
+- Admin bloqueado / sin MFA: procedimiento break-glass (F1-06).
 - Rotación de la clave de cifrado de documentos (F1-09).

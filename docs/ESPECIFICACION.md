@@ -1,7 +1,7 @@
 # Atlas Rent — Sistema interno de gestión de alquileres
 ## Especificación funcional y técnica
 
-Versión **3.1** · 14/10/2026 · Sustituye a las versiones 2.x y 3.0. La 3.1 alinea el stack con Atlas Balance V-03.01 para reutilizar su código.
+Versión **3.2** · 14/10/2026 · Sustituye a las versiones 2.x, 3.0 y 3.1. La 3.2 hace de Atlas Rent un proyecto independiente (no reutiliza ni depende del código de Atlas Balance), fija versiones propias y añade modo oscuro (D31).
 
 > Fuente de verdad del **QUÉ**. El **CÓMO** está en `DOC_TECNICA.md` y el orden de trabajo en `PLAN.md`. Si otro documento contradice este, manda este y la discrepancia se anota en `CHANGELOG.md`.
 
@@ -16,8 +16,8 @@ Versión **3.1** · 14/10/2026 · Sustituye a las versiones 2.x y 3.0. La 3.1 al
 
 | # | Tema | Decisión |
 |---|---|---|
-| D1 | Stack | **El mismo que Atlas Balance V-03.01** (repo `AtlasLabs797/AtlasBalance`), para reutilizar código: ASP.NET Core 10 + EF Core 10 + PostgreSQL + React 19 + TypeScript 5 + Vite 8 + Zustand 5 + TanStack Query 5. Versiones exactas en DOC_TECNICA §2. Solo se añaden dependencias que Atlas Balance no tiene cuando sean imprescindibles (QuestPDF para PDFs). [Decidido] |
-| D2 | Despliegue | Como Atlas Balance: **Windows Server x64**, API y Watchdog como **servicios de Windows**, backend publicado autónomo (self-contained), frontend estático, Kestrel con HTTPS directo (Caddy opcional), scripts PowerShell de instalación/actualización/desinstalación, paquetes ZIP x64, actualizaciones con validación, copia previa y recuperación. Instalación en `C:\AtlasRent`. Sin Docker en el servidor. [Decidido] |
+| D1 | Stack | **Stack propio**: ASP.NET Core 10 + EF Core 10 + PostgreSQL + React 19 + TypeScript 6 + Vite 8 + Zustand 5 + TanStack Query 5. Versiones exactas en DOC_TECNICA §2. Dependencias nuevas solo si son imprescindibles y se proponen antes. [Decidido] |
+| D2 | Despliegue | **Windows Server x64**, API y Watchdog como **servicios de Windows**, backend publicado autónomo (self-contained), frontend estático, Kestrel con HTTPS directo (Caddy opcional), scripts PowerShell de instalación/actualización/desinstalación, paquetes ZIP x64, actualizaciones con validación, copia previa y recuperación. Instalación en `C:\AtlasRent`. Sin Docker en el servidor. [Decidido] |
 | D3 | Acceso | **Por web desde internet**, con usuario y contraseña. Sin VPN. Protección: bloqueo de cuenta, **bloqueo de IP**, rate limit, contraseñas comprobadas contra filtraciones, aviso de IP nueva, auditoría con IP. [Decidido] |
 | D4 | MFA | **Solo administrador.** Riesgo del gerente sin MFA aceptado por el responsable (SEGURIDAD.md, SEC-R01). Queda un interruptor de configuración "MFA para gerente" **desactivado**, para poder activarlo sin desarrollo. [Decidido] |
 | D5 | e-factura | **No.** La app usa **comprobante fiscal normal** con numerador propio. Si una factura necesita e-factura, se hace en otra aplicación y aquí se teclea el número a mano en un campo opcional. Sin API. [Decidido] |
@@ -35,7 +35,7 @@ Versión **3.1** · 14/10/2026 · Sustituye a las versiones 2.x y 3.0. La 3.1 al
 | D17 | Permisos | Recortables por persona (se quitan permisos del rol, nunca se añaden). [Decidido] |
 | D18 | Cotizaciones | Borrador → Enviada → Aceptada / Rechazada. Sin vigencia ni estado vencida. [Decidido] |
 | D19 | Idioma | Español. Inglés activable por configuración. [Decidido] |
-| D20 | Conservación | Datos con efecto económico: **10 años** (Código Tributario, art. 50 h, Ley 11-92). Backups: **diario, se guardan los 4 últimos**, con copia cifrada en **Google Drive** (mismo mecanismo que Atlas Balance). [Decidido] |
+| D20 | Conservación | Datos con efecto económico: **10 años** (Código Tributario, art. 50 h, Ley 11-92). Backups: **diario, se guardan los 4 últimos**, con copia cifrada en **Google Drive**. [Decidido] |
 | D21 | Email | Cuenta propia de Google, **configurable** (SMTP). [Decidido] |
 | D22 | Tipo de cambio diario | ExchangeRate-API con fallback manual. [Decidido] |
 | D23 | WhatsApp | **Proveedor por decidir.** Se construye detrás de una interfaz; las tareas de WhatsApp quedan bloqueadas hasta elegirlo. [Decidido] |
@@ -45,9 +45,10 @@ Versión **3.1** · 14/10/2026 · Sustituye a las versiones 2.x y 3.0. La 3.1 al
 | D27 | Redondeo | Half-up por línea, 2 decimales. [Decidido] |
 | D28 | Comprobantes anulados | Solo se marcan como anulados; no se reutilizan. [Decidido] |
 | D29 | Nombre | **Atlas Rent** (familia Atlas Labs). Repositorio `AtlasLabs797/AtlasRent`. [Supuesto] |
-| D30 | PostgreSQL | Mínimo **16** (requisito de Atlas Balance). Si el servidor ya tiene la instancia de Atlas Balance, se usa **la misma instancia** con base de datos y roles propios; si se instala nueva, la última estable (18). Nada de la app depende de funciones exclusivas de 17/18. [Decidido] |
+| D30 | PostgreSQL | Mínimo **16**. Si el servidor ya tiene una instancia ≥16, se puede usar con **base de datos y roles propios** (ningún rol de otra aplicación accede a la base de Atlas Rent ni al revés); si se instala nueva, la última estable (18). Nada de la app depende de funciones exclusivas de 17/18. [Decidido] |
+| D31 | Tema visual | **Claro y oscuro**, con paridad completa. Por defecto sigue la preferencia del sistema; cada usuario puede elegir Claro / Oscuro / Sistema desde la barra superior y la elección se recuerda en ese navegador. Los PDF siempre en claro. [Decidido; dónde se guarda la elección: Supuesto] |
 
-**Reutilización de Atlas Balance (copiar y adaptar, no depender del otro repo):** autenticación JWT + cookies HttpOnly + CSRF, BCrypt, MFA/TOTP + QR, rate limiting, bloqueo de cuenta, middleware de seguridad y auditoría, auditoría firmada y verificación de integridad, Row Level Security y separación de credenciales, Hangfire y sus jobs de mantenimiento, tipo de cambio, backups cifrados a Google Drive, Watchdog, sistema de actualizaciones, scripts PowerShell, CI, design tokens, temas y componentes base, integración de IA (fase 6). El origen de cada pieza copiada se anota en `CHANGELOG.md`.
+**Proyecto independiente:** Atlas Rent no reutiliza ni depende del código de otras aplicaciones de Atlas Labs. Con la familia Atlas Labs solo comparte el lenguaje visual, que vive en su propio design system (`Atlas Rent Design System/`, ver `docs/DESIGN.md`).
 
 **Correcciones técnicas heredadas de la v2.1 que siguen vigentes:** pendiente calculado por factura (no facturado − cobrado); números importados en el mismo campo con contador inicializado a `max+1`; borradores para el empleado en lugar de solicitudes de aprobación; exportaciones solo gerente/admin; auditoría inmutable a nivel de base de datos; PDFs generados por código sin HTML de usuario; facturas con retención con indicador "retención sin comprobante".
 
@@ -284,7 +285,7 @@ Eventos de negocio con **outbox** en la misma transacción. Un evento repetido n
 - API propia con token por usuario/agente, mismos permisos y auditoría; el agente nunca supera el rol del usuario.
 - Primero solo lectura; después propuestas que pasan por aprobación.
 - Contenido externo (WhatsApp, Excel, PDFs) nunca se trata como instrucción.
-- Reutiliza la integración de IA de Atlas Balance: proveedores OpenAI / OpenRouter / MiniMax, validación de permisos, límites y presupuestos, auditoría, seudonimización de datos sensibles. OpenClaw mediante tokens con permisos delimitados.
+- Integración de IA con proveedores configurables detrás de una interfaz (se eligen al empezar la fase 6), validación de permisos, límites y presupuestos, auditoría y seudonimización de datos sensibles. Agentes externos mediante tokens con permisos delimitados.
 
 ---
 
@@ -304,17 +305,17 @@ Salidas: SMTP Google · ExchangeRate-API · Google Drive (backups cifrados) · G
 
 | Capa | Elección |
 |---|---|
-| Backend | C# + ASP.NET Core 10 (SDK 10.0.112), Kestrel, servicios de Windows, MemoryCache |
-| ORM | EF Core 10.0.12 + Npgsql 10.0.3 + EFCore.NamingConventions (snake_case); SQL manual en migraciones para exclusiones, triggers, RLS y permisos |
+| Backend | C# + ASP.NET Core 10 (SDK 10.0.302, `global.json` con `rollForward: latestFeature`), Kestrel, servicios de Windows, MemoryCache |
+| ORM | EF Core 10 + Npgsql 10 + EFCore.NamingConventions (snake_case); SQL manual en migraciones para exclusiones, triggers, RLS y permisos |
 | BD | PostgreSQL ≥16 (D30), RLS |
 | Jobs | Hangfire 1.8 + Hangfire.PostgreSql |
-| Frontend | React 19 + TypeScript 5 + Vite 8 + React Router 8 + Zustand 5 + TanStack Query 5 + TanStack Virtual 3 + Axios + React Hook Form 7 + Recharts 3 + Lucide React + QRCode; CSS nativo con variables y tokens; React.lazy |
-| PDF | **QuestPDF** (única dependencia nueva respecto a Atlas Balance; generación por código, sin HTML) **[Verificar licencia]** |
+| Frontend | React 19 + TypeScript 5 + Vite 8 + React Router 8 + Zustand 5 + TanStack Query 5 + TanStack Virtual 3 + Axios + React Hook Form 7 + Recharts 3 + Lucide React + QRCode; CSS nativo con variables y tokens del design system, temas claro y oscuro (D31); React.lazy |
+| PDF | **QuestPDF** (generación por código, sin HTML) **[Verificar licencia: la Community es gratuita solo si la empresa factura menos de 1 M USD brutos al año; si no, licencia Professional]** |
 | Excel | ClosedXML 0.105 |
 | Email | MailKit / MimeKit 4.17 |
 | Seguridad | JWT + cookies HttpOnly + CSRF, BCrypt, MFA/TOTP, rate limiting, auditoría firmada, RLS, AES-256-GCM para documentos de identidad |
 | Logs | Serilog 10 con redacción de datos sensibles |
-| Tests | xUnit v3, FluentAssertions, Testcontainers PostgreSQL; ESLint 10, Node.js Test Runner, Playwright |
+| Tests | xUnit v3, AwesomeAssertions, Testcontainers PostgreSQL; ESLint 10, Node.js Test Runner, Playwright |
 | Desarrollo | Node.js 24 + npm, .NET SDK 10, Docker Compose (solo PostgreSQL de desarrollo) |
 
 ---
@@ -326,9 +327,9 @@ Salidas: SMTP Google · ExchangeRate-API · Google Drive (backups cifrados) · G
 - **Disponibilidad:** restricción de exclusión `btree_gist` para rangos (contratos y reservas mensuales); para reservas cortas, comprobación en trigger con bloqueo por unidad (capacidad 2 medios días).
 - **Idempotencia:** `UNIQUE (contrato, periodo, concepto)` en facturas periódicas no anuladas; outbox; clave de idempotencia en webhooks y en mutaciones sensibles.
 - **Saldo de factura** = total − retenciones − asignaciones vigentes − ajustes de diferencia de cambio, en la moneda de la factura.
-- **Auditoría:** append-only a nivel de permisos de BD + trigger + **firma de registros** con verificación de integridad (mecanismo de Atlas Balance).
+- **Auditoría:** append-only a nivel de permisos de BD + trigger + **firma de registros** (hash encadenado SHA-256, `db/scripts/03_auditoria_append_only.sql`) con verificación diaria de integridad.
 - **Política central:** `IPolicyService.Decidir(actor, accion, contexto)` en todos los endpoints.
-- **Concurrencia optimista** con el mecanismo de Atlas Balance.
+- **Concurrencia optimista** con la columna de sistema `xmin` de PostgreSQL como token de concurrencia (Npgsql).
 
 ## 5.1 Modelo de datos (núcleo)
 **Identidad y configuración:** `usuario`, `rol`, `permiso`, `usuario_permiso`, `sesion`, `bloqueo_ip`, `intento_login`, `empresa`, `subempresa`, `serie`, `secuencia_comprobante`, `tipo_itbis`, `tipo_retencion`, `forma_pago`, `cuenta_bancaria`, `plantilla_mensaje`, `plantilla_contrato`, `configuracion`.
@@ -339,7 +340,7 @@ Salidas: SMTP Google · ExchangeRate-API · Google Drive (backups cifrados) · G
 
 **Finanzas:** `factura` (serie, numero, comprobante_id, cliente, recurso, contrato, moneda, cambio_informe, estado, totales, referencia_efactura_externa, proforma_origen_id), `factura_linea`, `factura_retencion`, `comprobante_fiscal`, `cobro` (moneda_recibida, importe_recibido), `cobro_asignacion` (factura | fianza | saldo_favor; importe_moneda_destino, importe_moneda_recibida, cambio_aplicado, estado), `ajuste_diferencia_cambio`, `saldo_favor`, `fianza`, `fianza_devolucion`, `tipo_cambio`.
 
-**Transversal:** `solicitud_aprobacion`, `evento_outbox`, `auditoria`, `mensaje_entrante`, `envio`, `alerta`, `lote_importacion`, `backup_registro` (y las tablas de soporte que traigan las piezas copiadas de Atlas Balance).
+**Transversal:** `solicitud_aprobacion`, `evento_outbox`, `auditoria`, `mensaje_entrante`, `envio`, `alerta`, `lote_importacion`, `backup_registro` (y las tablas de soporte de Hangfire).
 
 Todo registro importante: `origen` (factusol, manual, automático, agente, importación), `created_at/by`, `updated_at/by`. PK UUID; número visible aparte. Registros con efecto económico: nunca se borran, se anulan. Resto: borrado lógico (`deleted_at`, `deleted_by`).
 
@@ -368,7 +369,7 @@ Todo registro importante: `origen` (factusol, manual, automático, agente, impor
 - Cifrado AES-256-GCM de documentos de identidad; clave fuera de la BD.
 - PostgreSQL solo en localhost; Windows Firewall solo 443 entrante.
 - Backups cifrados, 4 diarios, copia en Google Drive, restauración probada.
-- Row Level Security y credenciales separadas de aplicación y administración (como Atlas Balance).
+- Row Level Security y credenciales separadas de aplicación y administración.
 - **[Verificar]** Ley 172-13 de protección de datos personales con abogado.
 
 ## 8. Calidad

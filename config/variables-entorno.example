@@ -1,5 +1,5 @@
 # Variables de entorno de los servicios AtlasRent.Api y AtlasRent.Watchdog.
-# Los nombres definitivos se igualan a los de Atlas Balance en F1-01 (mismo patrón de configuración).
+# Los nombres definitivos se fijan en F1-01 y se documentan en docs/DOC_TECNICA.md.
 # En producción se definen en el servicio (o protegidas con DPAPI). En desarrollo: dotnet user-secrets.
 # NUNCA valores reales en el repositorio.
 

@@ -1,6 +1,6 @@
 :root{
---font-sans:"Geist","SF Pro Text",system-ui,-apple-system,"Helvetica Neue",sans-serif;
---font-display:"Geist","SF Pro Display",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+--font-sans:"Geist","Geist Sans","SF Pro Text",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+--font-display:"Geist","Geist Sans","SF Pro Display",system-ui,-apple-system,"Helvetica Neue",sans-serif;
 --font-mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
 /* Ladder is 300 / 400 / 600 / 700 — 500 is deliberately absent, as in Atlas Labs */
 --fw-light:300; /* @kind font */
