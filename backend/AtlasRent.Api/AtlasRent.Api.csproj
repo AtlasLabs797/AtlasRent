@@ -30,4 +30,36 @@
   <ItemGroup>
     <InternalsVisibleTo Include="AtlasRent.Tests" />
   </ItemGroup>
+
+  <!--
+    F1-13: el paquete de despliegue tiene que llevar la interfaz. DOC_TECNICA §1 dice que la API
+    sirve el frontend como estático desde wwwroot y §9.3 mete "frontend compilado" en el ZIP, pero
+    nada ponía la una cosa donde la otra la lee: vite escribía en frontend/dist y la API buscaba
+    wwwroot. Este target es ese "nada".
+
+    Va en Publish y no en Build a propósito: compilar en desarrollo y ejecutar los tests de
+    integración no debe depender de que el frontend esté construido, y los tests comparten el
+    directorio de salida, así que meter el build ahí dentro les cambiaría el comportamiento de las
+    rutas sin entrada.
+  -->
+  <PropertyGroup>
+    <AtlasRentFrontendDist>$(MSBuildProjectDirectory)/../../frontend/dist</AtlasRentFrontendDist>
+  </PropertyGroup>
+
+  <Target Name="AtlasRentAvisarSiNoHayFrontend" AfterTargets="ComputeFilesToPublish">
+    <Message Importance="high"
+             Condition="!Exists('$(AtlasRentFrontendDist)/index.html')"
+             Text="AVISO: no hay frontend compilado en '$(AtlasRentFrontendDist)'. El paquete se publica SIN interfaz. Ejecuta 'npm ci &amp;&amp; npm run build' en frontend/ antes de publicar." />
+  </Target>
+
+  <Target Name="AtlasRentPublicarFrontend" AfterTargets="Publish"
+          Condition="Exists('$(AtlasRentFrontendDist)/index.html')">
+    <ItemGroup>
+      <AtlasRentFrontendArchivo Include="$(AtlasRentFrontendDist)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AtlasRentFrontendArchivo)"
+          DestinationFiles="@(AtlasRentFrontendArchivo->'$(PublishDir)wwwroot/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Frontend incluido en el paquete desde $(AtlasRentFrontendDist)" />
+  </Target>
 </Project>

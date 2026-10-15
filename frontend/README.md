@@ -10,7 +10,7 @@ SPA de Atlas Rent (React 19 + TypeScript + Vite). Ver `docs/DOC_TECNICA.md` §2 
 | `npm run lint` | ESLint 10 (configuración plana) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Node.js Test Runner sobre `tests/**/*.test.ts` |
-| `npm run build` | `vite build` → `dist/`, que la API sirve como estático desde `wwwroot/` |
+| `npm run build` | `vite build` → `dist/`. Para que llegue a la API hay que ejecutar después `dotnet publish backend/AtlasRent.Api`: el target `AtlasRentPublicarFrontend` copia `dist/` a `wwwroot/` en el paquete |
 | `npm run preview` | Sirve `dist/` en local |
 
 ## Estructura
