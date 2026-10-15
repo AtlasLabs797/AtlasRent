@@ -1,0 +1,1 @@
+Grid view of Inmuebles y unidades (3–4 per row). A villa rented whole is a single UnitCard with no parent — don't invent a fake unit. `alert` for "Queda libre en 30 días" or "Reserva con más de 7 días".

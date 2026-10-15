@@ -16,6 +16,20 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 04:35] FEAT · F1-13 · Esqueleto frontend con design system y tema claro/oscuro
+- Qué: `frontend/` con Vite + React 19 + TypeScript 6, y los scripts `lint`, `typecheck`, `test` y `build` que la CI invoca.
+  - Design system copiado de `Atlas Rent Design System/` a `frontend/src/design-system/` (solo `styles.css`, `tokens/` y `components/`; **no** `_ds*`, `uploads/` ni `ui_kits/`), con **22** componentes portados de `.jsx` a `.tsx` usando cada `.d.ts` como contrato.
+  - `Icon` reescrito con `lucide-react` manteniendo `<Icon name="…" />`, sin CDN ni recursos de red en ejecución.
+  - Fuentes Geist autoalojadas con `@fontsource/geist-sans` y `@fontsource/geist-mono`; `tokens/fonts.css` deja de importar Google Fonts.
+  - Tema claro/oscuro: script en línea en `index.html` que fija `data-theme` antes del primer pintado (sin parpadeo) y store de Zustand con preferencia Claro/Oscuro/Sistema y escucha de `matchMedia`. Un test comprueba que el script en línea y el store comparten clave y valores.
+  - Base: React Router 8 con páginas `React.lazy` + `Suspense`, cliente Axios con `withCredentials` y `X-CSRF-Token`, textos de interfaz centralizados en español.
+- Por qué: F1-13 del plan (se separó de F1-01 al pasar el proyecto a independiente). Segunda columna de la página de muestra forzada a `data-theme="dark"`: el DS solo define `[data-theme="dark"]` y un contenedor anidado con `data-theme="light"` no puede restaurar el tema claro con la app en oscuro, sin inventar tokens.
+- Verificado (por el orquestador, no por el subagente): `npm ci` correcto; `npm run lint` 0; `npm run typecheck` 0; `npm test` 8/8; `npm run build` correcto y genera `frontend/dist`; `npm audit --audit-level=high` → 0 vulnerabilidades. Versiones instaladas exactamente las de DOC_TECNICA §2, sin desviaciones.
+- NO verificado: **revisión visual en claro y oscuro a ojo**: no se abrió la app en un navegador, así que contraste y maquetación no están comprobados aunque lint/typecheck/build estén en verde. Tampoco probados contra la API real, ni los nombres de icono de Lucide inexistentes (el fallback a `Circle` es silencioso). El chunk principal pesa 931,70 kB (261,24 kB gzip) y avisa de superar 500 kB.
+- Migraciones: no.
+- Riesgo / pendiente: quedan ~28 componentes del DS por portar conforme los usen las pantallas; refresco de sesión ante 401 (DOC_TECNICA §6) pendiente de F1-04; el nombre de la cookie de CSRF `atlas-rent-csrf` es un supuesto que debe casar con el backend; `backend/**/wwwroot/` sin conectar (`MapFallbackToFile` sigue pendiente).
+- Commit/PR: `feat(frontend): esqueleto Vite+React+TS, design system portado y tema claro/oscuro`.
+
 ## [15/10/2026 03:40] FEAT · F1-02 · Tipos de dominio: Dinero, redondeo, fechas de negocio y zona horaria
 - Qué: `backend/AtlasRent.Api/Dominio/` con `Moneda` (USD/DOP), `Dinero`, `Redondeo`, `Prorrateo`, `TiempoNegocio` y `MonedaDistintaException`. Tests en `backend/AtlasRent.Tests/Dominio/`.
   - `Redondeo.Importe` half-up a 2 decimales, `Redondeo.TipoCambio` a 6 (`numeric(18,6)`) y `Redondeo.Porcentaje` a 4 (ITBIS y retenciones, F1-08).
