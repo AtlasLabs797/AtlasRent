@@ -29,6 +29,15 @@
           "Newtonsoft.Json": "13.0.4"
         }
       },
+      "Microsoft.EntityFrameworkCore.Relational": {
+        "type": "Direct",
+        "requested": "[10.0.13, )",
+        "resolved": "10.0.13",
+        "contentHash": "QU/sbTtDR5wVAJRVecC1GwM7mwH8bvKOZNm+lulzMr5rhjdb8DDEFIqqdhF08JIo51DPv5uQdZ1nXoZsD5pTag==",
+        "dependencies": {
+          "Microsoft.EntityFrameworkCore": "10.0.13"
+        }
+      },
       "Npgsql.EntityFrameworkCore.PostgreSQL": {
         "type": "Direct",
         "requested": "[10.0.3, )",
@@ -286,15 +295,6 @@
           "System.Composition.AttributedModel": "9.0.0",
           "System.Composition.Hosting": "9.0.0",
           "System.Composition.Runtime": "9.0.0"
-        }
-      },
-      "Microsoft.EntityFrameworkCore.Relational": {
-        "type": "CentralTransitive",
-        "requested": "[10.0.13, )",
-        "resolved": "10.0.13",
-        "contentHash": "QU/sbTtDR5wVAJRVecC1GwM7mwH8bvKOZNm+lulzMr5rhjdb8DDEFIqqdhF08JIo51DPv5uQdZ1nXoZsD5pTag==",
-        "dependencies": {
-          "Microsoft.EntityFrameworkCore": "10.0.13"
         }
       }
     }

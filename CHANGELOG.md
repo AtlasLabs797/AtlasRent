@@ -16,6 +16,26 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 04:50] FEAT · F1-03 · Base de datos: migración inicial, auditoría append-only firmada y RLS
+- Qué:
+  - `AtlasRentDbContext` (`Data/`) con `UseSnakeCaseNamingConvention`, convenciones globales (dinero `numeric(18,2)`, tipo de cambio `numeric(18,6)`, fechas de negocio `date`, marcas de tiempo en UTC `timestamptz`, PK `uuid`) y token de concurrencia optimista sobre la columna de sistema `xmin`.
+  - Migración `20261015013004_MigracionInicial`: extensiones `btree_gist` y `pgcrypto`, tabla `auditoria`, secuencia `auditoria_secuencia_seq`, el SQL de `db/scripts/03_auditoria_append_only.sql` (REVOKE/GRANT para `rent_app` y triggers `auditoria_inmutable` / `trg_auditoria_no_truncate`), RLS con política de lectura por rol y la función `auditoria_ultima_firma()` (`SECURITY DEFINER`).
+  - `AuditoriaService` escribe el registro firmado dentro de la transacción de la mutación: `pg_advisory_xact_lock` serializa la cadena, `created_at` a 6 decimales y `jsonb` normalizado por PostgreSQL antes de firmar, de modo que lo firmado es exactamente lo almacenado.
+  - `IntegridadAuditoria` recorre la cadena y devuelve el primer registro manipulado.
+  - `ContextoTransaccionInterceptor` fija `app.usuario_id` y `app.rol` por transacción.
+  - Tests de integración con Testcontainers: 10 casos sobre roles, permisos, append-only e integridad.
+- Por qué: F1-03 del plan. Toda mutación debe dejar auditoría con IP en la misma transacción (AGENTS.md §6), y esa auditoría no puede alterarse ni leerse por quien no tiene permiso.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **65/65 en verde** (10 de auditoría + 51 previos + 4 de arranque), con la migración aplicándose de verdad desde cero en PostgreSQL 16; `dotnet list package --vulnerable --include-transitive` → sin vulnerabilidades. Criterios de aceptación cubiertos uno a uno: `rent_app` **puede** insertar, **no** puede UPDATE, DELETE ni TRUNCATE; el trigger rechaza modificar incluso con permisos; la verificación detecta una fila alterada por debajo; y la lectura depende del rol (teoría con 3 casos).
+- NO verificado: el job diario de verificación de integridad (DOC_TECNICA §8) no existe todavía; y `pg_dump` con `rent_backup` no se ha probado (ver riesgo siguiente).
+- Migraciones: sí. `Migrations/20261015013004_MigracionInicial`, aplicada por el proceso en los tests de integración. Requiere ejecutar `dotnet ef database update` con `rent_migrador` en el entorno de desarrollo.
+- Riesgo / pendiente:
+  - **Cada migración futura debe conceder sus permisos a `rent_app`**: `02_basedatos.sql` declara permisos por defecto `FOR ROLE rent_owner`, pero las tablas las crea `rent_migrador`, así que los permisos por defecto no aplican. En esta migración selauwt el de la secuencia.
+  - El job de integridad debe ejecutarse con `app.rol = admin` o `gerente` (o como `rent_migrador`): con otro rol, RLS le ocultará filas y dará una verificación falsa.
+  - `rent_backup` no tiene política de SELECT, así que con RLS activa un `pg_dump` con ese rol saldría vacío. Resolver en F1-12.
+  - Decisiones que la especificación no fijaba: la posición en la cadena es una secuencia asignada por la aplicación, no una identidad, porque EF siempre añade `RETURNING` a las columnas store-generated y PostgreSQL filtra `RETURNING` con la política SELECT (un empleado no podría registrar su auditoría). Por el mismo motivo `auditoria` queda fuera del token `xmin`. `UseXminAsConcurrencyToken()` ya no existe en Npgsql EF 10. El separador de la firma es 0x1F escrito como conversión `(char)0x1F` y nunca como carácter literal en el fuente.
+  - **Pendiente de tu decisión**: F1-12 depende de F0-04 (carpetas de Google Drive y cliente OAuth), que sigue en curso y bloquea la parte de subida de backups.
+- Commit/PR: `feat(db): migracion inicial, auditoria append-only firmada y RLS`.
+
 ## [15/10/2026 04:35] FEAT · F1-13 · Esqueleto frontend con design system y tema claro/oscuro
 - Qué: `frontend/` con Vite + React 19 + TypeScript 6, y los scripts `lint`, `typecheck`, `test` y `build` que la CI invoca.
   - Design system copiado de `Atlas Rent Design System/` a `frontend/src/design-system/` (solo `styles.css`, `tokens/` y `components/`; **no** `_ds*`, `uploads/` ni `ui_kits/`), con **22** componentes portados de `.jsx` a `.tsx` usando cada `.d.ts` como contrato.

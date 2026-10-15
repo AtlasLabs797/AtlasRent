@@ -1,3 +1,6 @@
+using AtlasRent.Api.Data;
+using AtlasRent.Api.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 using Serilog;
@@ -14,13 +17,25 @@ builder.Host.UseSerilog((context, configuracion) => configuracion
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
     .WriteTo.Console());
 
-// Conexión a PostgreSQL. El esquema y los permisos llegan en F1-03; aquí solo el data source
-// que usarán EF Core, los jobs y el health check. Npgsql 10 no expone una extensión de DI,
-// así que se registra a mano.
+// Conexión a PostgreSQL. El data source lo usan EF Core, los jobs y el health check; Npgsql 10
+// no expone una extensión de DI, así que se registra a mano.
 var cadenaConexion = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
         "Falta la cadena de conexión 'Default'. Definir ConnectionStrings__Default (user-secrets en desarrollo).");
 builder.Services.AddSingleton(new NpgsqlDataSourceBuilder(cadenaConexion).Build());
+
+// F1-03: contexto, convenciones de columna (snake_case, numeric, timestamptz, uuid) y el interceptor
+// que fija app.usuario_id / app.rol al abrir cada transacción para las políticas de RLS.
+builder.Services.AddSingleton<ContextoSesion>();
+builder.Services.AddSingleton<ContextoTransaccionInterceptor>();
+builder.Services.AddDbContext<AtlasRentDbContext>((servicios, opciones) =>
+    opciones
+        .UseNpgsql(cadenaConexion)
+        .UseSnakeCaseNamingConvention()
+        .AddInterceptors(servicios.GetRequiredService<ContextoTransaccionInterceptor>()));
+
+builder.Services.AddScoped<AuditoriaService>();
+builder.Services.AddScoped<IntegridadAuditoria>();
 
 builder.Services.AddHealthChecks()
     .AddCheck<VivoCheck>("vivo", tags: ["vivo"])
