@@ -22,6 +22,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { global-json-file: global.json }
+      # También hace falta Node aquí, no solo en el job `frontend`: el paso de empaquetado de más
+      # abajo compila el frontend. Sin esto se usaría el Node que traiga el runner, que no es el
+      # 24.15.0 de DOC_TECNICA §2.
+      - uses: actions/setup-node@v4
+        with: { node-version: '24.15.0', cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: dotnet restore --locked-mode
       - run: dotnet build -c Release -warnaserror --no-restore
       - run: dotnet test -c Release --no-build   # integración con Testcontainers (Docker disponible en el runner)
@@ -36,7 +41,7 @@ jobs:
         run: |
           npm ci --prefix frontend
           npm run build --prefix frontend
-          dotnet publish backend/AtlasRent.Api -c Release --no-build -o /tmp/paquete
+          dotnet publish backend/AtlasRent.Api -c Release -o /tmp/paquete
           test -f /tmp/paquete/wwwroot/index.html
   frontend:
     runs-on: ubuntu-latest

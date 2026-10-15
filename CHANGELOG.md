@@ -21,7 +21,7 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
   - `ServicioBackup`: el contenedor de copia pasa a `ARBK2` y **lleva la fecha dentro**, protegida por la etiqueta GCM. `VerificarAsync` rechaza todo archivo cuyo nombre no coincida con la fecha de su contenido. `CopiaVerificada` distingue `FechaDelNombre` (puede mentir) de `Fecha` (la del contenido).
   - Tabla `alerta` (migración `20261015090307_AlertaDeFallo`), entidad `Data/Alerta.cs` y `Services/ServicioAlertas.cs`, registrado en DI. `ServicioBackup` deja alerta del fallo del día y del fallo de subida al almacén remoto.
   - Target `AtlasRentPublicarFrontend` en `AtlasRent.Api.csproj`: copia `frontend/dist` a `wwwroot/` en `dotnet publish`.
-  - Paso nuevo en la CI que publica y comprueba que `wwwroot/index.html` está en el paquete.
+  - Paso nuevo en la CI que publica y comprueba que `wwwroot/index.html` está en el paquete, con su `setup-node` correspondiente (sin él, el job `backend` compilaría el frontend con el Node que traiga el runner y no con el 24.15.0 de DOC_TECNICA §2).
   - Registros: `docs/BUGS.md` (BUG-001, BUG-002, BUG-003) y notas de DOC_TECNICA §3.1/§8.1 y `SEGURIDAD.md` A.8.
 - Por qué: los tres son criterios de aceptación o riesgos altos de F1 que la revisión adversarial dejó abiertos. El detalle de cada uno está en su entrada de `docs/BUGS.md`.
 - Verificado (por el orquestador):
