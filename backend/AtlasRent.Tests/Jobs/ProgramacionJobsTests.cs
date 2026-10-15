@@ -90,13 +90,35 @@ public sealed class ProgramacionJobsTests
     }
 
     [Fact]
+    public void LaVigilanciaDeLaCopiaVaDespuesDeHacerla()
+    {
+        var vigilancia = Trabajo(ProgramacionJobs.RutaVigilanciaCopia);
+
+        vigilancia.HoraLocal.Should().Be(4, "después de la copia (02:00) y de la integridad (03:00)");
+        vigilancia.Tipo.Should().Be(typeof(TrabajoVigilanciaCopia));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(vigilancia.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 4, 0, 0));
+
+        // Si se adelantara a antes de la copia, vigilaría una copia que todavía no ha tenido tiempo
+        // de hacerse y avisaría de un fallo que no existe.
+        vigilancia.HoraLocal.Should().BeGreaterThan(Trabajo(ProgramacionJobs.RutaCopiaSeguridad).HoraLocal);
+    }
+
+    [Fact]
     public void LosTrabajosDeLaSeccion8QueTodaviaNoExisteNoSePrograman()
     {
         // Los trabajos de §8 que dependen de dominio inexistente (tipos de cambio, renovaciones,
-        // alertas, recordatorios, envíos, outbox, limpieza de sesiones) no se programan: sin lo que
-        // tienen que hacer, programarlos solo produce errores en el registro todas las noches.
+        // alertas de negocio, recordatorios, envíos, outbox, limpieza de sesiones) no se programan:
+        // sin lo que tienen que hacer, programarlos solo produce errores en el registro cada noche.
+        // La vigilancia de la copia sí está porque no depende de nada pendiente: usa el servicio de
+        // copias y la tabla alerta, que ya existen.
         ProgramacionJobs.Todos.Select(t => t.Tipo).Should().BeEquivalentTo(
-            [typeof(TrabajoCopiaSeguridad), typeof(TrabajoIntegridadAuditoria)]);
+            [
+                typeof(TrabajoCopiaSeguridad),
+                typeof(TrabajoIntegridadAuditoria),
+                typeof(TrabajoVigilanciaCopia),
+            ]);
     }
 
     [Fact]
@@ -107,7 +129,11 @@ public sealed class ProgramacionJobsTests
         ProgramacionJobs.Registrar(recurrentes);
 
         recurrentes.Registrados.Select(r => r.Ruta).Should().BeEquivalentTo(
-            [ProgramacionJobs.RutaCopiaSeguridad, ProgramacionJobs.RutaIntegridadAuditoria]);
+            [
+                ProgramacionJobs.RutaCopiaSeguridad,
+                ProgramacionJobs.RutaIntegridadAuditoria,
+                ProgramacionJobs.RutaVigilanciaCopia,
+            ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);
         backup.Cron.Should().Be(ProgramacionJobs.CronDiarioEnUtc(2));

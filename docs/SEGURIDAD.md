@@ -84,7 +84,7 @@
 
 ### A.8 Continuidad
 - [ ] Backup diario cifrado (BD + documentos) por Hangfire; se conservan **4**; copia cifrada en Google Drive (cuenta/carpeta propia de Atlas Rent).
-- [ ] Alerta si un backup falla o no se ejecuta. *(F1-12 cubre solo parte de esto: cada fallo del día deja fila en `alerta` con la fecha como clave, y el mismo fallo repetido suma repeticiones en vez de duplicarse. Quedan tres huecos: la alerta se guarda en la misma base de datos del respaldo, así que si lo que cae es PostgreSQL no hay dónde escribirla; la copia manual del Watchdog no la deja, por ejecutarse en una consola; y no hay ningún trabajo que mire si la copia de hoy llegó a hacerse.)*
+- [ ] Alerta si un backup falla o no se ejecuta. *(F1-12 cubre las dos mitades con lo que hay hoy: cada fallo del día deja fila en `alerta` con la fecha como clave y el mismo fallo repetido suma repeticiones; y `TrabajoVigilanciaCopia`, a las 04:00, abre el archivo que debería haber, lo descifra y avisa si no está o no verifica —que es lo único que detecta una copia que no llegó a hacerse, que no produce ningún error en ningún sitio.* Quedan dos huecos: la alerta se guarda en la misma base de datos del respaldo, así que si lo que cae es PostgreSQL no hay dónde escribirla; y la copia manual del Watchdog no la deja, por ejecutarse en una consola.)*
 - [ ] Restauración probada en otra máquina (última prueba: ____ ).
 - [ ] Runbook de recuperación y de "admin bloqueado" (break-glass) documentado.
 - [ ] SAI en el servidor.

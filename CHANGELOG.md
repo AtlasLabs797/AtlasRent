@@ -16,6 +16,20 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 11:40] FEAT · F1-12 (cont.) · Vigilancia de que la copia del día exista de verdad (orquestador)
+- Qué:
+  - `backend/AtlasRent.Api/Jobs/TrabajoVigilanciaCopia.cs`, programado a las **04:00 AST** (después de la copia de las 02:00 y de la integridad de las 03:00), registrado en `ProgramacionJobs.Todos` y en el contenedor de DI.
+  - 4 tests nuevos en `backend/AtlasRent.Tests/Jobs/TrabajoVigilanciaCopiaTests.cs` y uno de cadencia en `ProgramacionJobsTests`.
+  - `docs/DOC_TECNICA.md` §8.1, `docs/SEGURIDAD.md` A.8 y `docs/PLAN.md` actualizados.
+- Por qué: era el único fallo del respaldo que **no produce ningún error visible**. Todo lo demás (volcado vacío, descifrado, rotación) lanza y alguien lo ve. Pero si el proceso estaba apagado a las 02:00, o el planificador no disparó el trabajo, o alguien desactivó el servidor de jobs, no hay excepción, ni log de fallo, ni nada: simplemente no hay copia, y eso es indistinguible de que todo vaya bien hasta que hace falta restaurar. `SEGURIDAD.md` A.8 lo pedía («alerta si un backup falla **o no se ejecuta**») y solo estaba cubierta la primera mitad.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; suite completa **299/299**; los tests de `Jobs/` cubren los tres casos — copia en verde (no avisa), copia ausente (avisa y apunta a la causa), copia presente pero ilegible (motivo distinto) — y que la clave lleva la fecha.
+- NO verificado: **el disparo real de este trabajo por Hangfire contra PostgreSQL real.** No hay instancia de desarrollo con el rol `rent_backup` configurada. Lo que está probado es el comportamiento del trabajo, no que el planificador lo dispare a las 04:00.
+- Migraciones: no.
+- Riesgo / pendiente:
+  - La clave de la alerta es `backup-ausente:{fecha}`, distinta de `backup:{fecha}` del fallo. No es duplicar: una dice por qué falló, la otra que a las 04:00 no había copia.
+  - Si el respaldo falla a las 02:00, esa noche habrá **dos** alertas. Es deliberado y está documentado, pero si en F2-10 la bandeja satura con ruido habrá que agruparlas.
+- Commit/PR: pendiente
+
 ## [15/10/2026 11:20] FIX · F1-12 / F1-13 · Fecha de la copia dentro del contenedor, "fallo → alerta" y el frontend en el paquete (orquestador)
 - Qué:
   - `ServicioBackup`: el contenedor de copia pasa a `ARBK2` y **lleva la fecha dentro**, protegida por la etiqueta GCM. `VerificarAsync` rechaza todo archivo cuyo nombre no coincida con la fecha de su contenido. `CopiaVerificada` distingue `FechaDelNombre` (puede mentir) de `Fecha` (la del contenido).

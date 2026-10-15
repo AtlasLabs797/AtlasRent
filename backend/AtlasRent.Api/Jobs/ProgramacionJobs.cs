@@ -53,11 +53,17 @@ public static class ProgramacionJobs
 
     public const string RutaCopiaSeguridad = "copias-seguridad";
     public const string RutaIntegridadAuditoria = "integridad-auditoria";
+    public const string RutaVigilanciaCopia = "vigilancia-copia";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
-    /// existe (tipos de cambio, renovaciones, alertas, recordatorios, envíos, outbox y limpieza de
-    /// sesiones) NO se inventan aquí: se añaden cuando exista lo que tienen que hacer.
+    /// existe (tipos de cambio, renovaciones, recordatorios, envíos, outbox y limpieza de sesiones)
+    /// NO se inventan aquí: se añaden cuando exista lo que tienen que hacer.
+    /// <para>
+    /// La vigilancia de la copia sí entra, aunque su nombre sea "alertas", porque no depende de un
+    /// dominio pendiente: usa el servicio de copias y la tabla <c>alerta</c>, que ya existen. Lo que
+    /// queda para F2-10 es avisar a alguien por correo y enseñarle una bandeja, no detectar el fallo.
+    /// </para>
     /// </summary>
     public static IReadOnlyList<TrabajoProgramado> Todos { get; } =
     [
@@ -73,6 +79,12 @@ public static class ProgramacionJobs
             typeof(TrabajoIntegridadAuditoria),
             nameof(TrabajoIntegridadAuditoria.EjecutarAsync),
             3),
+        new(
+            RutaVigilanciaCopia,
+            CronDiarioEnUtc(4),
+            typeof(TrabajoVigilanciaCopia),
+            nameof(TrabajoVigilanciaCopia.EjecutarAsync),
+            4),
     ];
 
     /// <summary>
