@@ -45,6 +45,25 @@ internal static class Program
 
             switch (args.Length > 0 ? args[0] : "comprobar")
             {
+                case "copiar":
+                {
+                    // F1-12: la copia diaria la dispara el trabajo programado de la API
+                    // (docs/DOC_TECNICA.md §8). Esto es lo mismo a mano, para cuando hay que
+                    // forzar una copia sin esperar a las 02:00 o para comprobar que la cadena de
+                    // conexión del volcado sigue viva. Es idempotente por fecha: si la de hoy ya
+                    // está y verifica, no se vuelve a generar.
+                    var cadena = configuracion.GetConnectionString("Backup")
+                        ?? throw new InvalidOperationException(
+                            "Falta la cadena de conexión 'Backup' (ConnectionStrings__Backup, el rol "
+                            + "rent_backup). Sin ella no se puede volcar la base de datos.");
+
+                    var copia = await copias.EjecutarAsync(cadena, CancellationToken.None);
+                    registro.LogInformation(
+                        "Copia del {Fecha} lista en {Archivo}: {Bytes} bytes, {Documentos} documentos",
+                        copia.Fecha, copia.RutaArchivo, copia.Bytes, copia.Documentos);
+                    return 0;
+                }
+
                 case "restaurar":
                 {
                     if (args.Length < 3)
@@ -90,7 +109,7 @@ internal static class Program
                 }
 
                 default:
-                    return Uso(registro, "<comprobar|restaurar|actualizar>");
+                    return Uso(registro, "<copiar|comprobar|restaurar|actualizar>");
             }
         }
         catch (WatchdogSinCopiaPreviaException e)

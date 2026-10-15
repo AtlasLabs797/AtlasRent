@@ -16,6 +16,12 @@
     <PackageReference Include="BCrypt.Net-Next" />
     <!-- F1-06: segundo factor TOTP -->
     <PackageReference Include="Otp.NET" />
+    <!-- F1-12: servidor de jobs y su almacenamiento en PostgreSQL (DOC_TECNICA §8) -->
+    <PackageReference Include="Hangfire.AspNetCore" />
+    <PackageReference Include="Hangfire.PostgreSql" />
+    <!-- F1-12: fija la versión parcheada de Newtonsoft.Json para todo el grafo (ver
+         Directory.Packages.props): Hangfire arrastra la 11.0.1, con CVE-2024-21907. -->
+    <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

@@ -1,7 +1,10 @@
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
+using AtlasRent.Api.Jobs;
 using AtlasRent.Api.Middleware;
 using AtlasRent.Api.Services;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -44,11 +47,6 @@ builder.Services.AddDbContext<AtlasRentDbContext>((servicios, opciones) =>
 
 builder.Services.AddScoped<AuditoriaService>();
 builder.Services.AddScoped<IntegridadAuditoria>();
-// TODO(A#): falta conectar el job diario de verificación de integridad de auditoría
-// (docs/DOC_TECNICA.md §8). No se puede hacer aquí porque los jobs (Hangfire) todavía no están
-// montados en el repositorio. Ojo al conectarlo: tiene que correr con app.rol = admin o gerente (o
-// como rent_migrador), porque con cualquier otro rol la RLS le oculta filas de 'auditoria' y la
-// verificación daría un falso "todo correcto" sobre una cadena que en realidad está rota.
 
 // F1-04: autenticación y sesiones. La clave del JWT se lee de Seguridad__JwtClave y no tiene valor
 // por defecto: si falta, la aplicación falla al arrancar en lugar de firmar con una clave inventada.
@@ -174,8 +172,42 @@ builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlo
 // volcado lo hace el cliente de PostgreSQL con el rol rent_backup (ConnectionStrings__Backup), que
 // por su cuenta solo lee. El almacén remoto no se registra todavía: la subida a Google Drive
 // depende de F0-04 (carpetas y cliente OAuth), y sin él la copia se queda en local.
-// TODO(A#): registrar IAlmacenRemoto -> AlmacenRemotoDriveNoDisponible, y el job diario que la
-// dispara, cuando exista el cliente OAuth. Los jobs (Hangfire) aún no están montados en el repo.
+// TODO(A#): registrar IAlmacenRemoto -> AlmacenRemotoDriveNoDisponible cuando exista el cliente
+// OAuth de F0-04. La copia se queda en local hasta entonces.
+
+// F1-12: disparo de los jobs de docs/DOC_TECNICA.md §8. Hangfire 1.8 (la edición gratuita) planifica
+// en UTC y no entiende los crons con zona horaria, así que la cadencia la calcula ProgramacionJobs
+// a partir de la hora de Santo Domingo en lugar de escribir un número fijo.
+// El almacenamiento va en su propia base de datos (atlas_rent_jobs) porque un pg_dump con
+// rent_backup hace LOCK TABLE sobre todo lo que hay en atlas_rent y el planificador le rompería el
+// volcado. La credencial sí es la de migraciones (ConnectionStrings__Migraciones), no la de la
+// aplicación: rent_app no debe poder escribir en las tablas del planificador. Su panel no se monta
+// (docs/SEGURIDAD.md A.1).
+builder.Services.AddScoped<TrabajoCopiaSeguridad>();
+builder.Services.AddScoped<TrabajoIntegridadAuditoria>();
+
+var opcionesJobs = OpcionesJobs.Desde(builder.Configuration);
+builder.Services.AddSingleton(opcionesJobs);
+
+if (opcionesJobs.ServidorActivo)
+{
+    var cadenaMigraciones = builder.Configuration.GetConnectionString("Migraciones")
+        ?? throw new InvalidOperationException(
+            "Falta la cadena de conexión 'Migraciones' para el servidor de jobs. Definir "
+            + "ConnectionStrings__Migraciones (user-secrets en desarrollo): es el rol rent_migrador, "
+            + "el único con permisos sobre las tablas de Hangfire.");
+
+    var cadenaJobs = ProgramacionJobs.ConexionDeJobs(cadenaMigraciones);
+
+    builder.Services.AddHangfire(configuracion => configuracion
+        .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UsePostgreSqlStorage(
+            almacenamiento => almacenamiento.UseNpgsqlConnection(cadenaJobs),
+            new PostgreSqlStorageOptions { PrepareSchemaIfNecessary = true }));
+    builder.Services.AddHangfireServer(opciones => opciones.ServerName = "atlas-rent");
+}
 builder.Services.AddSingleton(OpcionesBackup.Desde(builder.Configuration));
 builder.Services.AddSingleton<ServicioCifradoCopia>();
 builder.Services.AddSingleton<IVolcadoBaseDatos>(VolcadoPgDump.EnProduccion());
@@ -202,6 +234,14 @@ builder.Services.AddHealthChecks()
     .AddCheck<ConexionBdCheck>("bd");
 
 var app = builder.Build();
+
+// Los trabajos recurrentes se registran con el almacenamiento ya montado. AddOrUpdate escribe en
+// él, así que solo tiene sentido si el servidor está encendido: apagado (tests de integración) no
+// se registra nada y no se toca la base de datos de los jobs.
+if (opcionesJobs.ServidorActivo)
+{
+    ProgramacionJobs.Registrar(app.Services.GetRequiredService<IRecurringJobManager>());
+}
 
 app.UseSerilogRequestLogging();
 

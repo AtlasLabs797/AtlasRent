@@ -27,6 +27,7 @@ Salidas: SMTP (Google) · ExchangeRate-API · Google Drive (backups cifrados) ·
 | Npgsql.EntityFrameworkCore.PostgreSQL | 10.0.3 |
 | EFCore.NamingConventions | 10.0.1 |
 | Hangfire.AspNetCore / Hangfire.PostgreSql | 1.8.25 / 1.21.1 |
+| Newtonsoft.Json | 13.0.4 — añadido en F1-12: Hangfire.Core 1.8.25 arrastra 11.0.1, con CVE-2024-21907 (alta). Se fija a la versión parcheada para que el `dotnet list package --vulnerable` de la CI siga limpio |
 | Serilog.AspNetCore | 10.0.0 |
 | MailKit / MimeKit | 4.18.1 |
 | ClosedXML | 0.105.1 |
@@ -244,6 +245,25 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 | Limpieza de sesiones, intentos, temporales | Hangfire | diario | — |
 | Comprobación de actualizaciones | Hangfire | diario | — |
 | Restauración y actualización | Watchdog | bajo demanda | copia previa obligatoria |
+
+### 8.1 Estado (F1-12)
+Implementados y programados: **backup cifrado** (diario, 02:00 AST) y **verificación de integridad de auditoría** (diario, 03:00 AST). El resto de la tabla espera al dominio que todavía no existe (tipos de cambio, renovaciones, alertas, recordatorios, envíos, outbox, limpieza, comprobación de actualizaciones).
+
+- **Dónde:** `AtlasRent.Api/Jobs/`. El servidor de Hangfire arranca con la API; el panel **no** se monta (`SEGURIDAD.md` A.1).
+- **Cadencia:** `ProgramacionJobs` convierte la hora de `TZ_NEGOCIO` al UTC que le corresponde, porque Hangfire 1.8 (edición gratuita) planifica en UTC y no entiende el prefijo `CRON_TZ=` de los crons con zona. Las 02:00 AST son las 06:00 UTC. Si algún día la zona pasa a tener horario de verano, `CronDiarioEnUtc` falla al arrancar en vez de desplazar la copia una hora seis meses al año.
+- **Almacenamiento:** base de datos propia `atlas_rent_jobs`, esquema `hangfire` dentro de ella (Hangfire.PostgreSql 1.21 usa ese nombre por defecto y crea esquema y tablas solo, con `PrepareSchemaIfNecessary`). No es un capricho de aislamiento: `pg_dump` del backup diario recorre `atlas_rent` entera y hace `LOCK TABLE` sobre todo lo que encuentra, así que con las tablas de Hangfire dentro el volcado falla con `permission denied for schema hangfire` y **el backup diario deja de hacerse**. En su propia base, ningún backup la recorre. La credencial sí es la de migraciones (`ConnectionStrings__Migraciones`, rol `rent_migrador`) con la base cambiada en código; `rent_app` no conecta ahí ni tiene migración que le conceda nada.
+- **Apagado:** `Jobs__ServidorActivo=false` apaga el planificador entero. Los tests de integración lo usan para que no haya ningún servidor de jobs real.
+- **Integridad de auditoría:** corre con `app.rol = admin` dentro de una transacción, porque la política `auditoria_lectura` esconde las filas a cualquier otro rol y una lectura vacía daría un falso «todo correcto» sobre una cadena manipulada. `TrabajoIntegridadAuditoria` lo documenta en el sitio donde alguien lo vaya a «simplificar».
+- **A mano:** `AtlasRent.Watchdog copiar` (mismo `ServicioBackup` y misma cadena `ConnectionStrings__Backup`, idempotente por fecha).
+
+**Paso de superusuario, una vez por servidor** (la base la crea un superusuario porque `rent_migrador` no tiene permiso `CREATE` en ella; dentro, el esquema `hangfire` y sus tablas los crea el propio Hangfire con `PrepareSchemaIfNecessary` al arrancar la API la primera vez):
+
+```sql
+CREATE DATABASE atlas_rent_jobs OWNER rent_owner ENCODING 'UTF8' TEMPLATE template0;
+\connect atlas_rent_jobs
+REVOKE ALL ON DATABASE atlas_rent_jobs FROM PUBLIC;
+GRANT CONNECT ON DATABASE atlas_rent_jobs TO rent_migrador;
+```
 
 ## 9. Despliegue (Windows Server x64)
 1. PostgreSQL: usar la instancia existente (≥16) o instalar la última estable; `listen_addresses='localhost'`, `pg_hba` solo local con `scram-sha-256`.

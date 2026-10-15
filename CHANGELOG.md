@@ -16,6 +16,25 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 13:30] FEAT · F1-12 (cont.) · Disparo diario de los jobs con Hangfire
+- Qué:
+  - Hangfire 1.8.25 / Hangfire.PostgreSql 1.21.1 en la API, con los jobs de F1-12 programados: **copia de seguridad cifrada a las 02:00 de Santo Domingo** y **verificación de integridad de auditoría a las 03:00**.
+  - `backend/AtlasRent.Api/Jobs/`: `OpcionesJobs`, `ProgramacionJobs`, `TrabajoCopiaSeguridad`, `TrabajoIntegridadAuditoria`. `Watchdog/Program.cs` gana el comando `copiar` para lanzar la copia a mano.
+  - `db/scripts/04_base_jobs.sql`: la base `atlas_rent_jobs`.
+  - `ApiTestFactory` desactiva el servidor de jobs (`Jobs:ServidorActivo=false`) para que los tests no esperen jobs ni hagan copias de verdad.
+  - 10 tests nuevos en `backend/AtlasRent.Tests/Jobs/`.
+- Por qué: cierra el hueco de F1-12. El backup diario ya existía pero **nunca se ejecutaba**, porque no había nada que lo disparara.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet list package --vulnerable --include-transitive` → sin vulnerabilidades; suite completa en verde.
+- NO verificado: **no se arrancó la API con el servidor de jobs activo contra PostgreSQL real**, así que el arranque de Hangfire y la ejecución efectiva de los dos trabajos no están probados de extremo a extremo (sí el montaje del almacenamiento y la creación de tablas). El disparo manual del Watchdog solo está probado por compilación. El dashboard de Hangfire **no** se monta, conforme a `SEGURIDAD.md` A.1.
+- Migraciones: no (los esquemas los crea el propio Hangfire; la base se crea con `db/scripts/04_base_jobs.sql`).
+- Riesgo / pendiente:
+  - **Bug de producción encontrado al integrar:** con Hangfire en un esquema dentro de `atlas_rent`, el `pg_dump` del backup diario **fallaba** con `permission denied for schema hangfire`, porque `pg_dump` hace `LOCK TABLE` de todo lo que encuentra. El backup se rompía a sí mismo. **Solución:** base de datos propia `atlas_rent_jobs`. El rol y la credencial siguen siendo `ConnectionStrings__Migraciones` con la base cambiada en código. Sin migración que conceda nada a `rent_app`.
+  - **`Newtonsoft.Json` fijado a 13.0.4**: Hangfire.Core 1.8.25 arrastra 11.0.1, con **CVE-2024-21907 (alta, denegación de servicio por JSON anidado)**. Fijado a la versión parcheada para que ningún proyecto quede con la vulnerable.
+  - **Zona horaria**: Hangfire CE 1.8.25 **no entiende `CRON_TZ=`** (es función de la edición de pago) y planifica en UTC. Escribir `0 2 * * *` habría significado las 02:00 UTC, que aquí son las 22:00 del día anterior: la copia salía al final de la noche, no de madrugada. La conversión a UTC está escrita **como cálculo** (`CronDiarioEnUtc`), no como un número mágico, y **lanza si la zona tuviera horario de verano**, porque un UTC fijo no puede querer decir «las 02:00 locales» dos días al año. Hay test que afirma la hora local y test de regresión que falla si el cron vuelve a ser `0 2 * * *`.
+  - El job de integridad de auditoría se ejecuta con el rol adecuado porque **con otro rol, RLS le oculta filas y da un falso "todo correcto"**. Razonamiento en un comentario, que es lo que alguien "simplifica" y rompe en silencio.
+  - Los demás jobs de §8 que dependen de dominio todavía inexistente **no se programan**: quedan documentados en DOC_TECNICA §8.1.
+- Commit/PR: `feat(jobs): disparo diario del backup cifrado y verificacion de integridad de auditoria`.
+
 ## [15/10/2026 12:00] FEAT · F1-12 (parcial) · Backup cifrado, rotación, verificación y Watchdog
 - Qué:
   - `Api/Services/Backup.cs` y `Api/Services/ServicioBackup.cs`: copia de la base de datos y de los documentos en un contenedor propio, cifrada con AES-256-GCM, en `Backup__CarpetaLocal`.

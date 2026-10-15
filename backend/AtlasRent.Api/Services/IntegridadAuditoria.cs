@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,7 +31,16 @@ public sealed class IntegridadAuditoria(AtlasRentDbContext contexto)
         ORDER BY secuencia
         """;
 
-    public async Task<ResultadoIntegridad> VerificarAsync(CancellationToken ct = default)
+    /// <param name="ct">Cancelación.</param>
+    /// <param name="transaccion">
+    /// Transacción en la que se lee. hace falta para el trabajo diario: el <c>app.rol</c> que
+    /// desbloquea la RLS lo fija <see cref="ContextoTransaccionInterceptor"/> al abrir una
+    /// transacción, y su valor vale solo dentro de ella. Sin <paramref name="transaccion"/> la
+    /// lectura va suelta y, si el rol no está puesto, <c>auditoria</c> no devuelve ni una fila.
+    /// </param>
+    public async Task<ResultadoIntegridad> VerificarAsync(
+        CancellationToken ct = default,
+        DbTransaction? transaccion = null)
     {
         var conexion = contexto.Database.GetDbConnection();
         if (conexion.State != ConnectionState.Open)
@@ -39,6 +49,7 @@ public sealed class IntegridadAuditoria(AtlasRentDbContext contexto)
         }
 
         await using var comando = conexion.CreateCommand();
+        comando.Transaction = transaccion;
         comando.CommandText = ConsultaOrdenada;
         await using var lector = await comando.ExecuteReaderAsync(ct);
 

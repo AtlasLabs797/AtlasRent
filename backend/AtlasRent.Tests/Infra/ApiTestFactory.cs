@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
+using AtlasRent.Api.Jobs;
 using AtlasRent.Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -118,6 +119,10 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
             // nunca escribe en C:\AtlasRent\data ni con la clave de nadie.
             [$"{OpcionesBackup.Seccion}:CarpetaLocal"] = CarpetaCopias,
             [$"{OpcionesBackup.Seccion}:ClaveCifrado"] = Convert.ToBase64String(ClaveCifradoCopia),
+            // F1-12: sin servidor de jobs. Apagado del todo, no "inactivo": así los tests ni
+            // conectan con el almacenamiento del planificador ni ejecutan la copia de seguridad
+            // sobre la máquina de pruebas.
+            [$"{OpcionesJobs.Seccion}:ServidorActivo"] = "false",
         };
         ConfigurarAjustes(ajustes);
 
@@ -258,5 +263,8 @@ public sealed class ApiTestFactorySinBd : WebApplicationFactory<Program>
         builder.UseSetting($"{OpcionesAlmacen.Seccion}:Documentos", CarpetaDocumentos);
         builder.UseSetting($"{OpcionesBackup.Seccion}:CarpetaLocal", CarpetaCopias);
         builder.UseSetting($"{OpcionesBackup.Seccion}:ClaveCifrado", ApiTestFactory.ClaveDe32Bytes());
+        // F1-12: sin servidor de jobs, igual que en ApiTestFactory. Aquí además no hay base de
+        // datos a la que conectarse, así que ni la cadena de migraciones se llega a leer.
+        builder.UseSetting($"{OpcionesJobs.Seccion}:ServidorActivo", "false");
     }
 }
