@@ -176,6 +176,9 @@ builder.Services.AddScoped<ServicioCotizaciones>();
 // F2-03: reservas. Es scoped por lo mismo que la disponibilidad: abre su propia transacción y
 // escribe auditoría e idempotencia.
 builder.Services.AddScoped<ServicioReservas>();
+// F2-04: calendario de disponibilidad. Scoped y solo lectura: no escribe nada ni abre transacción,
+// porque es una consulta a ocupacion_rango y ocupacion_dia (F2-01).
+builder.Services.AddScoped<ServicioCalendario>();
 // F2-05: contratos. Scoped y con los servicios de reservas y disponibilidad dentro, porque al
 // activar un contrato escribe el candado de la unidad y deja en conflicto las reservas que se
 // solapan, todo en la misma transacción.

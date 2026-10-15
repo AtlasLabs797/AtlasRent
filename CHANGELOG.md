@@ -16,6 +16,26 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 16:30] FEAT · F2-04 · Calendario de disponibilidad calculado sobre la capa de ocupación (orquestador)
+- Qué:
+  - `Dominio/TipoDiaCalendario.cs`, `DTOs/CalendarioDtos.cs`, `Services/ServicioCalendario.cs`, `Controllers/CalendarioController.cs` (`GET /api/v1/calendario`), más 10 tests en `backend/AtlasRent.Tests/Calendario/`.
+  - **Sin migración y sin ninguna tabla nueva**: es una consulta de solo lectura.
+- Por qué: criterio de aceptación, "muestra contratos, reservas, medios días y mantenimiento". La instrucción decisiva fue negativa: **el calendario lee `ocupacion_rango` y `ocupacion_dia` (F2-01), no `contrato` ni `reserva`**. Si reconstruyera la ocupación contando documentos, desharía la carrera que F2-01 cerró y cualquier hueco se convertiría en ocupación fantasma en pantalla. Verificado a mano en el código: el servicio solo consulta `OcupacionRango`, `OcupacionDia`, `Unidad` e `Inmueble`, con `AsNoTracking()` y filtrando por `Bloquea = true`.
+- **Corrección del orquestador sobre el informe del implementador.** El informe afirmaba que `dotnet test -c Release` devuelve "exit 5, no se ejecutaron pruebas" en esta máquina y que había que usar el ejecutable nativo del runner de xUnit v3. **Es falso**: el orquestador lo ha corrido con esa misma orden seis veces en este bloque (299, 312, 337, 356, 386 y 396 tests), todas con salida 0 y recuento real. Queda registrado porque una instrucción de verificación falsa en un informe puede acabar en `.github/workflows` y romper el CI sin que nadie lo ejecutara antes.
+- Decisiones y sus motivos (comentados en el código):
+  - **La respuesta es siempre una lista de unidades**, y acepta `?unidadId=` o `?inmuebleId=`, de modo que el mismo componente pinta el detalle de una unidad y el inmueble entero sin dos APIs. Pedir por inmueble son unas diez líneas en el servicio.
+  - **El estado manual de la unidad vive en `estadoManual` de la unidad, no repetido día a día**: 366 días × N unidades serían decenas de miles de entradas redundantes. Su efecto se ve en `tipo`, `disponible` y `motivo` de cada día.
+  - **Desempate explícito**: contrato > reserva mensual > reserva corta > mantenimiento > estado manual. En la práctica casi nunca hace falta (los triggers de F2-01 impiden que un contrato y un medio día caigan el mismo día), pero la respuesta tiene que ser determinista, no la que salga del orden de las consultas. Los motivos que no ganan no se pierden: van todos en `ocupaciones`.
+  - **Rango máximo de 366 días**, con el límite explained en el código: acotar lo que barre `ocupacion_rango` sin trocear la lectura de un año completo.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **396/396** (386 previos + 10 nuevos, 4m34s) con **código de salida 0**. Los tests que importan: `UnaOcupacionLiberadaNoAparece` (un contrato finalizado sale libre; es el que falla si se lee sin `Bloquea = true`), `ElCalendarioMuestraLosMediosDias` (los **dos** medios días del mismo día salen los dos, no uno), `ElCalendarioEsSoloLectura` (tres GET no crean ni liberan nada) y `ElCalendarioMuestraElMantenimientoDeLaUnidad` (estado manual sin ninguna ocupación con fecha).
+- NO verificado: **no hay validación visual de pantalla**: el calendario es API y las pantallas siguen marcadas como pendientes con `TODO(A#)` en `frontend/src/navegacion/menu.ts`. El filtro por `inmuebleId` existe y compila pero **no tiene test**. Tampoco se ha probado `Mantenimiento` como origen con fecha, porque hoy ninguna escritura lo produce, ni `fuera de servicio` como estado manual (el código lo trata igual que `mantenimiento`, pero solo se prueba `mantenimiento`).
+- Migraciones: no.
+- Riesgo / pendiente:
+  - **Falta el resumen agregado por unidad** (días libres, ocupados, en mantenimiento) para pintar un edificio de un vistazo. El implementador lo dejó fuera a propósito y con `TODO(A#)`, porque §2 dice que al empleado nunca se le dan totales agregados en ningún endpoint y un recuento por unidad es exactamente eso. **Es una decisión de negocio pendiente, no un descuido**: si se quiere, hay que decidir primero a quién se le enseña.
+  - El rango de la API es **inclusivo**, al contrario que el `[inicio, fin)` interno de `ocupacion_rango`. Es a conscious y documentado, pero es una asimetría entre la API y la tabla que conviene tener presente al escribir el frontend.
+
+---
+
 ## [15/10/2026 16:05] FEAT · F2-05 · Contratos con aprobación que caduca si el contrato cambia, y versionado (orquestador)
 - Qué:
   - `Data/Contrato.cs`, `Data/ContratoVersion.cs`, `Data/SolicitudAprobacion.cs`, `Dominio/EstadoContrato.cs`, `Dominio/ReglaRenovacion.cs`, migración `20261015133339_Contratos`, `Services/ServicioContratos.cs`, `Services/HuellaContrato.cs`, `Controllers/ContratosController.cs` (13 endpoints), `DTOs/ContratoDtos.cs`.
