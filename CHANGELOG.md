@@ -16,6 +16,27 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 06:40] FEAT · F1-06 · MFA con TOTP, códigos de recuperación y acceso de emergencia
+- Qué:
+  - Migración `20261015031813_MfaYAccesoEmergencia`: `mfa_desafio`, `codigo_recuperacion` y `acceso_emergencia`, con `GRANT` explícito a `rent_app`.
+  - Activación en dos pasos: se devuelve la URI `otpauth://` (el QR lo dibuja el frontend) y el MFA **solo** queda activo tras confirmar un código válido; mientras tanto el usuario entra con el factor pendiente marcado.
+  - Login en dos pasos: contraseña correcta devuelve un **desafío** con token provisional opaco de **5 min**, de un solo uso, en cookie `atlas-rent-mfa` (`HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`). El TOTP incorrecto cuenta para el bloqueo de cuenta.
+  - **10 códigos de recuperación** de un solo uso, alfabeto sin I/O/0/1, formato `XXXXX-XXXXX`, SHA-256 hasheados y mostrados una sola vez.
+  - **Acceso de emergencia** con doble aprobación: hacen falta **dos administradores distintos**, el código vive 10 min y la sesión y la auditoría quedan marcadas como emergencia.
+  - `Otp.NET` 1.4.1 añadido a `Directory.Packages.props`.
+  - 23 tests nuevos en `backend/AtlasRent.Tests/Seguridad/`.
+- Por qué: F1-06 del plan. D4 exige MFA para admin y el sistema necesita una vía para recuperar el control si el admin pierde su dispositivo.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **104/104 en verde**. Los siete escenarios del encargo tienen test propio, incluido el de aceptación (`AdminSinMfaNoPuedeHacerLoginNormal`).
+- NO verificado: `dotnet ef database update` contra la base de desarrollo (usaría secretos de `.env.dev`); la migración sí aplica desde cero en cada ejecución de la suite. Sin verificación visual del QR ni del frontend.
+- Migraciones: sí. `Migrations/20261015031813_MfaYAccesoEmergencia`.
+- Riesgo / pendiente:
+  - **⚠️ El secreto TOTP vive en claro en `usuario.mfa_secreto`.** Es imprescindible para validar el código y todavía no existe el cifrado AES-256-GCM (llega en F1-09 con `Seguridad__CifradoClave`). Quien lea la tabla `usuario` puede generar códigos TOTP válidos de cualquier usuario con MFA. **No desplegar MFA en producción antes de F1-09**, o adelantar el cifrado. Anotado en SEGURIDAD.md.
+  - Bug real cazado por los tests: el token provisional se consumía en memoria sin persistir (`AsNoTracking`), así que **no era de un solo uso**. Corregido antes de dar la tarea por buena.
+  - «Admin» es la columna booleana `usuario.es_admin` porque aún no existe la tabla de roles. Los ganchos están aislados en `ServicioMfa.NecesitaMfa` y `ServicioEmergencia.EsAdmin` para que F1-07 los sustituya sin reescribir nada. **Hasta entonces no hay forma de crear un administrador por la API.**
+  - El interruptor de configuración «MFA para gerente» de D4 no está implementado: no tiene sentido sin roles. `TODO(A#)` para F1-07.
+  - RFC 6238 §5.2 (no reutilizar un mismo paso TOTP) no está aplicado; queda mitigado porque el token provisional es de un solo uso. `TODO(A#)`.
+- Commit/PR: `feat(mfa): segundo factor TOTP, codigos de recuperacion y acceso de emergencia`.
+
 ## [15/10/2026 06:00] FEAT · F1-05 · Límites de peticiones, bloqueo de cuenta y bloqueo de IP escalado
 - Qué:
   - Migración `20261015023651_BloqueosYLimites` con `intento_login` y `bloqueo_ip`, permisos para `rent_app` y `bloqueada_hasta` en `usuario`.
