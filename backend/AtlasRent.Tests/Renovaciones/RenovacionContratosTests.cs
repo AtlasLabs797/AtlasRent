@@ -423,6 +423,115 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
     }
 
     /// <summary>
+    /// La carrera de la renovación no tumba el trabajo: la ejecución que pierde se cuenta como
+    /// omitida y ninguna de las dos lanza.
+    /// <para>
+    /// Aquí la carrera no se deja al azar. El trabajo registra el aviso del incremento con
+    /// <c>IRegistroAlertas</c> en un punto exacto: después de leer el contrato, de calcular el
+    /// número de bloque y de decidir qué incrementos aplicar, y <b>antes</b> de escribir nada. La
+    /// barrera se pone ahí, dentro de la transacción, así que las dos ejecuciones quedan con el
+    /// mismo estado viejo en la memoria y sueltan a la vez. Lo que viene después es lo que hay que
+    /// aguantar: las dos escriben, una gana y la otra recibe una excepción de la base.
+    /// </para>
+    /// <para>
+    /// La que pierde puede recibirla de dos maneras y las dos son la misma carrera. Si su lote de
+    /// comandos choca antes con el índice único de <c>(contrato_id, numero)</c> es un
+    /// <c>DbUpdateException</c> con violación de índice único; si el <c>UPDATE</c> de
+    /// <c>contrato</c> va primero, su <c>WHERE xmin = &lt;el leído&gt;</c> ya no casa con ninguna fila
+    /// y es un <c>DbUpdateConcurrencyException</c>, que hereda de <c>DbUpdateException</c> pero no
+    /// lleva un <c>PostgresException</c> dentro. Antes de arreglarlo, la segunda se escapaba y el
+    /// trabajo de Hangfire quedaba fallido. Lo que importa es que ahora ninguna de las dos sale por
+    /// encima: el trabajo de la noche tiene que poder terminar.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task LaCarreraDeLaRenovacionNingunaEjecucionLanza()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await SesionAsync(Roles.Empleado, ct);
+        using var gerente = await SesionAsync(Roles.Gerente, ct);
+
+        var contratoId = await ContratoActivoAsync(empleado, gerente, Vencido(14), 50_000m, ct);
+        var incrementoId = await CrearIncrementoAsync(
+            bd,
+            contratoId,
+            TipoIncremento.Porcentaje,
+            porcentaje: 10m,
+            importe: null,
+            await FinVigenteAsync(contratoId, ct),
+            ct);
+        var finInicial = await FinInicialAsync(contratoId, ct);
+
+        var reloj = new RelojPrueba();
+        await using var primero = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
+        await using var segundo = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
+
+        using var barrera = new Barrier(2);
+
+        ResumenRenovacion[] resumenes = [new ResumenRenovacion(), new ResumenRenovacion()];
+        Exception?[] fallos = new Exception?[2];
+
+        var ejecuciones = new[] { (primero, 0), (segundo, 1) }
+            .Select(par => Task.Run(async () =>
+            {
+                try
+                {
+                    resumenes[par.Item2] = await new ServicioRenovaciones(
+                            par.Item1,
+                            new AuditoriaService(par.Item1),
+                            new AlertaConBarrera(new ServicioAlertas(par.Item1, reloj), barrera),
+                            reloj)
+                        .RenovarVencidosAsync(ct);
+                }
+                catch (Exception excepcion)
+                {
+                    fallos[par.Item2] = excepcion;
+                }
+            }, ct))
+            .ToArray();
+
+        await Task.WhenAll(ejecuciones);
+
+        fallos[0].Should().BeNull("la ejecución perdedora tiene que quedarse en omitido, no romper el trabajo");
+        fallos[1].Should().BeNull("ninguna de las dos ejecuciones puede dejar el trabajo fallido");
+
+        resumenes.Sum(r => r.ContratosRenovados).Should().Be(1, "el contrato se renovó una vez y solo una");
+        resumenes.Sum(r => r.OmitidosPorCarrera).Should().Be(1, "la perdedora se cuenta como omitida");
+        resumenes.Sum(r => r.Bloques).Should().Be(1, "un bloque y no dos");
+        resumenes.Sum(r => r.IncrementosAplicados).Should().Be(1, "el incremento se aplicó una vez");
+
+        (await BloquesAsync(contratoId, ct))
+            .Should().ContainSingle("una sola ejecución llegó a escribir el bloque");
+        (await FinVigenteAsync(contratoId, ct))
+            .Should().Be(finInicial.AddMonths(12), "el bloque avanza una vez, no dos");
+        (await RentaAsync(contratoId, ct)).Should().Be(55_000m, "el incremento se aplica una vez");
+
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+        (await contexto.Alerta.AsNoTracking()
+            .CountAsync(a => a.Clave == ServicioRenovaciones.ClaveIncremento(incrementoId), ct))
+            .Should().Be(1, "la ejecución perdedora no dejó su aviso: iba en la transacción que se deshizo");
+    }
+
+    /// <summary>
+    /// Un registro de alertas de verdad con una barrera delante. Sirve solo para este test: el aviso
+    /// del incremento es el punto exacto en el que el trabajo ya ha leído y calculado pero todavía no
+    /// ha escrito, así que parar ahí deja las dos ejecuciones con el mismo estado viejo y las suelta a
+    /// la vez, sin depender del reloj del planificador. Y como escribe de verdad, el aviso de la
+    /// ejecución perdedora se ve desaparecer con su transacción, que es justo lo que hay que
+    /// comprobar.
+    /// </summary>
+    private sealed class AlertaConBarrera(ServicioAlertas dentro, Barrier barrera) : IRegistroAlertas
+    {
+        public async Task RegistrarAsync(string tipo, string clave, string mensaje, CancellationToken ct)
+        {
+            barrera.SignalAndWait(ct);
+            await dentro.RegistrarAsync(tipo, clave, mensaje, ct);
+        }
+
+        public Task ResolverAsync(string clave, CancellationToken ct) => dentro.ResolverAsync(clave, ct);
+    }
+
+    /// <summary>
     /// Un contrato cuyo bloque venció hace meses entra por <b>todos</b> los bloques que debería haber
     /// tenido, no solo por el siguiente, y en una sola transacción.
     /// <para>

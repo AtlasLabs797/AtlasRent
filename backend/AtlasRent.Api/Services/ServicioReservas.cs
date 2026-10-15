@@ -39,6 +39,7 @@ public sealed class ServicioReservas(
     AuditoriaService auditoria,
     ServicioIdempotencia idempotencia,
     ServicioDisponibilidad disponibilidad,
+    IRegistroAlertas alertas,
     TimeProvider reloj)
 {
     /// <summary>
@@ -220,6 +221,20 @@ public sealed class ServicioReservas(
     /// <summary>
     /// Baja lógica: la reserva queda <c>Cancelada</c>, con <c>activo = false</c>, y su bloqueo se
     /// suelta. La fila y sus días se quedan, porque una reserva cancelada es historial (AGENTS.md §6).
+    /// <para>
+    /// <b>También cancela la reserva en conflicto, y esa es la salida que le faltaba al estado.</b>
+    /// docs/ESPECIFICACION.md §3.4 dice que una reserva en conflicto "sigue bloqueando hasta que el
+    /// gerente decida" y no enumera entre quelles son esas decisiones. La decisión que se toma aquí es
+    /// del orquestador y es una sola: <b>cancelar la reserva</b>. Sin ella, una reserva que pasó a
+    /// <see cref="EstadoReserva.EnConflicto"/> se quedaba <c>Activo = true</c> para siempre —porque
+    /// <c>ExigirActiva</c> le impedía cancelarse a sí misma—, el candado no lo soltaba nadie, y el
+    /// aviso de conflicto de F2-10 no se podía cerrar. No se inventan aquí otras salidas (convertir a
+    /// otra unidad, reabrir la reserva): el mínimo para que el estado tenga salida es poder cancelar.
+    /// <para>
+    /// Al cancelarse en conflicto se cierra también su aviso de conflicto, con el mismo
+    /// <c>ResolverAsync</c> que usa el barrido de F2-10, y en la misma transacción que la baja: si
+    /// no, la bandeja se quedaría con un aviso que ya no aplica y que nadie puede cerrar.
+    /// </para>
     /// </summary>
     public async Task<ReservaResumen> CancelarAsync(
         Guid id,
@@ -229,7 +244,9 @@ public sealed class ServicioReservas(
         CancellationToken ct)
     {
         var reserva = await CargarAsync(id, ct);
-        ExigirActiva(reserva, "cancelar");
+        ExigirCancelable(reserva);
+
+        var estabaEnConflicto = reserva.Estado == EstadoReserva.EnConflicto;
 
         reserva.Estado = EstadoReserva.Cancelada;
         reserva.Activo = false;
@@ -246,6 +263,12 @@ public sealed class ServicioReservas(
             proyectar: AResumen,
             datosAuditoria: c => DatosAuditoria(c, c.Dias.Count),
             antesDeGuardar: () => LiberarAsync(reserva, ct),
+            // El aviso se cierra después de guardar la baja y antes del commit, para que la baja y el
+            // cierre del aviso salgan juntos o no salga ninguno de los dos.
+            despuesDeGuardar: estabaEnConflicto
+                ? () => alertas.ResolverAsync(
+                    ServicioAvisosOperacion.ClaveReservaConflicto(reserva.Id), ct)
+                : null,
             ct: ct);
     }
 
@@ -481,6 +504,22 @@ public sealed class ServicioReservas(
         {
             throw new InvalidOperationException(
                 $"Una reserva en estado {Texto(reserva.Estado)} ya no se puede {accion}.");
+        }
+    }
+
+    /// <summary>
+    /// Estados desde los que se puede dar de baja. <c>Activa</c> es el normal y <c>EnConflicto</c>
+    /// es la salida del conflicto que decidió el orquestador (ver <see cref="CancelarAsync"/>):
+    /// una reserva que ya no puede tener la unidad tampoco puede quedarse bloqueándola. Todo lo
+    /// demás —convertida, completada o cancelada— sigue sin salida, porque el candado ya lo soltó
+    /// alguien o no lo tiene.
+    /// </summary>
+    private static void ExigirCancelable(Reserva reserva)
+    {
+        if (reserva.Estado is not (EstadoReserva.Activa or EstadoReserva.EnConflicto))
+        {
+            throw new InvalidOperationException(
+                $"Una reserva en estado {Texto(reserva.Estado)} ya no se puede cancelar.");
         }
     }
 

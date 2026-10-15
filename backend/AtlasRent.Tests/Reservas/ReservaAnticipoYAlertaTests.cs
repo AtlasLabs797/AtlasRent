@@ -1,3 +1,5 @@
+using System.Data;
+using System.Globalization;
 using System.Net;
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
@@ -23,12 +25,25 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
     /// <summary>
     /// D10: el anticipo es una nota con número. No hay pasarela de pago, así que una reserva con
     /// anticipo no puede haber generado un cobro ni una factura: ni los escribe la aplicación ni
-    /// siquiera existen las tablas todavía (el cobro es de F3-01).
+    /// siquiera existen esas tablas todavía (el cobro es de F3-01).
     /// <para>
-    /// La comprobación se hace sobre <c>information_schema</c> y no sobre el contexto, porque
-    /// consultarlas a través de EF no se puede escribir todavía. Cuando F3-01 cree
-    /// <c>cobro</c> y <c>factura</c>, este mismo test empezará a contar filas de verdad, y es
-    /// entonces cuando empezaría a ser capaz de fallar.
+    /// Lo que se comprueba es doble. Primero, que el anticipo sí está guardado en la reserva, con su
+    /// importe y su nota. Segundo, que <b>ninguna tabla de efecto económico que exista</b> haya
+    /// cambiado al crearla, y se busca por nombre con un <c>LIKE</c> para que la lista crezca sola
+    /// cuando F3 cree las suyas, sin que este test haya que reescribirse.
+    /// </para>
+    /// <para>
+    /// Los recuentos son antes y después, no absolutos, porque la base de pruebas la comparten todas
+    /// las clases de la colección y otras han dejado filas en ellas. Lo que importa no es que la
+    /// tabla esté a cero, sino que crear la reserva no la haya movido.
+    /// </para>
+    /// <para>
+    /// <b>Lo que este test todavía no puede comprobar, y es importante decirlo:</b> el criterio de
+    /// aceptación completo de F2-03 es "el anticipo no aparece en ningún saldo ni informe económico",
+    /// y un saldo es algo que hoy no existe. <c>cobro</c> y <c>factura</c> son de F3-01, así que
+    /// hasta que F3 no las cree, aquí solo se puede afirmar que no se ha escrito nada donde hoy se
+    /// puede escribir. Cuando existan, este mismo test empezará a mirarlas de verdad sin cambiar una
+    /// línea.
     /// </para>
     /// </summary>
     [Fact]
@@ -40,6 +55,11 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
         var unidadId = await AyudaReserva.UnidadAsync(sesion, ct);
         var fecha = AyudaReserva.Dia(140);
 
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+
+        var economicas = await TablasDeDineroAsync(contexto, ct);
+        var antes = await ContarAsync(contexto, economicas, ct);
+
         var id = await AyudaReserva.CrearAsync(
             sesion,
             AyudaReserva.Corta(
@@ -50,43 +70,100 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
                 anticipoNota: "Se acordado en efectivo al reservar; si se cancela antes del día anterior se devuelve"),
             ct);
 
-        // El anticipo sí está guardado, con su importe y su nota.
+        // El anticipo sí está guardado, con su importe y su nota: es una nota, no un cobro, y por eso
+        // vive en la reserva y no en otro sitio.
         var reserva = await AyudaReserva.Json(
             await sesion.GetAsync($"/api/v1/reservas/{id:D}", ct), ct);
         reserva.GetProperty("anticipoImporte").GetDecimal().Should().Be(2500m);
         reserva.GetProperty("anticipoNota").GetString().Should().Contain("devuelve");
 
-        await using var contexto = bd.CrearContexto(bd.CadenaApp);
-        var tablasDeDinero = await contexto.Database
+        var despues = await ContarAsync(contexto, economicas, ct);
+        foreach (var tabla in economicas)
+        {
+            despues[tabla].Should().Be(
+                antes[tabla],
+                $"un anticipo no escribe nada en {tabla}: el cobro se registra al pagar la factura, "
+                + "que es de F3. Ojo con el alcance de esto: mientras F3 no cree `cobro` ni "
+                + "`factura`, esta comprobación solo demuestra que no se ha escrito en lo que existe "
+                + "hoy, que no es el criterio completo de F2-03");
+        }
+    }
+
+    /// <summary>
+    /// Las tablas donde un movimiento de dinero dejaría rastro, buscadas por prefijo sobre
+    /// <c>information_schema</c>. Hoy devuelve las de F2 que ya guardan importes
+    /// (<c>contrato_liquidacion</c>, <c>cotizacion</c>, <c>cotizacion_linea</c>) y nada más; cuando
+    /// F3 cree <c>cobro</c>, <c>factura</c>, <c>asiento</c> o lo que haga falta, entrarán solas.
+    /// <para>
+    /// Es una búsqueda por nombre y, por lo tanto, heurística: si F3 le pone a una tabla un nombre
+    /// que no case con ninguno de estos patrones, este test no la mirará. Si eso llega a pasar, lo
+    /// que hay que hacer es añadir el patrón, no escribir un test nuevo.
+    /// </para>
+    /// </summary>
+    private static async Task<List<string>> TablasDeDineroAsync(
+        AtlasRentDbContext contexto,
+        CancellationToken ct) =>
+        await contexto.Database
             .SqlQueryRaw<string>(
                 """
                 SELECT table_name AS "Nombre"
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
-                  AND table_name IN ('cobro', 'factura', 'factura_borrador', 'asiento')
+                  AND table_type = 'BASE TABLE'
+                  AND (
+                      table_name LIKE 'cobro%'
+                      OR table_name LIKE 'factura%'
+                      OR table_name LIKE 'asiento%'
+                      OR table_name LIKE 'pago%'
+                      OR table_name LIKE 'cotizacion%'
+                      OR table_name LIKE '%liquidacion'
+                  )
+                ORDER BY table_name
                 """)
             .ToListAsync(ct);
 
-        foreach (var tabla in tablasDeDinero)
-        {
-            // El SQL sale de una lista literal: el nombre de la tabla no se interpola en la
-            // consulta (EF1002 lo marca como error, y con razón).
-            var consulta = tabla switch
-            {
-                "cobro" => """SELECT COUNT(*) AS "Total" FROM cobro""",
-                "factura" => """SELECT COUNT(*) AS "Total" FROM factura""",
-                "factura_borrador" => """SELECT COUNT(*) AS "Total" FROM factura_borrador""",
-                "asiento" => """SELECT COUNT(*) AS "Total" FROM asiento""",
-                _ => throw new InvalidOperationException($"Tabla de dinero no prevista: {tabla}"),
-            };
+    private static async Task<Dictionary<string, long>> ContarAsync(
+        AtlasRentDbContext contexto,
+        List<string> tablas,
+        CancellationToken ct)
+    {
+        var cuentas = new Dictionary<string, long>();
 
-            (await contexto.Database.SqlQueryRaw<long>(consulta).SingleAsync(ct)).Should().Be(0,
-                $"un anticipo no escribe nada en {tabla}: el cobro se registra al pagar la factura");
+        // Por ADO.NET y no por EF: un identificador de tabla no se puede pasar como parámetro, y EF
+        // (EF1002) no deja ni `SqlQueryRaw` con interpolación ni `FromSqlRaw` sobre un escalar.
+        // La conexión se deja como estaba.
+        var conexion = contexto.Database.GetDbConnection();
+        var yaEstabaAbierta = conexion.State == ConnectionState.Open;
+        if (!yaEstabaAbierta)
+        {
+            await conexion.OpenAsync(ct);
         }
 
-        tablasDeDinero.Should().BeEmpty(
-            "a día de hoy no existe ninguna de esas tablas: no hay nada donde un anticipo pudiera "
-            + "haberse escrito por accidente");
+        try
+        {
+            foreach (var tabla in tablas)
+            {
+                // El nombre va metido en el texto porque no hay otra forma, y sale de
+                // information_schema de este propio esquema: antes de usarlo se comprueba que sea un
+                // identificador normal, así que no hay por dónde colarse nada en la consulta.
+                tabla.Should().MatchRegex("^[a-z_][a-z0-9_]*$", $"'{tabla}' es un nombre de tabla");
+
+                await using var comando = conexion.CreateCommand();
+                comando.CommandText = $"""SELECT count(*) FROM "{tabla}" """;
+                var total = await comando.ExecuteScalarAsync(ct);
+
+                cuentas[tabla] = Convert.ToInt64(total, CultureInfo.InvariantCulture);
+            }
+        }
+        finally
+        {
+            if (!yaEstabaAbierta)
+            {
+                await conexion.CloseAsync();
+            }
+        }
+
+        return cuentas;
     }
 
     /// <summary>

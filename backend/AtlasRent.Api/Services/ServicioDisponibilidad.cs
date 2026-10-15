@@ -216,6 +216,11 @@ public sealed class ServicioDisponibilidad(AtlasRentDbContext contexto, TimeProv
             }
             else
             {
+                // Esto es un UPDATE, no un borrado y una reinserción: la fila de ese día sigue siendo
+                // la misma y solo se le cambian unidad, tipo y bloqueo. Lo dice porque el trigger de
+                // capacidad de F2-01 se dispara también en el UPDATE y, al contar, tiene que dejar
+                // fuera la fila que se está tocando (por eso lleva `d.id <> NEW.id`): si no, cambiar
+                // una corta de medio día a día completo en la misma fecha se rechazaría a sí misma.
                 fila.UnidadId = unidadId;
                 fila.Tipo = tipo;
                 fila.Bloquea = true;

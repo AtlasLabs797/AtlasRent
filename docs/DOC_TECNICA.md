@@ -270,7 +270,7 @@ las horas de `ProgramacionJobs.Todos` son las que manda, no las de esta tabla.
   con autor nulo entra.
 
 ### 8.1 Estado (F1-12)
-Implementados y programados: **backup cifrado** (diario, 02:00 AST), **verificación de integridad de auditoría** (diario, 03:00 AST) y **vigilancia de que la copia del día exista** (diario, 04:00 AST). El resto de la tabla espera al dominio que todavía no existe (tipos de cambio, renovaciones, alertas de negocio, recordatorios, envíos, outbox, limpieza, comprobación de actualizaciones).
+Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; y **avisos de operación** (08:00), de F2-10. Sigue esperando el dominio que todavía no existe: tipos de cambio (⚠️ choca con los avisos de operación a las 08:00), alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
 
 - **Dónde:** `AtlasRent.Api/Jobs/`. El servidor de Hangfire arranca con la API; el panel **no** se monta (`SEGURIDAD.md` A.1).
 - **Cadencia:** `ProgramacionJobs` convierte la hora de `TZ_NEGOCIO` al UTC que le corresponde, porque Hangfire 1.8 (edición gratuita) planifica en UTC y no entiende el prefijo `CRON_TZ=` de los crons con zona. Las 02:00 AST son las 06:00 UTC. Si algún día la zona pasa a tener horario de verano, `CronDiarioEnUtc` falla al arrancar en vez de desplazar la copia una hora seis meses al año.

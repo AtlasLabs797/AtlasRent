@@ -173,7 +173,15 @@ public sealed class ContratoAprobacionTests(ContenedorBdFixture bd, ApiTestFacto
                 auditoria,
                 idempotencia,
                 disponibilidad,
-                new ServicioReservas(contexto, auditoria, idempotencia, disponibilidad, api.Reloj),
+                new ServicioReservas(
+                    contexto,
+                    auditoria,
+                    idempotencia,
+                    disponibilidad,
+                    // F2-03: la baja de una reserva en conflicto cierra su aviso, así que aquí hace
+                    // falta el registro de verdad, no el nulo. En estas pruebas no se cancela nada.
+                    new ServicioAlertas(contexto, api.Reloj),
+                    api.Reloj),
                 // F2-07: la aprobación congela la plantilla, y congelarla necesita el catálogo y el
                 // cifrado (para el PDF, que no se prueba aquí).
                 new ServicioPlantillas(

@@ -61,15 +61,15 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 ## 7. Reservas 🟡
 **Mensual:** cliente, unidad, fecha de entrada prevista. Bloquea la unidad. Si en 7 días no hay contrato, sale un aviso.
 
-**Corta:** por cada día eliges **Medio día** o **Día completo** (puedes escribir una hora orientativa). En un mismo día caben dos medios días o un día completo. **Se cobra antes:** al confirmar se prepara la factura y la reserva muestra "Sin cobrar" hasta que se pague.
+**Corta:** por cada día eliges **Medio día** o **Día completo** (puedes escribir una hora orientativa). En un mismo día caben dos medios días o un día completo.
 
-**Anticipo:** si el cliente adelantó dinero, anótalo en la reserva (importe, fecha). **Es solo una nota, no un cobro.** El cobro se registra cuando se paga la factura; la app te recordará el anticipo al hacerla.
+**Anticipo:** si el cliente adelantó dinero, anótalo en la reserva (importe, fecha). **Es solo una nota, no un cobro, y no aparece en ningún saldo ni informe económico.** El cobro se registrará en la fase de finanzas; todavía no existe, y tampoco el aviso que te lo recordará.
 
 ## 8. Contratos 🟡
 1. Desde la reserva o Contratos → *Nuevo*. Renta, moneda, día de pago, fianza y renovación.
 2. *Enviar a aprobación*. El gerente lo aprueba o lo devuelve con comentario.
 - Se renueva solo hasta que se cancele. Las subidas de renta programadas se aplican solas.
-- **Baja:** el gerente pone la fecha de fin. Después hay que **liquidar**: inventario de salida, fianza y saldos.
+- **Baja:** el gerente pone la fecha de fin. En esa fecha el contrato **se finalize solo** y la unidad queda libre. Después hay que **liquidar**: se revisa el inventario de salida y se decide qué pasa con la fianza. **Los cobros y los saldos todavía no existen** (fase de finanzas), así que por ahora la liquidación deja constancia de qué falta y de la decisión, pero no mueve dinero.
 
 ## 9. Facturas ⬜
 - **Del mes:** el gerente pulsa *Generar facturas periódicas*, revisa la simulación y confirma.

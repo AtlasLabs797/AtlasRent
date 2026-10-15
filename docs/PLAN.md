@@ -51,7 +51,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 |---|---|---|---|---|---|
 | F2-01 | Disponibilidad: exclusión por rangos + capacidad de medio día (trigger + bloqueo por unidad) | 3.4, 5 | Test concurrente: dos reservas solapadas → una falla; 2 medios días OK, el 3.º falla | F1-10 | HECHA (15/10/2026) |
 | F2-02 | Cotizaciones: CRUD, estados, PDF básico, crear reserva/contrato desde Aceptada | 3.3 | Estados según D18 | F1-09 | HECHA (15/10/2026) |
-| F2-03 | Reservas mensuales y cortas, anticipo como nota, estados, alerta 7 días, conflicto | 3.4 | Anticipo no aparece en ningún saldo ni informe económico | F2-01 | HECHA (15/10/2026) |
+| F2-03 | Reservas mensuales y cortas, anticipo como nota, estados, alerta 7 días, conflicto | 3.4 | Anticipo no aparece en ningún saldo ni informe económico | F2-01 | HECHA (15/10/2026) — **criterio no verificable hasta F3**: hoy no existen `cobro` ni `factura`, así que el test solo puede comprobar que toda tabla económica existente queda vacía (15/10, auditoría) |
 | F2-04 | Calendario de disponibilidad | 3.1 | Muestra contratos, reservas, medios días y mantenimiento | F2-03, F2-05 *(dependencia corregida 15/10: el criterio pide contratos y no existían hasta F2-05)* | HECHA (15/10/2026) |
 | F2-05 | Contratos: flujo, aprobación (solicitud que caduca si cambia), versionado | 3.5 | Empleado no puede aprobar ni por API | F2-03 | HECHA (15/10/2026) |
 | F2-06 | Renovaciones automáticas e incrementos (job Hangfire diario idempotente) | 3.5 | Ejecutar el job dos veces no duplica | F2-05 | HECHA (15/10/2026) |

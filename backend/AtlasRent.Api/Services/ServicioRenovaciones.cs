@@ -98,6 +98,25 @@ public sealed class ServicioRenovaciones(
                     + "este trabajo no lo vuelve a tocar",
                     contratoId);
             }
+            catch (DbUpdateConcurrencyException)
+            {
+                // xmin: la misma carrera del párrafo anterior, vista por el otro lado. `xmin` es
+                // token de concurrencia en todas las entidades menos `Auditoria`, así que el
+                // `UPDATE` de `contrato` lleva `WHERE xmin = <el que se leyó>`; si la otra ejecución
+                // renovó y confirmó antes, esa condición no casa con ninguna fila y EF lanza
+                // `DbUpdateConcurrencyException`, que hereda de `DbUpdateException` pero cuyo
+                // `InnerException` no es un `PostgresException`, de modo que el filtro de arriba no
+                // la recoge. Sin este `catch` la ejecución perdedora escapaba y Hangfire daba el
+                // trabajo por fallido en vez de contarlo como omitido.
+                //
+                // Mismo tratamiento que en `ServicioFines` (que ya capturaba el `xmin`): contar y
+                // seguir, porque el bloque ganador ya está escrito y rehacerlo sería peor.
+                resumen.OmitidosPorCarrera++;
+                Log.Information(
+                    "Renovación: el contrato {ContratoId:D} cambió mientras este trabajo lo leía; "
+                    + "otra ejecución se adelantó y este trabajo no lo vuelve a tocar",
+                    contratoId);
+            }
         }
 
         Log.Information(
@@ -220,6 +239,14 @@ public sealed class ServicioRenovaciones(
                 // El aviso va en la misma transacción que el cambio y no después: si el proceso
                 // muriera entre el commit y el aviso, el incremento quedaría aplicado sin que nadie
                 // se enterara y no volvería a avisar, porque ya está marcado como aplicado.
+                //
+                // Que `RegistrarAsync` escriba por SQL crudo y no por EF no obliga a volcar el
+                // `ChangeTracker` antes: el aviso no compite por ningún índice único con lo que
+                // falta por guardar, así que no hay ninguna colisión que "salte" aquí. Lo que
+                // compite (`contrato_bloque`, `contrato_version` y la versión de `contrato` con su
+                // `xmin`) se decide entero en el `SaveChangesAsync` de más abajo, dentro de la misma
+                // transacción, y la carrera la recogen los dos `catch` del trabajo. Forzar un
+                // `SaveChangesAsync` aquí solo movería el punto de fallo sin evitarlo.
                 await alertas.RegistrarAsync(
                     TipoAlerta,
                     ClaveIncremento(incremento.Id),

@@ -58,6 +58,14 @@ public sealed class DisponibilidadOcupacionTests(ContenedorBdFixture bd)
     /// Dos altas simultáneas del mismo rango: gana una y la otra recibe el error. Es el criterio de
     /// aceptación de la tarea y la razón de que la comprobación esté en la base y no antes del
     /// INSERT.
+    /// <para>
+    /// La barrera es lo que hace que esto sea una prueba de concurrencia y no una de ejecuciones
+    /// seguidas: las dos insertan su rango en memoria, se quedan las dos esperando en
+    /// <see cref="Barrier"/> y sueltan a la vez hacia el <c>SaveChangesAsync</c>. Sin ella, las dos
+    /// se ejecutarían en fila, la primera confirmaría y la segunda tropezaría con ella —la misma
+    /// aserción, pero sin haber probado nunca nada a la vez—. Es el mismo patrón que usan
+    /// <c>RenovacionContratosTests</c> y <c>FinPorFechaEfectivaTests</c>.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task SolapamientoConcurrente()
@@ -66,8 +74,7 @@ public sealed class DisponibilidadOcupacionTests(ContenedorBdFixture bd)
         var sesion = new ContextoSesion { Rol = Roles.Admin };
         var unidad = await CrearUnidadAsync(sesion, ct);
 
-        var directos = 0;
-        var barrera = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var barrera = new Barrier(2);
 
         // Dos contextos distintos = dos conexiones distintas, que es lo que hace que las dos
         // inserciones puedan ir de verdad a la vez.
@@ -76,12 +83,7 @@ public sealed class DisponibilidadOcupacionTests(ContenedorBdFixture bd)
             await using var contexto = bd.CrearContexto(bd.CadenaApp, sesion);
             contexto.OcupacionRango.Add(Rango(unidad, inicio, fin));
 
-            if (Interlocked.Increment(ref directos) == 2)
-            {
-                barrera.SetResult();
-            }
-
-            await barrera.Task;
+            barrera.SignalAndWait(ct);
 
             try
             {
@@ -165,6 +167,11 @@ public sealed class DisponibilidadOcupacionTests(ContenedorBdFixture bd)
     /// Tres medios días a la vez: el bloqueo por unidad del trigger los serializa, así que sobreviven
     /// exactamente dos. Sin ese SELECT ... FOR UPDATE, los tres contarían cero días y entrarían los
     /// tres.
+    /// <para>
+    /// Igual que en <see cref="SolapamientoConcurrente"/>, y por el mismo motivo: la barrera suelta
+    /// los tres <c>SaveChangesAsync</c> a la vez. Encolados, el primero confirmaría y los otros dos
+    /// tropezarían con él y la prueba pasaría sin haber comprobado nada sobre el <c>FOR UPDATE</c>.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task MediosDiasConcurrentes()
@@ -174,20 +181,14 @@ public sealed class DisponibilidadOcupacionTests(ContenedorBdFixture bd)
         var unidad = await CrearUnidadAsync(sesion, ct);
         var dia = new DateOnly(2026, 9, 16);
 
-        var directos = 0;
-        var barrera = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var barrera = new Barrier(3);
 
         async Task<bool> IntentarAsync()
         {
             await using var contexto = bd.CrearContexto(bd.CadenaApp, sesion);
             contexto.OcupacionDia.Add(Dia(unidad, dia, TipoOcupacionDia.MedioDia));
 
-            if (Interlocked.Increment(ref directos) == 3)
-            {
-                barrera.SetResult();
-            }
-
-            await barrera.Task;
+            barrera.SignalAndWait(ct);
 
             try
             {
