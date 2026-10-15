@@ -36,11 +36,17 @@ namespace AtlasRent.Api.Controllers;
 /// protege la entrada por HTTP y <c>ServicioContratos</c> vuelve a mirar el techo de permisos de quien
 /// llama antes de aprobar.
 /// </para>
+/// <para>
+/// La bandeja de aprobaciones de F2-10 son tres endpoints más aquí y no un controller aparte, y es a
+/// propósito: los botones de la bandeja llaman a los mismos servicios que los de la ficha, así que
+/// reutilizan su idempotencia y su traducción de errores en vez de tener una segunda copia.
+/// </para>
 /// </summary>
 [ApiController]
 [Route("api/v1/contratos")]
 public sealed class ContratosController(
     ServicioContratos contratos,
+    ServicioAprobaciones aprobaciones,
     ServicioRenovaciones renovaciones,
     ServicioIncrementos increments,
     ServicioPlantillas plantillas,
@@ -241,6 +247,65 @@ public sealed class ContratosController(
     [HttpPost("{id:guid}/rechazo")]
     [Accion(Acciones.ContratoEstado)]
     public async Task<IActionResult> Rechazar(Guid id, ContratoRechazoPeticion peticion, CancellationToken ct) =>
+        await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{id:D}/rechazo", ct,
+            m => contratos.RechazarAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    // ---------------------------------------------------------------- bandeja de aprobaciones (F2-10)
+
+    /// <summary>
+    /// Bandeja de aprobaciones (F2-10, §3.16): los contratos que están esperando decisión, con
+    /// quién los mandó, cuál es y el valor actual y el propuesto.
+    /// <para>
+    /// Va con <c>contrato.estado</c> y no con <c>cliente.ver</c> a propósito. La lista es
+    /// exactamente lo que esa persona puede aprobar, y un empleado recibe <b>403</b>: una bandeja
+    /// vacía esconde un error de permisos detrás de "no hay nada pendiente", que es la forma
+    /// habitual de que nadie entienda por qué su enlace no trae nada. Quien solo tenga
+    /// <c>cliente.ver</c> sigue viendo la ficha del contrato, con todas sus solicitudes.
+    /// </para>
+    /// <para>
+    /// La ruta literal no choca con <c>{id:guid}</c>: "solicitudes" no es un GUID, así que ASP.NET
+    /// nunca la resuelve contra la ficha.
+    /// </para>
+    /// </summary>
+    [HttpGet("solicitudes")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Bandeja(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortDir,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(
+            aprobaciones.ListarAsync(Paginacion(page, pageSize, sortBy, sortDir), UsuarioDeLaPeticion(), ct));
+
+    /// <summary>
+    /// Aprobar desde la bandeja. Llama al <b>mismo</b> servicio que el botón de la ficha
+    /// (<c>ContratosController.Aprobar</c>): misma regla, misma caducidad por huella, misma
+    /// congelación de plantilla. No hay una segunda lógica de aprobación en el sistema.
+    /// <para>
+    /// La <c>Idempotency-Key</c> que entra en la huella de idempotencia es la del endpoint de
+    /// contratos, no la de esta ruta, y es a propósito: aprobar desde la bandeja y aprobar desde la
+    /// ficha son la misma operación, así que un usuario impaciente que repite el clic —o que abre
+    /// la ficha después de aprobar desde la bandeja— con la misma clave tiene que comerse el
+    /// resultado guardado, no una segunda aprobación.
+    /// </para>
+    /// </summary>
+    [HttpPost("solicitudes/{id:guid}/aprobacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> AprobarDesdeLaBandeja(Guid id, CancellationToken ct) =>
+        await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/aprobacion", ct,
+            m => contratos.AprobarAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>
+    /// Rechazar desde la bandeja. Mismo servicio y mismo motivo que la aprobación: la bandeja no
+    /// decide, solo llama. Exige comentario igual que el rechazo de la ficha (§3.5).
+    /// </summary>
+    [HttpPost("solicitudes/{id:guid}/rechazo")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> RechazarDesdeLaBandeja(
+        Guid id,
+        ContratoRechazoPeticion peticion,
+        CancellationToken ct) =>
         await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{id:D}/rechazo", ct,
             m => contratos.RechazarAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), m, ct));
 

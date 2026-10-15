@@ -165,6 +165,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("repeticiones");
 
+                    b.Property<DateTimeOffset?>("ResueltaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resuelta_at");
+
                     b.Property<string>("Tipo")
                         .IsRequired()
                         .HasColumnType("text")
@@ -865,6 +869,85 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_contrato_inventario_item_contrato_id_orden");
 
                     b.ToTable("contrato_inventario_item", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoLiquidacion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("DecisionFianza")
+                        .HasColumnType("integer")
+                        .HasColumnName("decision_fianza");
+
+                    b.Property<DateOnly>("FechaLiquidacion")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_liquidacion");
+
+                    b.Property<decimal>("FianzaContrato")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("fianza_contrato");
+
+                    b.Property<decimal>("FianzaRetenida")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("fianza_retenida");
+
+                    b.Property<decimal>("ImporteFaltantes")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe_faltantes");
+
+                    b.Property<Guid>("LiquidadoPorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("liquidado_por_id");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("observacion");
+
+                    b.Property<Guid?>("RevisionInventarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revision_inventario_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contrato_liquidacion");
+
+                    b.HasIndex("ContratoId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contrato_liquidacion_contrato_id");
+
+                    b.HasIndex("RevisionInventarioId")
+                        .HasDatabaseName("ix_contrato_liquidacion_revision_inventario_id");
+
+                    b.ToTable("contrato_liquidacion", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoPlantillaCongelada", b =>
@@ -3504,6 +3587,26 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("InventarioBaseItem");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoLiquidacion", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithOne("Liquidacion")
+                        .HasForeignKey("AtlasRent.Api.Data.ContratoLiquidacion", "ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contrato_liquidacion_contrato_contrato_id");
+
+                    b.HasOne("AtlasRent.Api.Data.RevisionInventario", "RevisionInventario")
+                        .WithMany()
+                        .HasForeignKey("RevisionInventarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_contrato_liquidacion_revision_inventario_revision_inventari");
+
+                    b.Navigation("Contrato");
+
+                    b.Navigation("RevisionInventario");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoPlantillaCongelada", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
@@ -3833,6 +3936,8 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Incrementos");
 
                     b.Navigation("Inventario");
+
+                    b.Navigation("Liquidacion");
 
                     b.Navigation("PlantillaCongelada");
 

@@ -51,6 +51,7 @@ public sealed class ServicioContratos(
     ServicioReservas reservas,
     ServicioPlantillas plantillas,
     ServicioInventario inventario,
+    IRegistroAlertas alertas,
     IPolicyService politica,
     TimeProvider reloj)
 {
@@ -707,14 +708,41 @@ public sealed class ServicioContratos(
             {
                 await disponibilidad.LiberarRangoAsync(OrigenOcupacion.Contrato, contrato.Id, ct);
                 CambiarEstado(contrato, EstadoContrato.Finalizado, usuario, "Finalizado.");
+
+                // §3.5: "alerta persistente hasta liquidar". Fin ≠ liquidación: liberar la unidad no
+                // cierra el contrato, así que desde este mismo instante y en la misma transacción
+                // nace la alerta que avisa de que falta la liquidación. Va aquí, y no solo en el
+                // trabajo de las 07:00, porque finalizar a mano es igual de válido que finalizar por
+                // fecha y dejaría el contrato sin aviso hasta el día siguiente.
+                await ServicioFines.RefrescarAlertaFirmezaAsync(
+                    alertas,
+                    contrato.Id,
+                    contrato.FechaFinReal!.Value,
+                    TiempoNegocio.Hoy(),
+                    ct);
             },
             ct: ct);
     }
 
     /// <summary>
-    /// Cierre: el contrato queda liquidado y no se toca más. La liquidación en sí (inventario de
-    /// salida, fianza y saldos) la firma F2-09; aquí solo el estado, que es lo que §3.5 pone en el
-    /// flujo.
+    /// Cierre: el contrato queda liquidado y no se toca más. Y ya no es solo una etiqueta (§3.5: "la
+    /// liquidación cierra inventario de salida, fianza y saldos").
+    /// <para>
+    /// Hace tres cosas, y las tres en la misma transacción que el cambio de estado:
+    /// <list type="number">
+    /// <item>exige la revisión de salida firmada si el contrato tiene inventario (§3.6);</item>
+    /// <item>deja escrito en <see cref="ContratoLiquidacion"/> la fecha, quién liquida, el importe a
+    /// cobrar por faltantes que propuso la revisión y la decisión sobre la fianza;</item>
+    /// <item>cierra la alerta persistente de §3.5, porque el problema que vigilaba ya no existe.</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// <b>Lo que NO hace, y no por descuido.</b> No emite cobros ni mueve la fianza: no existen las
+    /// tablas (<c>cobro</c> es de F3-01 y las de fianza también), y escribir una fila de cobro inventando
+    /// la tabla sería dejar en la base una deuda que nadie puede ver ni saldar. Se escribe lo que sí
+    /// es un dato de la liquidación y el movimiento queda enlazado con el <c>TODO(A#)</c> que está
+    /// dentro del <c>antesDeGuardar</c>, con la firma exacta que necesitará F3-01.
+    /// </para>
     /// </summary>
     public async Task<ContratoResumen> LiquidarAsync(
         Guid id,
@@ -728,26 +756,30 @@ public sealed class ServicioContratos(
         var contrato = await CargarAsync(id, ct);
         Exigir(contrato, EstadoContrato.Finalizado);
 
-        // TODO(A#) F2-09: la liquidación (inventario de salida, devolución de fianza y saldos, §3.6)
-        // se resuelve en la misma transacción que este cambio de estado, con los datos que el
-        // contrato deja aquí. Faltan las tablas de fianza e inventario para firmarla.
-        //
-        // Con F2-08 la condición de inventario ya está escrita y comprobable, y hay que exigirla
-        // ANTES de este GuardarAsync, dentro del antesDeGuardar para que vaya en la misma
-        // transacción:
-        //
-        //     await inventario.ExigirRevisionFirmadaAsync(id, ct);
-        //
-        // con la firma exacta:
-        //
-        //     public Task ExigirRevisionFirmadaAsync(Guid contratoId, CancellationToken ct)
-        //
-        // en ServicioInventario. Lanza InvalidOperationException (409) si el contrato tiene
-        // inventario congelado y no hay revisión de salida firmada, que es el criterio del plan
-        // ("no se liquida sin revisión si hay inventario"). Si el contrato se activó sin inventario
-        // base no hay copia congelada y no exige nada: §3.6 dice "si el contrato tiene inventario" y
-        // §3.1 deja el inventario base como opcional. El importe del faltante que se liquida sale de
-        // RevisionInventario.ImportePropuesto, que F2-08 deja escrito al firmar la revisión.
+        // Lo que la revisión de salida dejó escrito. Se lee aquí, y no después, porque el importe de
+        // los faltantes y la decisión sobre la fianza tienen que salir de lo que firmó el cliente y no
+        // de lo que calcula este servicio. Sin revisión no hay nada que liquidar de inventario: §3.6
+        // dice "si el contrato tiene inventario" y §3.1 deja el inventario base como opcional.
+        var revision = await contexto.RevisionInventario
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.ContratoId == id, ct);
+
+        // El importe ya viene redondeado por Redondeo al firmarse la revisión (F2-08); aquí no se
+        // recalcula ni se vuelve a redondear, que un redondeo aplicado dos veces no es un redondeo.
+        var importeFaltantes = revision?.ImportePropuesto ?? 0m;
+
+        // La decisión se deriva, no se pregunta: hay faltante -> la fianza se retiene (§3.6, "los
+        // descuentos se aplican contra la fianza solo con gerente/admin", y liquidar ya exige ese
+        // permiso); no hay faltante -> se devuelve entera. Lo que el faltante supera a la fianza no es
+        // una retención, es un cobro pendiente, y el cobro es de F3-01.
+        var decision = importeFaltantes > 0m
+            ? DecisionFianza.RetenidaPorFaltantes
+            : DecisionFianza.Devuelta;
+
+        var retenida = decision is DecisionFianza.RetenidaPorFaltantes
+            ? Math.Min(importeFaltantes, contrato.Fianza)
+            : 0m;
+
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
             contexto.Contrato, contrato,
@@ -759,10 +791,66 @@ public sealed class ServicioContratos(
             mutacion,
             proyectar: AResumen,
             datosAuditoria: DatosAuditoria,
-            antesDeGuardar: () =>
+            antesDeGuardar: async () =>
             {
+                // Primero la condición de F2-08, dentro de la transacción y no antes: si el contrato
+                // tiene inventario y no hay revisión firmada, el 409 tiene que dejar el contrato
+                // exactamente igual que estaba, y no con el inventario cerrado a medias.
+                await inventario.ExigirRevisionFirmadaAsync(id, ct);
+
                 CambiarEstado(contrato, EstadoContrato.Liquidado, usuario, "Liquidado.");
-                return Task.CompletedTask;
+
+                // TODO(A#) F3-01: emitir el cobro por el importe de faltantes registrado aquí y mover
+                // la fianza según esta decisión. La firma que hará falta cuando existan las tablas
+                // `cobro` y `fianza` es, dentro de este mismo `antesDeGuardar` y en esta misma
+                // transacción para que un cobro no exista sin liquidación ni al revés:
+                //
+                //     public Task EmitirLiquidacionAsync(
+                //         Guid contratoId,
+                //         Guid usuario,
+                //         Guid contratoLiquidacionId,
+                //         CancellationToken ct)
+                //
+                // y dentro, enlazada con el fallo que se acaba de registrar:
+                //
+                //     INSERT INTO cobro (contrato_liquidacion_id, importe, concepto, ...)
+                //     VALUES ({contratoLiquidacionId}, {contratoLiquidacion.ImporteFaltantes},
+                //             'Faltantes de inventario a la salida', ...);
+                //
+                //     INSERT INTO fianza_devolucion (fianza_id, importe_retenido, importe_devuelto,
+                //                                   decision, ...)
+                //     VALUES ({fianzaId}, {contratoLiquidacion.FianzaRetenida},
+                //             {contratoLiquidacion.FianzaContrato - contratoLiquidacion.FianzaRetenida},
+                //             {contratoLiquidacion.DecisionFianza}, ...);
+                //
+                // Los tres importes ya están calculados y redondeados en ContratoLiquidacion: F3-01 no
+                // tiene que volver a la revisión de salida ni al contrato, solo leer esta fila.
+                // Mientras esas tablas no existan, esto es un dato y no un movimiento de dinero: nadie
+                // ha cobrado el faltante y la fianza sigue donde estaba.
+
+                var liquidacion = new ContratoLiquidacion
+                {
+                    Id = Guid.NewGuid(),
+                    CreatedAt = reloj.GetUtcNow(),
+                    CreatedBy = usuario,
+                    ContratoId = contrato.Id,
+                    RevisionInventarioId = revision?.Id,
+                    FechaLiquidacion = TiempoNegocio.Hoy(),
+                    LiquidadoPorId = usuario,
+                    ImporteFaltantes = importeFaltantes,
+                    DecisionFianza = decision,
+                    FianzaContrato = contrato.Fianza,
+                    FianzaRetenida = retenida,
+                    Observacion = null,
+                };
+
+                contexto.ContratoLiquidacion.Add(liquidacion);
+
+                // §3.5 cierra el círculo: la alerta persistente estaba viva porque faltaba la
+                // liquidación, así que se resuelve en la misma transacción que la escribe. Si el
+                // fallo de la liquidación se deshace, la alerta sigue viva, que es lo que tiene que
+                // pasar.
+                await alertas.ResolverAsync(ServicioFines.ClaveFirmezaPendiente(contrato.Id), ct);
             },
             ct: ct);
     }
@@ -1146,10 +1234,25 @@ public sealed class ServicioContratos(
             Observaciones = peticion.Observaciones ?? contrato.Observaciones,
         };
 
-    private static void CambiarEstado(
+    /// <summary>
+    /// Aplica la tabla de transiciones y escribe de quién y por qué viene el cambio.
+    /// <para>
+    /// Es <c>internal</c> y no <c>private</c> porque <see cref="ServicioFines"/> tiene que finalizar
+    /// contratos sin llamar a <see cref="FinalizarAsync"/> —ese pide <c>contrato.estado</c> y un trabajo
+    /// no tiene sesión— y no por reimplementar el flujo: la tabla de estados es una sola y dos copias
+    /// de ella divergen sin que nadie se entere.
+    /// </para>
+    /// <para>
+    /// <paramref name="usuario"/> es nulo solo cuando quien cambia el estado no es una persona: el
+    /// trabajo de las 07:00. <c>contrato.estado_actual_por_id</c> queda entonces nulo, que es lo que
+    /// significa "lo pasó el sistema", y la fila de auditoría lleva <c>origen = "job"</c> para decirlo
+    /// igual desde el historial.
+    /// </para>
+    /// </summary>
+    internal static void CambiarEstado(
         Contrato contrato,
         EstadoContrato destino,
-        Guid usuario,
+        Guid? usuario,
         string? comentario)
     {
         if (!Transiciones[contrato.Estado].Contains(destino))

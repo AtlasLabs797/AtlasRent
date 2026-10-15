@@ -67,6 +67,9 @@ public sealed class TrabajoVigilanciaCopiaTests : IDisposable
             Registradas.Add((tipo, clave, mensaje));
             return Task.CompletedTask;
         }
+
+        // El trabajo de vigilancia solo registra; el cierre de alertas es de F2-09.
+        public Task ResolverAsync(string clave, CancellationToken ct) => Task.CompletedTask;
     }
 
     private ServicioBackup CrearServicio(TimeProvider reloj) => new(

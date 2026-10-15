@@ -13,6 +13,12 @@ namespace AtlasRent.Api.Data;
 /// sola alerta. Sin eso, un job que reintenta cada hora genera veinticuatro filas idénticas y la
 /// alerta deja de ser una señal.
 /// </para>
+/// <para>
+/// <see cref="ResueltaAt"/> es la otra mitad de lo mismo (F2-09): una alerta persistente se mantiene
+/// viva mientras el problema siga vivo y se cierra cuando deja de estarlo. Nula significa "abierta".
+/// Cerrar no es borrar —la fila dice que pasó, cuándo y cuántas veces se vio— y una alerta cerrada no
+/// vuelve a abrirse con el refresco diario: si el problema regresa, se inserta una fila nueva.
+/// </para>
 /// </summary>
 public sealed class Alerta
 {
@@ -41,4 +47,13 @@ public sealed class Alerta
     /// no se vería.
     /// </summary>
     public int Repeticiones { get; set; }
+
+    /// <summary>
+    /// Cuándo se cerró la alerta, si está cerrada. Nula = abierta.
+    /// <para>
+    /// Es el reloj del cierre, no un estado: cerrarla dos veces no cambia la fecha de la primera, para
+    /// que "se resolvió el martes" siga siendo cierto al leerlo dentro de un mes.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? ResueltaAt { get; set; }
 }

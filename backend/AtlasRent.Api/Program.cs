@@ -255,6 +255,20 @@ builder.Services.AddScoped<ServicioPlantillas>();
 // revisión de salida. Scoped, y sin cifrado porque no hay fotos (§3.1 lo dice del inventario base).
 builder.Services.AddScoped<ServicioInventario>();
 
+// F2-09: el fin por fecha efectiva y la alerta persistente hasta liquidar (§3.5). Scoped, y el
+// trabajo solo dispara el servicio, igual que la renovación, para que las pruebas puedan ejercitar el
+// fin sin pasar por el planificador.
+builder.Services.AddScoped<ServicioFines>();
+builder.Services.AddScoped<TrabajoFinContratos>();
+
+// F2-10: la bandeja de aprobaciones (§3.16) y los avisos de §3.16 que no dependen de las tablas de
+// F3. Los dos son de solo lectura sobre lo que ya existe, más la escritura en `alerta` con el mismo
+// servicio que los demás trabajos, así que ninguno necesita migración: `alerta` y
+// `solicitud_aprobacion` ya están creadas.
+builder.Services.AddScoped<ServicioAprobaciones>();
+builder.Services.AddScoped<ServicioAvisosOperacion>();
+builder.Services.AddScoped<TrabajoAvisosOperacion>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

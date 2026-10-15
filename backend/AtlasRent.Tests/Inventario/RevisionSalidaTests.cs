@@ -18,8 +18,10 @@ namespace AtlasRent.Tests.Inventario;
 /// <item>Se firma una vez: el segundo intento es 409 con el motivo, como el incremento ya aplicado de
 /// F2-06.</item>
 /// <item>Registra los tres estados (presente, ausente y dañado) y el importe del faltante para F2-09.</item>
-/// <item>Solo se firma con el contrato vigente o con la baja ya programada; en borrador o en
-/// finalizado no hay salida que revisar.</item>
+/// <item>Se firma con el contrato vigente, con la baja ya programada o con el ya finalizado —que es
+/// cuando el cliente se va—; en borrador no hay salida que revisar. Antes aquí ponía "o en
+/// finalizado no hay salida que revisar" y era un callejón sin salida que impedía liquidar: lo
+/// explica el test de F2-09 <c>LaRevisionSePuedeFirmarEnFinalizado</c>.</item>
 /// <item>Un cuerpo que no describe un mueble es 400, no 409: un nombre vacío o una cantidad negativa
 /// no son un conflicto con el estado de nadie.</item>
 /// </list>
@@ -193,12 +195,22 @@ public sealed class RevisionSalidaTests(ContenedorBdFixture bd, ApiTestFactoryBl
     }
 
     /// <summary>
-    /// Un contrato ya finalizado no tiene salida que revisar: el cliente se fue antes de firmarla.
-    /// Revisar ahora sería escribir el documento histórico a posteriori, que es lo que un 409
-    /// significa aquí.
+    /// Un contrato <b>finalizado</b> sí tiene salida que revisar, y este test antes afirmaba lo
+    /// contrario. Es la corrección de una instrucción previa (F2-09), y la razón importa:
+    /// <para>
+    /// El fin por fecha efectiva de F2-09 pasa el contrato a <c>Finalizado</c> solo, el día que la
+    /// fecha efectiva llega, y la revisión se firma ese mismo día. Si aquí se exigiera el contrato "en
+    /// pie", cualquiera que finalizara sin firmar se quedaría en un contrato que ya no se puede
+    /// finalizar nunca, no se puede firmar nunca y por tanto no se puede liquidar nunca: la liquidación
+    /// exige la revisión firmada. Eso no era una regla prudente, era un callejón sin salida.
+    /// </para>
+    /// <para>
+    /// Lo que sigue sin permitirse es firmar antes de que el cliente entre (<c>Borrador</c>,
+    /// <c>PendienteAprobacion</c>, <c>Aprobado</c>) y después de liquidar.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task LaRevisionNoSePuedeFirmarEnUnContratoFinalizado()
+    public async Task LaRevisionSePuedeFirmarEnUnContratoFinalizado()
     {
         var ct = TestContext.Current.CancellationToken;
         using var empleado = await AyudaInventario.SesionAsync(api, bd, Roles.Empleado, ct);
@@ -215,15 +227,16 @@ public sealed class RevisionSalidaTests(ContenedorBdFixture bd, ApiTestFactoryBl
         await AyudaContrato.AceptarAsync(gerente, contratoId, "finalizacion", null, ct);
         (await AyudaContrato.EstadoAsync(bd, contratoId, ct)).Should().Be(EstadoContrato.Finalizado);
 
-        var firmada = await AyudaInventario.FirmarRawAsync(
+        var firmada = await AyudaInventario.FirmarAsync(
             gerente,
             contratoId,
-            AyudaInventario.CuerpoDeFirma(congelado, [("Presente", null), ("Presente", null), ("Presente", null)]),
-            ct);
-        firmada.StatusCode.Should().Be(
-            HttpStatusCode.Conflict,
-            "en finalizado el cliente ya se fue: la revisión se firma con el contrato en pie");
-        await firmada.Cuerpo();
+            congelado,
+            [("Presente", null), ("Presente", null), ("Presente", null)],
+            ct: ct);
+        firmada.GetProperty("contratoId").GetGuid().Should().Be(contratoId);
+        firmada.GetProperty("importePropuesto").ValueKind.Should().Be(
+            System.Text.Json.JsonValueKind.Null,
+            "todo está presente: no hay faltante que liquidar");
     }
 
     private static object Linea(Guid contratoInventarioItemId, string estado) =>

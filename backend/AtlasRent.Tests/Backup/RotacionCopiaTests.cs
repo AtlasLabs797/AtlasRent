@@ -77,6 +77,10 @@ public sealed class RotacionCopiaTests : IDisposable
             Registradas.Add((tipo, clave, mensaje));
             return Task.CompletedTask;
         }
+
+        // La copia no resuelve alertas (F2-09 es lo único que las cierra), pero el doble tiene que
+        // cumplir el contrato igual.
+        public Task ResolverAsync(string clave, CancellationToken ct) => Task.CompletedTask;
     }
 
     /// <summary>

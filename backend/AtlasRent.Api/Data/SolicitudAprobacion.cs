@@ -33,12 +33,19 @@ public enum ResultadoSolicitud
 /// Nunca se borra: hay que poder responder "¿qué se pidió aprobar y qué se aprobó?". Cada envío es
 /// una fila nueva; la anterior queda caducada o resuelta.
 /// <para>
-/// <b>Los campos están puestos para la bandeja de aprobación (F2-10)</b>, que todavía no existe. Lo
-/// que la bandeja necesita son las solicitudes vivas (<see cref="Resultado"/> pendiente) con su
-/// contrato, su huella y su solicitante, ordenadas por <see cref="SolicitadoAt"/>, y qué se les hizo
-/// a las que ya no están vivas (<see cref="ResueltoPorId"/>, <see cref="ResueltoAt"/>,
-/// <see cref="Comentario"/> y <see cref="MotivoCaducidad"/>). Si le hacen falta el cliente, la unidad
-/// y la renta desnormalizados para no hacer join, se añaden aquí.
+/// <b>Los campos están puestos para la bandeja de aprobación (F2-10)</b>, que existe desde esa
+/// historia. <see cref="Services.ServicioAprobaciones"/> lista las vivas (<see cref="Resultado"/>
+/// pendiente) con su contrato, su huella y su solicitante, ordenadas por <see cref="SolicitadoAt"/>;
+/// y la ficha del contrato (<see cref="Services.ServicioContratos"/>) devuelve todas, incluidas las
+/// caducadas y las resueltas, que son el historial de por qué un contrato volvió a enviarse.
+/// <para>
+/// <b>No se desnormalizó nada aquí, a propósito.</b> La bandeja junta por <see cref="ContratoId"/>
+/// con <c>contrato</c> para el cliente, la unidad y la renta propuesta, y con <c>contrato_version</c>
+/// para la renta vigente (la <c>renta_nueva</c> de la última versión). Copiar aquí solicitante,
+/// cliente, unidad o renta sería guardar dos copias de un dato que ya está en otra tabla y que se
+/// desactualizarían solas en cuanto alguien corrigiera el contrato por el otro camino. Lo que sí
+/// vive aquí y no en ningún otro sitio —<see cref="HuellaContenido"/>, <see cref="MotivoCaducidad"/> y
+/// <see cref="Comentario"/>— es lo que no se puede derivar de otra fila, y por eso existe.
 /// </para>
 /// </summary>
 public sealed class SolicitudAprobacion : IEntidadTrazada

@@ -134,6 +134,8 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<RevisionInventarioItem> RevisionInventarioItem => Set<RevisionInventarioItem>();
 
+    public DbSet<ContratoLiquidacion> ContratoLiquidacion => Set<ContratoLiquidacion>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -960,6 +962,29 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Contrato)
             .WithOne(c => c.RevisionInventario)
             .HasForeignKey<RevisionInventario>(e => e.ContratoId)
+            .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F2-09: la liquidación. Nace cerrada y no se vuelve a escribir, así que el índice único sobre
+        // contrato_id es la regla de "se liquida una sola vez" en la base y no solo en el servicio: es
+        // la misma red que ya evita dos revisiones de salida para un contrato. Los importes van en la
+        // moneda del contrato y por eso no llevan columna de moneda (una moneda por documento, §6), y
+        // no hay cobro_id ni fianza_devolucion_id porque esas tablas son de F3 y no existen todavía.
+        modelBuilder.Entity<ContratoLiquidacion>(entidad =>
+        {
+            entidad.ToTable("contrato_liquidacion");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Observacion).HasMaxLength(1000);
+            entidad.Property(e => e.FechaLiquidacion).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.ContratoId).IsUnique();
+            entidad.HasOne(e => e.Contrato)
+            .WithOne(c => c.Liquidacion)
+            .HasForeignKey<ContratoLiquidacion>(e => e.ContratoId)
+            .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.RevisionInventario)
+            .WithMany()
+            .HasForeignKey(e => e.RevisionInventarioId)
             .OnDelete(DeleteBehavior.Restrict);
         });
 

@@ -234,19 +234,40 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - «Admin» es hoy la columna booleana `usuario.es_admin`. Los ganchos `ServicioMfa.NecesitaMfa` y `ServicioEmergencia.EsAdmin` están aislados para que F1-07 los sustituya por `IPolicyService` sin reescribir controladores ni servicios.
 
 ## 8. Jobs
-| Job | Dónde | Frecuencia | Idempotencia |
-|---|---|---|---|
-| Backup cifrado BD + documentos → local (4) + Google Drive | Hangfire | diario 02:00 AST | por fecha |
-| Tipo de cambio | Hangfire | diario 08:00 AST | `UNIQUE (fecha, par)` |
-| Renovaciones e incrementos | Hangfire | diario 00:15 AST | por (contrato, bloque) / (contrato, incremento) |
-| Alertas | Hangfire | cada hora | dedupe por (tipo, entidad) |
-| Recordatorios | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha); modo manual solo prepara la lista |
-| Envíos | Hangfire (cola) | continuo | por `envio.id` |
-| Outbox | Hangfire | cada minuto | por evento |
-| Verificación de integridad de auditoría | Hangfire | diario | solo lectura |
-| Limpieza de sesiones, intentos, temporales | Hangfire | diario | — |
-| Comprobación de actualizaciones | Hangfire | diario | — |
-| Restauración y actualización | Watchdog | bajo demanda | copia previa obligatoria |
+Trabajos **existentes** (verificados en `Jobs/ProgramacionJobs.Todos`) y trabajos **previstos** en fases
+posteriores, que todavía no están escritos:
+
+| Job | Estado | Dónde | Frecuencia | Idempotencia |
+|---|---|---|---|---|
+| Backup cifrado BD + documentos → local (4) + Google Drive | F1-12 | Hangfire | diario 02:00 AST | por fecha |
+| Verificación de integridad de auditoría | F1-12 | Hangfire | diario 03:00 AST | solo lectura |
+| Vigilancia de que la copia del día exista | F1-12 | Hangfire | diario 04:00 AST | por fecha |
+| Aviso de reserva a 7 días | F2-03 | Hangfire | diario 05:00 AST | dedupe por reserva |
+| Renovaciones e incrementos de renta | F2-06 | Hangfire | diario 06:00 AST | por (contrato, bloque) **y** fecha de vencimiento |
+| Fin de contrato por fecha efectiva | F2-09 | Hangfire | diario 07:00 AST | condición de fecha **y** 409 por estado |
+| Avisos de operación (§3.16) | F2-10 | Hangfire | diario 08:00 AST | dedupe por (tipo, entidad) |
+| Tipo de cambio | *previsto* | Hangfire | diario 08:00 AST ⚠️ | `UNIQUE (fecha, par)` |
+| Recordatorios | *previsto* | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha) |
+| Alertas de vencimiento de factura | *previsto* (F3) | Hangfire | cada hora | dedupe por (tipo, entidad) |
+| Envíos | *previsto* (F4) | Hangfire (cola) | continuo | por `envio.id` |
+| Outbox | *previsto* (F3) | Hangfire | cada minuto | por evento |
+| Limpieza de sesiones, intentos, temporales | *previsto* | Hangfire | diario | — |
+| Comprobación de actualizaciones | *previsto* | Hangfire | diario | — |
+| Restauración y actualización | F1-12 | Watchdog | bajo demanda | copia previa obligatoria |
+
+⚠️ **Colisión de hora pendiente:** el tipo de cambio está previsto a las **08:00** y F2-10 puso ahí los
+avisos de operación. Hoy no choca porque el trabajo de tipo de cambio todavía no existe (es de F3), pero
+**al escribirlo hay que moverlo** o los dos se pisarán. Lo mismo con los trabajos previstos de F3 y F4:
+las horas de `ProgramacionJobs.Todos` son las que manda, no las de esta tabla.
+
+### 8.0 Reglas que siguen los trabajos de F2
+- **Una transacción por contrato** en la renovación y en el fin: un contrato que falle no deja a medias los
+  demás (`ServicioRenovaciones`, `ServicioFines`).
+- **La colisión se trata, no se propaga**: `23505` del índice único significa "otra ejecución se adelantó",
+  se cuenta como omitida y el trabajo sigue.
+- **Auditoría sin usuario de sesión**: `UsuarioId = null` y `Origen = "job"`, escrita dentro de la
+  transacción antes del commit. `auditoria` tiene `INSERT ... WITH CHECK (true)` con RLS, así que la fila
+  con autor nulo entra.
 
 ### 8.1 Estado (F1-12)
 Implementados y programados: **backup cifrado** (diario, 02:00 AST), **verificación de integridad de auditoría** (diario, 03:00 AST) y **vigilancia de que la copia del día exista** (diario, 04:00 AST). El resto de la tabla espera al dominio que todavía no existe (tipos de cambio, renovaciones, alertas de negocio, recordatorios, envíos, outbox, limpieza, comprobación de actualizaciones).

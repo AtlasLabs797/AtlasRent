@@ -441,17 +441,33 @@ public sealed class ServicioInventario(
         ?? throw new KeyNotFoundException($"No existe el contrato '{contratoId:D}'.");
 
     /// <summary>
-    /// La salida se revisa con el contrato vivo. En borrador el cliente todavía no ha entrado y no
-    /// hay nada que revisar; en finalizado y liquidado ya se fue, y revisar después sería escribir el
-    /// documento histórico a posteriori.
+    /// La salida se revisa con el contrato vigente <b>y también con el ya finalizado</b>.
+    /// <para>
+    /// Antes se exigía <c>Activo</c> o <c>BajaProgramada</c> y en <c>Finalizado</c> se rechazaba, y
+    /// eso era un callejón sin salida: con el fin por fecha efectiva de F2-09 el contrato pasa a
+    /// <c>Finalizado</c> solo, el día de la fecha efectiva, y la revisión se firma ese mismo día. Prohibir
+    /// la firma en <c>Finalizado</c> hacía que un contrato finalizado sin firmar no se pudiera firmar
+    /// nunca y, por lo tanto, tampoco se pudiera liquidar nunca: <c>ExigirRevisionFirmadaAsync</c>
+    /// bloquea la liquidación con inventario, así que el rechazo convertía un olvidedo en un contrato
+    /// que se queda abierto para siempre. La instrucción anterior era mía y estaba mal.
+    /// </para>
+    /// <para>
+    /// Lo que no se puede es firmar antes de que el cliente entre ni después de liquidar: en
+    /// <c>Borrador</c>, <c>PendienteAprobacion</c> y <c>Aprobado</c> el inquilino todavía no ha entrado
+    /// y no hay nada que revisar; en <c>Liquidado</c> el cierre está hecho y firmarlo sería escribir el
+    /// documento histórico a posteriori, con la decisión de fianza ya tomada.
+    /// </para>
     /// </summary>
     private static void ExigirRevisable(Contrato contrato)
     {
-        if (contrato.Estado is not (EstadoContrato.Activo or EstadoContrato.BajaProgramada))
+        if (contrato.Estado is not (EstadoContrato.Activo
+            or EstadoContrato.BajaProgramada
+            or EstadoContrato.Finalizado))
         {
             throw new InvalidOperationException(
                 $"Un contrato en estado {Estado(contrato.Estado)} no tiene salida que revisar. La revisión de "
-                + "inventario se firma con el contrato vigente o con la baja ya programada.");
+                + "inventario se firma con el contrato vigente, con la baja ya programada o con el ya "
+                + "finalizado, que es cuando el cliente se va.");
         }
     }
 

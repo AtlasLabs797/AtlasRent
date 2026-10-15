@@ -165,6 +165,13 @@ public sealed class Contrato : IEntidadTrazada
     /// </summary>
     public RevisionInventario? RevisionInventario { get; set; }
 
+    /// <summary>
+    /// Liquidación (F2-09, §3.5), si ya se hizo. Nula mientras el contrato esté finalizado sin
+    /// liquidar, que es el estado que la alerta persistente mantiene vigilado. Nace cerrada y no se
+    /// vuelve a escribir: un contrato se liquida una vez.
+    /// </summary>
+    public ContratoLiquidacion? Liquidacion { get; set; }
+
     /// <summary>Estado del flujo.</summary>
     public EstadoContrato Estado { get; set; }
 

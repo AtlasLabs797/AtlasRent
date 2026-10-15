@@ -15,6 +15,10 @@ namespace AtlasRent.Tests.Jobs;
 /// es el error clásico: en Hangfire 1.8 (la edición gratuita) un cron es UTC, y las 02:00 UTC en
 /// Santo Domingo son las 22:00 del día anterior.
 /// </para>
+/// <para>
+/// Y el orden importa igual que la hora: cada trabajo de F2 entra detrás del anterior, y el test de
+/// cada uno comprueba que su hora es mayor que la de todos los demás.
+/// </para>
 /// </summary>
 public sealed class ProgramacionJobsTests
 {
@@ -121,7 +125,37 @@ public sealed class ProgramacionJobsTests
                 typeof(TrabajoVigilanciaCopia),
                 typeof(TrabajoAlertaReserva),
                 typeof(TrabajoRenovacionContratos),
+                typeof(TrabajoFinContratos),
+                typeof(TrabajoAvisosOperacion),
             ]);
+    }
+
+    /// <summary>
+    /// F2-10: los avisos de operación van a las 08:00, la primera hora libre detrás de los seis
+    /// trabajos que ya había, y no se solapan con ninguno.
+    /// <para>
+    /// Van al final por el mismo motivo que el fin por fecha efectiva: escriben en <c>alerta</c>
+    /// después de que la copia de las 02:00 y el trabajo de fin ya han pasado. No dependen
+    /// funcionalmente de ellos —si la copia falla, el aviso sigue haciendo falta igual—, pero avisar
+    /// sobre un estado que nadie ha verificado es avisar de algo que puede que ya no sea cierto.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void LosAvisosDeOperacionVanLaUltimaDeLaMadrugada()
+    {
+        var avisos = Trabajo(ProgramacionJobs.RutaAvisosOperacion);
+
+        avisos.HoraLocal.Should().Be(8, "detrás de los seis trabajos que ya había");
+        avisos.Tipo.Should().Be(typeof(TrabajoAvisosOperacion));
+        avisos.Metodo.Should().Be(nameof(TrabajoAvisosOperacion.EjecutarAsync));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(avisos.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 8, 0, 0), "las 08:00 de Santo Domingo son las 12:00 UTC");
+
+        foreach (var otra in ProgramacionJobs.Todos.Where(t => t.Ruta != ProgramacionJobs.RutaAvisosOperacion))
+        {
+            avisos.HoraLocal.Should().BeGreaterThan(otra.HoraLocal, $"el aviso va detrás de {otra.Ruta}");
+        }
     }
 
     /// <summary>
@@ -145,12 +179,15 @@ public sealed class ProgramacionJobsTests
     }
 
     /// <summary>
-    /// F2-06: la renovación va a las 06:00, la última de todas. Es la que mueve la renta que factura
-    /// el día siguiente, así que su fallo se tiene que ver en la mañana siguiente y no en mitad de la
-    /// operación; y no solapa con ningún trabajo anterior de la madrugada.
+    /// <para>
+    /// F2-06: la renovación va a las 06:00. Es la que mueve la renta que factura el día siguiente,
+    /// así que su fallo se tiene que ver en la mañana siguiente y no en mitad de la operación; y no
+    /// solapa con ningún trabajo anterior de la madrugada. Ya no es la última: desde F2-09 el fin por
+    /// fecha efectiva va detrás, a las 07:00, y desde F2-10 los avisos de operación, a las 08:00.
+    /// </para>
     /// </summary>
     [Fact]
-    public void LaRenovacionVaDetrasDeTodosLosDemasTrabajos()
+    public void LaRenovacionVaDetrasDelTrabajoDeMadrugadaAnterior()
     {
         var renovacion = Trabajo(ProgramacionJobs.RutaRenovacionContratos);
 
@@ -161,11 +198,46 @@ public sealed class ProgramacionJobsTests
         TimeZoneInfo.ConvertTime(PrimerDisparo(renovacion.Cron), Zona)
             .Should().Be(new DateTime(2026, 10, 20, 6, 0, 0));
 
-        foreach (var otra in ProgramacionJobs.Todos.Where(t => t.Ruta != ProgramacionJobs.RutaRenovacionContratos))
+        renovacion.HoraLocal.Should().BeGreaterThan(Trabajo(ProgramacionJobs.RutaVigilanciaCopia).HoraLocal);
+        renovacion.HoraLocal.Should().BeGreaterThan(Trabajo(ProgramacionJobs.RutaAlertaReserva).HoraLocal);
+    }
+
+    /// <summary>
+    /// F2-09: el fin por fecha efectiva va a las 07:00, detrás de todo lo demás, y no solo por
+    /// simetría.
+    /// <para>
+    /// Primero, escribe en <c>contrato</c>, en <c>ocupacion_rango</c> y en <c>alerta</c>: si el
+    /// servidor se apagó, la copia de las 02:00 falta y no tiene sentido soltar unidades sobre un
+    /// estado que nadie sabe cuál era. Y segundo, y más caro: liberar una unidad antes de tiempo deja
+    /// entrar a un inquilino que resulta que ya tenía contrato. Eso no es un aviso, es un problema.
+    /// </para>
+    /// <para>
+    /// Ya no es el último: desde F2-10 los avisos de operación van detrás, a las 08:00. El test
+    /// compara al fin con los trabajos anteriores a él, que es lo que este orden significa, y el
+    /// trabajo nuevo comprueba por su cuenta que va detrás del fin.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ElFinVaDetrasDelTrabajoDeMadrugadaAnterior()
+    {
+        var fin = Trabajo(ProgramacionJobs.RutaFinContratos);
+
+        fin.HoraLocal.Should().Be(7);
+        fin.Tipo.Should().Be(typeof(TrabajoFinContratos));
+        fin.Metodo.Should().Be(nameof(TrabajoFinContratos.EjecutarAsync));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(fin.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 7, 0, 0), "las 07:00 de Santo Domingo son las 11:00 UTC");
+
+        var anteriores = ProgramacionJobs.Todos
+            .Where(t => t.Ruta != ProgramacionJobs.RutaFinContratos
+                && t.Ruta != ProgramacionJobs.RutaAvisosOperacion)
+            .ToList();
+
+        anteriores.Should().NotBeEmpty("el fin va detrás de los trabajos de F1-12 y de F2-03/F2-06");
+        foreach (var otra in anteriores)
         {
-            renovacion.HoraLocal.Should().BeGreaterThan(
-                otra.HoraLocal,
-                $"la renovación va detrás de {otra.Ruta}");
+            fin.HoraLocal.Should().BeGreaterThan(otra.HoraLocal, $"el fin va detrás de {otra.Ruta}");
         }
     }
 
@@ -183,6 +255,8 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaVigilanciaCopia,
                 ProgramacionJobs.RutaAlertaReserva,
                 ProgramacionJobs.RutaRenovacionContratos,
+                ProgramacionJobs.RutaFinContratos,
+                ProgramacionJobs.RutaAvisosOperacion,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

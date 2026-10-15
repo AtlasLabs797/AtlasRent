@@ -190,6 +190,9 @@ public sealed class ContratoAprobacionTests(ContenedorBdFixture bd, ApiTestFacto
                 // F2-08: la activación congela el inventario de la unidad al contrato, dentro de la
                 // misma transacción que el cambio de estado.
                 new ServicioInventario(contexto, auditoria, idempotencia, politica, api.Reloj),
+                // F2-09: la liquidación deja una alerta persistente y la resuelve al cerrar. Aquí no se
+                // prueba nada de eso, así que vale el registro nulo.
+                new RegistroAlertasNulo(),
                 politica,
                 api.Reloj),
             contexto);

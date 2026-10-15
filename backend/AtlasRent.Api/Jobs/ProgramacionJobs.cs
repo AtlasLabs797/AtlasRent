@@ -56,6 +56,8 @@ public static class ProgramacionJobs
     public const string RutaVigilanciaCopia = "vigilancia-copia";
     public const string RutaAlertaReserva = "alerta-reserva-7-dias";
     public const string RutaRenovacionContratos = "renovacion-contratos";
+    public const string RutaFinContratos = "fin-contratos";
+    public const string RutaAvisosOperacion = "avisos-operacion";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
@@ -65,6 +67,13 @@ public static class ProgramacionJobs
     /// La vigilancia de la copia sí entra, aunque su nombre sea "alertas", porque no depende de un
     /// dominio pendiente: usa el servicio de copias y la tabla <c>alerta</c>, que ya existen. Lo que
     /// queda para F2-10 es avisar a alguien por correo y enseñarle una bandeja, no detectar el fallo.
+    /// </para>
+    /// <para>
+    /// F2-10 entra aquí solo con los avisos de §3.16 que se pueden construir con las tablas que ya
+    /// existen. Los demás no se inventan: sin la tabla de la que salen, una alerta de "factura
+    /// vencida" no se puede escribir sin inventar también el modelo de la facturación entera, y
+    /// <c>ServicioAvisosOperacion</c> deja un <c>TODO(A#)</c> en el sitio donde iría cada uno
+    /// nombrando la tabla que falta.
     /// </para>
     /// <para>
     /// El aviso de las reservas (F2-03) entra ya por lo mismo: solo necesita la tabla <c>reserva</c>
@@ -116,6 +125,29 @@ public static class ProgramacionJobs
             typeof(TrabajoRenovacionContratos),
             nameof(TrabajoRenovacionContratos.EjecutarAsync),
             6),
+        // F2-09: el fin por fecha efectiva y la alerta persistente de lo que no está liquidado. A las
+        // 07:00, detrás de todos los demás, y por el motivo que puso la renovación en su sitio: este
+        // trabajo escribe en `contrato`, en `ocupacion_rango` y en `alerta`, así que si el servidor se
+        // apagó, la copia de las 02:00 falta y no tiene sentido liberar unidades sobre un estado que
+        // nadie sabe cuál era. Además, liberar una unidad antes de tiempo deja entrar a un inquilino
+        // que luego resulta que ya tenía contrato, y eso no es un aviso: es un problema.
+        new(
+            RutaFinContratos,
+            CronDiarioEnUtc(7),
+            typeof(TrabajoFinContratos),
+            nameof(TrabajoFinContratos.EjecutarAsync),
+            7),
+        // F2-10: los avisos de §3.16 que no dependen de las tablas de F3 (baja programada próxima,
+        // unidad que se libera en 30 días, reserva en conflicto e IP bloqueada). A las 08:00, la
+        // primera hora libre detrás de los seis trabajos que ya había, y por el mismo motivo que el
+        // fin: escribe en `alerta` y solo tiene sentido sobre un estado que la copia de la madrugada y
+        // el trabajo de fin ya han pasado revisando. No depende funcionalmente de ninguno de ellos.
+        new(
+            RutaAvisosOperacion,
+            CronDiarioEnUtc(8),
+            typeof(TrabajoAvisosOperacion),
+            nameof(TrabajoAvisosOperacion.EjecutarAsync),
+            8),
     ];
 
     /// <summary>
