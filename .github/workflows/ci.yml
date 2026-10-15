@@ -1,5 +1,6 @@
 name: CI
 # CI de Atlas Rent. Los jobs backend y frontend se activan solos cuando existen la solución y frontend/package.json (F1-01 / F1-13).
+# La detección se hace con un paso, no con un `if` de nivel de job: así el workflow es válido para GitHub desde el primer commit.
 on:
   pull_request:
   push:
@@ -8,38 +9,63 @@ permissions:
   contents: read
 jobs:
   secretos:
+    name: Secretos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   backend:
+    name: Backend
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('**/*.sln', '**/*.slnx') != '' }}   # se activa en F1-01
     steps:
       - uses: actions/checkout@v4
+      - name: Detectar solución
+        id: detecta
+        shell: bash
+        run: |
+          sol=$(find . -path ./.git -prune -o \( -name '*.sln' -o -name '*.slnx' \) -print -quit)
+          if [ -n "$sol" ]; then echo "existe=true" >> "$GITHUB_OUTPUT"; else echo "existe=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-dotnet@v4
+        if: steps.detecta.outputs.existe == 'true'
         with: { global-json-file: global.json }
       - run: dotnet restore --locked-mode
+        if: steps.detecta.outputs.existe == 'true'
       - run: dotnet build -c Release -warnaserror --no-restore
+        if: steps.detecta.outputs.existe == 'true'
       - run: dotnet test -c Release --no-build   # integración con Testcontainers (Docker disponible en el runner)
+        if: steps.detecta.outputs.existe == 'true'
       - name: Paquetes vulnerables
+        if: steps.detecta.outputs.existe == 'true'
         run: |
           dotnet list package --vulnerable --include-transitive | tee vuln.txt
           ! grep -E "High|Critical" vuln.txt
   frontend:
+    name: Frontend
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('frontend/package.json') != '' }}
     defaults: { run: { working-directory: frontend } }
     steps:
       - uses: actions/checkout@v4
+      - name: Detectar frontend
+        id: detecta
+        shell: bash
+        working-directory: .
+        run: test -f frontend/package.json && echo "existe=true" >> "$GITHUB_OUTPUT" || echo "existe=false" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
+        if: steps.detecta.outputs.existe == 'true'
         with: { node-version: '24.14.1', cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm audit --audit-level=high
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm run lint
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm run typecheck
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm test
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm run build
+        if: steps.detecta.outputs.existe == 'true'
