@@ -5,7 +5,9 @@ namespace AtlasRent.Api.Data;
 /// escribe en <c>app.usuario_id</c> y <c>app.rol</c> al abrir cada transacción, que es lo que
 /// leen las políticas de RLS (docs/DOC_TECNICA.md §4.3).
 /// <para>
-/// En F1-03 todavía no hay autenticación: lo rellena el pipeline de sesión de F1-06.
+/// F1-04 lo rellena el pipeline de autenticación (<c>ValidacionSesionMiddleware</c>) con el usuario
+/// y el rol de la petición. Está registrado con ámbito de petición: si fuera singleton, dos
+/// peticiones simultáneas se pisarían el rol y RLS leería el del otro usuario.
 /// </para>
 /// </summary>
 public sealed class ContextoSesion

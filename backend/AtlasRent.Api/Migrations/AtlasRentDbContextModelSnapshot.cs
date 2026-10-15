@@ -94,6 +94,171 @@ namespace AtlasRent.Api.Migrations
 
                     b.ToTable("auditoria", (string)null);
                 });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CaducaAbsoluta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("caduca_absoluta");
+
+                    b.Property<DateTimeOffset>("EmitidaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("emitida_at");
+
+                    b.Property<Guid>("FamiliaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("familia_id");
+
+                    b.Property<string>("Ip")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ip");
+
+                    b.Property<string>("MotivoRevocacion")
+                        .HasColumnType("text")
+                        .HasColumnName("motivo_revocacion");
+
+                    b.Property<DateTimeOffset?>("RevocadaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revocada_at");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset>("UltimaActividad")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultima_actividad");
+
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("text")
+                        .HasColumnName("user_agent");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sesion");
+
+                    b.HasIndex("FamiliaId")
+                        .HasDatabaseName("ix_sesion_familia_id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_sesion_token_hash");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("ix_sesion_usuario_id");
+
+                    b.ToTable("sesion", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Usuario", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("DebeCambiarPassword")
+                        .HasColumnType("boolean")
+                        .HasColumnName("debe_cambiar_password");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text")
+                        .HasColumnName("email");
+
+                    b.Property<bool>("MfaActivado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("mfa_activado");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("NombreAcceso")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nombre_acceso");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("password_hash");
+
+                    b.Property<DateTimeOffset?>("UltimoAcceso")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultimo_acceso");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usuario");
+
+                    b.HasIndex("NombreAcceso")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usuario_nombre_acceso");
+
+                    b.ToTable("usuario", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_sesion_usuario_usuario_id");
+
+                    b.Navigation("Usuario");
+                });
 #pragma warning restore 612, 618
         }
     }

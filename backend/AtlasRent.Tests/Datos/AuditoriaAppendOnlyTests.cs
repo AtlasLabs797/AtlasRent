@@ -15,7 +15,8 @@ namespace AtlasRent.Tests.Datos;
 /// Todos los tests hablan con el contenedor como <c>rent_app</c>, que es como habla la API.
 /// </para>
 /// </summary>
-public sealed class AuditoriaAppendOnlyTests(ContenedorBdFixture bd) : IClassFixture<ContenedorBdFixture>
+[Collection(nameof(ColeccionBd))]
+public sealed class AuditoriaAppendOnlyTests(ContenedorBdFixture bd)
 {
     private const string Ip = "203.0.113.24";
 

@@ -15,6 +15,10 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 {
     public DbSet<Auditoria> Auditoria => Set<Auditoria>();
 
+    public DbSet<Usuario> Usuario => Set<Usuario>();
+
+    public DbSet<Sesion> Sesion => Set<Sesion>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -45,6 +49,38 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.Property(e => e.CreatedAt).HasColumnName("created_at");
             entidad.HasIndex(e => e.Secuencia).IsUnique();
             entidad.HasIndex(e => e.CreatedAt);
+        });
+
+        // F1-04: identidad y sesiones.
+        modelBuilder.Entity<Usuario>(entidad =>
+        {
+            entidad.ToTable("usuario");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.NombreAcceso).IsRequired();
+            entidad.Property(e => e.PasswordHash).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // Único también entre usuarios borrados lógicamente: reutilizar el nombre de acceso de
+            // alguien dado de baja haría más fácil la suplantación.
+            entidad.HasIndex(e => e.NombreAcceso).IsUnique();
+        });
+
+        modelBuilder.Entity<Sesion>(entidad =>
+        {
+            entidad.ToTable("sesion");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.TokenHash).IsRequired();
+            entidad.Property(e => e.Ip).IsRequired();
+            entidad.Property(e => e.EmitidaAt).IsRequired();
+            entidad.Property(e => e.UltimaActividad).IsRequired();
+            entidad.Property(e => e.CaducaAbsoluta).IsRequired();
+            // La búsqueda del token de refresco es por hash y tiene que ser única.
+            entidad.HasIndex(e => e.TokenHash).IsUnique();
+            // Revocar una familia entera y listar las sesiones de un usuario.
+            entidad.HasIndex(e => e.FamiliaId);
+            entidad.HasIndex(e => e.UsuarioId);
+            entidad.HasOne(e => e.Usuario)
+                .WithMany()
+                .HasForeignKey(e => e.UsuarioId);
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

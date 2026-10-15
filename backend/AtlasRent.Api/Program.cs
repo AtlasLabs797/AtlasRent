@@ -1,7 +1,11 @@
 using AtlasRent.Api.Data;
+using AtlasRent.Api.Middleware;
 using AtlasRent.Api.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using Serilog;
 using Serilog.Events;
@@ -26,8 +30,10 @@ builder.Services.AddSingleton(new NpgsqlDataSourceBuilder(cadenaConexion).Build(
 
 // F1-03: contexto, convenciones de columna (snake_case, numeric, timestamptz, uuid) y el interceptor
 // que fija app.usuario_id / app.rol al abrir cada transacción para las políticas de RLS.
-builder.Services.AddSingleton<ContextoSesion>();
-builder.Services.AddSingleton<ContextoTransaccionInterceptor>();
+// F1-04: el contexto de sesión pasa a ser de ámbito de petición, porque lo rellena el pipeline de
+// autenticación con el usuario y el rol de esa petición y no con los de otra.
+builder.Services.AddScoped<ContextoSesion>();
+builder.Services.AddScoped<ContextoTransaccionInterceptor>();
 builder.Services.AddDbContext<AtlasRentDbContext>((servicios, opciones) =>
     opciones
         .UseNpgsql(cadenaConexion)
@@ -37,15 +43,85 @@ builder.Services.AddDbContext<AtlasRentDbContext>((servicios, opciones) =>
 builder.Services.AddScoped<AuditoriaService>();
 builder.Services.AddScoped<IntegridadAuditoria>();
 
+// F1-04: autenticación y sesiones. La clave del JWT se lee de Seguridad__JwtClave y no tiene valor
+// por defecto: si falta, la aplicación falla al arrancar en lugar de firmar con una clave inventada.
+var opcionesSeguridad = OpcionesSeguridad.Desde(builder.Configuration);
+builder.Services.AddSingleton(opcionesSeguridad);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<ServicioContrasenas>();
+builder.Services.AddScoped<ServicioSesiones>();
+builder.Services.AddScoped<ServicioAutenticacion>();
+builder.Services.AddScoped<EmisorTokens>();
+// HaveIBeenPwned por k-anonimato: HttpClient sin paquete adicional (docs/DOC_TECNICA.md §7).
+builder.Services.AddHttpClient<ServicioComplicidad>();
+
+// El JWT de acceso viaja en la cookie HttpOnly atlas-rent-at, no en la cabecera Authorization.
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, opciones =>
+    {
+        opciones.MapInboundClaims = false;
+        opciones.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = OpcionesSeguridad.Emisor,
+            ValidateAudience = true,
+            ValidAudience = OpcionesSeguridad.Audiencia,
+            ValidateLifetime = true,
+            // Sin margen: un token de 15 minutos queexpires en 15 minutos.
+            ClockSkew = TimeSpan.Zero,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(opcionesSeguridad.ClaveJwt),
+            RoleClaimType = "rol",
+            NameClaimType = "sub",
+        };
+        opciones.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = contexto =>
+            {
+                var token = contexto.Request.Cookies[NombresCookies.Acceso];
+                if (!string.IsNullOrEmpty(token))
+                {
+                    contexto.Token = token;
+                }
+
+                return Task.CompletedTask;
+            },
+        };
+    });
+
+builder.Services.AddControllers();
+
+// Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
+builder.Services.Configure<ApiBehaviorOptions>(opciones =>
+{
+    opciones.InvalidModelStateResponseFactory = contexto =>
+    {
+        var problema = new ValidationProblemDetails(contexto.ModelState)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Datos no válidos",
+        };
+        problema.Extensions["codigoReferencia"] = Problemas.Validacion;
+
+        return new BadRequestObjectResult(problema) { ContentTypes = { "application/problem+json" } };
+    };
+});
+
 builder.Services.AddHealthChecks()
     .AddCheck<VivoCheck>("vivo", tags: ["vivo"])
     .AddCheck<ConexionBdCheck>("bd");
 
-builder.Services.AddControllers();
-
 var app = builder.Build();
 
 app.UseSerilogRequestLogging();
+
+// Orden del pipeline de docs/DOC_TECNICA.md §7 (la parte de F1-04; el rate limiting de IP de
+// F1-05 y la autorización de F1-07 todavía no están): autenticación → sesión en BD → CSRF.
+app.UseAuthentication();
+app.UseMiddleware<ValidacionSesionMiddleware>();
+app.UseMiddleware<CsrfMiddleware>();
 
 // /health/live no toca dependencias: sirve para saber que el proceso está vivo.
 // /health incluye la comprobación de PostgreSQL.

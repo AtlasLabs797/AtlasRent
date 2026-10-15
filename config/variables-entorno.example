@@ -15,6 +15,7 @@ Kestrel__Certificates__Default__Path=<ruta .pfx>
 Kestrel__Certificates__Default__Password=<secreto>
 
 Seguridad__JwtClave=<secreto 64 bytes base64>
+Seguridad__BcryptRondas=12
 Seguridad__CifradoClave=<secreto 32 bytes base64>
 Seguridad__CifradoVersion=1
 Seguridad__HmacDocumentoClave=<secreto 32 bytes base64>

@@ -11,6 +11,9 @@
     <!-- Fijado aquí para que la API y los tests resuelvan la misma versión de EF Core -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Serilog.AspNetCore" />
+    <!-- F1-04: validación del JWT de acceso (viene en cookie) y hash de contraseñas -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="BCrypt.Net-Next" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

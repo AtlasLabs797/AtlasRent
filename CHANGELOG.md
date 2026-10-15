@@ -16,6 +16,28 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 05:20] FEAT · F1-04 · Autenticación: JWT en cookie, refresco rotatorio, CSRF y sesiones revocables
+- Qué:
+  - Migración `20261015014910_AutenticacionYUsuarios` con `usuario` y `sesion`, permisos explícitos para `rent_app` y el aviso heredado de F1-03 aplicado (quitar a mano la columna `xmin` que EF genera).
+  - Endpoints `/api/v1/auth`: `login`, `refresh`, `logout`, `yo`.
+  - Cookies `atlas-rent-at` (acceso, HttpOnly, 15 min), `atlas-rent-rt` (refresco, HttpOnly, ruta `/api/v1/auth`, 12 h) y `atlas-rent-csrf` (double-submit, sin HttpOnly, rotada en cada refresco), validada con la cabecera `X-CSRF-Token`.
+  - En BD solo el SHA-256 del token de refresco. La rotación marca la fila anterior como revocada con motivo `rotacion`, lo que permite detectar reutilización y revocar la familia completa.
+  - `ServicioContrasenas` (BCrypt, 12 rondas por defecto) y `ServicioComplicidad` (HaveIBeenPwned por k-anonymity, solo prefijo de 5 caracteres del SHA-1, comparación de sufijos en tiempo constante, sin paquete adicional).
+  - `ValidacionSesionMiddleware` valida la sesión en BD en cada petición con caché de 30 s; inactividad 30 min y máximo absoluto 12 h.
+  - 18 tests nuevos en `backend/AtlasRent.Tests/Auth/`.
+- Por qué: F1-04 del plan. La app está expuesta a internet, así que hace falta revocación inmediata y sesiones con caducidad real.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **83/83 en verde**; `dotnet list package --vulnerable --include-transitive` → sin vulnerabilidades. Revisado en el código que en BD se persiste solo el hash del token de refresco y que la rotación hereda familia, inactividad y caducidad absoluta.
+- NO verificado: la integración con un despliegue real (`dotnet ef database update` sobre la BD de desarrollo), porque no se leen credenciales de `.env.dev`; la cobertura equivalente la da el contenedor de tests. La comprobación de HaveIBeenPwned no se invoca desde ningún endpoint: "cambiar contraseña" y "activar cuenta" son de F1-07.
+- Migraciones: sí. `Migrations/20261015014910_AutenticacionYUsuarios`.
+- Riesgo / pendiente:
+  - **Decisión tuya pendiente:** si HaveIBeenPwned no responde, hoy la operación continúa y solo se registra un aviso (`TODO A#` en `ServicioComplicidad`). Hay que decidir si debe bloquear el alta o el cambio de contraseña.
+  - BCrypt.Net-Next subido de 4.2.0 a **4.2.1** (última estable; 5.0.0 es prerelease). DOC_TECNICA §2 actualizado.
+  - `ContextoSesion` pasó de singleton a **scoped**: con singleton, el rol de una petición pisaría al de otra y RLS leería el valor equivocado.
+  - El snapshot de EF sigue incluyendo `xmin` en `usuario` y `sesion`; la siguiente migración generada tendrá que quitar a mano esa columna otra vez.
+  - `SecurityStamp` se añadió como token de versión para invalidar sesiones al cambiar la contraseña: si algún flujo de F1-07 lo necesita, debe respetarlo.
+  - Rate limiting y bloqueo de IP siguen sin implementar (F1-05), así que el login aún no está protegido contra fuerza bruta.
+- Commit/PR: `feat(auth): JWT en cookie, refresco rotatorio, CSRF y validacion de sesion en BD`.
+
 ## [15/10/2026 04:50] FEAT · F1-03 · Base de datos: migración inicial, auditoría append-only firmada y RLS
 - Qué:
   - `AtlasRentDbContext` (`Data/`) con `UseSnakeCaseNamingConvention`, convenciones globales (dinero `numeric(18,2)`, tipo de cambio `numeric(18,6)`, fechas de negocio `date`, marcas de tiempo en UTC `timestamptz`, PK `uuid`) y token de concurrencia optimista sobre la columna de sistema `xmin`.
