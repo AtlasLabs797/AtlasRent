@@ -176,6 +176,10 @@ builder.Services.AddScoped<ServicioCotizaciones>();
 // F2-03: reservas. Es scoped por lo mismo que la disponibilidad: abre su propia transacción y
 // escribe auditoría e idempotencia.
 builder.Services.AddScoped<ServicioReservas>();
+// F2-05: contratos. Scoped y con los servicios de reservas y disponibilidad dentro, porque al
+// activar un contrato escribe el candado de la unidad y deja en conflicto las reservas que se
+// solapan, todo en la misma transacción.
+builder.Services.AddScoped<ServicioContratos>();
 builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
 
 // F1-12: copia de seguridad cifrada de la base de datos y de los documentos, con rotación. El

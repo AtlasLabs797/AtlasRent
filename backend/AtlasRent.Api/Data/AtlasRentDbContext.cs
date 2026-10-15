@@ -98,6 +98,14 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<ReservaDia> ReservaDia => Set<ReservaDia>();
 
+    // F2-05: contratos, su historial de versiones y las solicitudes de aprobación
+    // (docs/ESPECIFICACION.md §3.5). Los tres son de solo añadir: nada de esto se borra.
+    public DbSet<Contrato> Contrato => Set<Contrato>();
+
+    public DbSet<ContratoVersion> ContratoVersion => Set<ContratoVersion>();
+
+    public DbSet<SolicitudAprobacion> SolicitudAprobacion => Set<SolicitudAprobacion>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -674,6 +682,88 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
                 .WithMany(r => r.Dias)
                 .HasForeignKey(e => e.ReservaId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // F2-05: contratos (docs/ESPECIFICACION.md §3.5). Todos los obligatorios de la
+        // especificación son NOT NULL aquí, y no por decoración: el servicio los rechaza con 409
+        // antes de escribir, y la base los exige igual para que ningún camino futuro (importación,
+        // trabajo, inserción directa) pueda guardar un contrato a medio escribir.
+        modelBuilder.Entity<Contrato>(entidad =>
+        {
+            entidad.ToTable("contrato");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Observaciones).HasMaxLength(1000);
+            entidad.Property(e => e.EstadoActualComentario).HasMaxLength(1000);
+            // La plantilla es el identificador de la plantilla, no una clave ajena: la tabla de
+            // plantillas es de F2-07 y hasta entonces esta columna guarda lo que le pase el front.
+            entidad.Property(e => e.PlantillaContratoId).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.PlantillaContratoCongeladaId).HasMaxLength(120);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // La renta y la fianza son dinero: numeric(18,2) y half-up (AGENTS.md §6).
+            entidad.Property(e => e.Renta).HasColumnType("numeric(18,2)");
+            entidad.Property(e => e.Fianza).HasColumnType("numeric(18,2)");
+            // La lista filtra por estado y ordena por fecha de creación; la pantalla de la unidad
+            // busca por unidad y estado. Los índices de cliente y unidad también los usa el trabajo
+            // de la alerta persistente (§3.5) y la ocupación, que busca el contrato vivo de la
+            // unidad.
+            entidad.HasIndex(e => new { e.Estado, e.CreatedAt });
+            entidad.HasIndex(e => e.ClienteId);
+            entidad.HasIndex(e => new { e.UnidadId, e.Estado });
+            entidad.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Unidad)
+                .WithMany()
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Facturadora)
+                .WithMany()
+                .HasForeignKey(e => e.FacturadoraId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // El historial de versiones es de solo añadir (docs/ESPECIFICACION.md §3.5). (contrato_id,
+        // numero) es único a propósito: el número se calcula leyendo el máximo dentro de la
+        // transacción del cambio, y el índice es la red para que dos cambios simultáneos no se
+        // numeren igual.
+        modelBuilder.Entity<ContratoVersion>(entidad =>
+        {
+            entidad.ToTable("contrato_version");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Cambio).HasMaxLength(500).IsRequired();
+            entidad.Property(e => e.Alcance).HasMaxLength(200).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.RentaAnterior).HasColumnType("numeric(18,2)");
+            entidad.Property(e => e.RentaNueva).HasColumnType("numeric(18,2)");
+            entidad.HasIndex(e => new { e.ContratoId, e.Numero }).IsUnique();
+            entidad.HasOne(e => e.Contrato)
+                .WithMany(c => c.Versiones)
+                .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Una sola solicitud viva por contrato: el índice único parcial sobre resultado = pendiente
+        // (1) es lo que hace imposible que dos envíos simultáneos dejen dos contratos esperando
+        // aprobación. Cuando la primera caduca, la segunda cabe; mientras siga pendiente, no.
+        modelBuilder.Entity<SolicitudAprobacion>(entidad =>
+        {
+            entidad.ToTable("solicitud_aprobacion");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.HuellaContenido).HasMaxLength(64).IsRequired();
+            entidad.Property(e => e.Comentario).HasMaxLength(1000);
+            entidad.Property(e => e.MotivoCaducidad).HasMaxLength(200);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // Único y parcial: una sola solicitud viva por contrato. El índice es lo que hace
+            // imposible que dos envíos simultáneos dejen dos contratos esperando aprobación; cuando
+            // la primera caduca, la siguiente cabe porque ya no cumple el predicado.
+            entidad.HasIndex(e => e.ContratoId).IsUnique().HasFilter("(resultado = 1)");
+            // La bandeja de aprobación de F2-10 lista por resultado y ordena por fecha de envío.
+            entidad.HasIndex(e => new { e.Resultado, e.SolicitadoAt });
+            entidad.HasOne(e => e.Contrato)
+                .WithMany(c => c.Solicitudes)
+                .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // RLS sobre documento_inmueble (docs/SEGURIDAD.md A.4 y DOC_TECNICA.md §4.3): solo gerente y

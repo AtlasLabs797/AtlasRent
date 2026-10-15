@@ -23,12 +23,14 @@ public enum EstadoReserva
     Cancelada = 4,
 
     /// <summary>
-    /// Choca con un contrato aprobado: el cliente tiene que buscar otra unidad. La pone el servicio
-    /// de contratos al aprobar el contrato (F2-05), llamando a
+    /// Choca con un contrato vigente: el cliente tiene que buscar otra unidad. La pone el servicio
+    /// de contratos al activar el contrato (F2-05), llamando a
     /// <c>ServicioReservas.MarcarEnConflictoAsync</c>.
     /// <para>
-    /// Sigue bloqueando la unidad hasta que el gerente decida, que es lo que dice la especificación:
-    /// el conflicto se ve, no se pierde el sitio.
+    /// Este método no suelta el candado. Mientras el contrato no esté activo, la reserva en conflicto
+    /// sigue bloqueando, que es lo que dice la especificación: el conflicto se ve, no se pierde el
+    /// sitio. Cuando el contrato se activa, el candado pasa al contrato y el de la reserva se apaga,
+    /// porque dos candados vivos que se solapan no pueden existir.
     /// </para>
     /// </summary>
     EnConflicto = 5,

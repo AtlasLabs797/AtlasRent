@@ -258,10 +258,15 @@ public sealed class ServicioReservas(
     /// buscando sitio para el cliente.
     /// </para>
     /// <para>
-    /// Esto lo llama el servicio de contratos (F2-05) al aprobar un contrato. Si lo llama desde su
+    /// Esto lo llama el servicio de contratos (F2-05) al activar un contrato. Si lo llama desde su
     /// propia transacción, el cambio y el contrato salen en un solo commit; si no, abre la suya.
     /// No lleva <c>Idempotency-Key</c> porque no es una petición de API sino un efecto de otra
     /// mutación.
+    /// <para>
+    /// Que aquí no se suelte el candado no significa que la unidad pueda quedarse bloqueada por una
+    /// reserva que ya lo perdió: en cuanto hay un contrato vigente encima, quien suelta es el
+    /// servicio de contratos, porque el candado pasa a ser suyo. Hasta entonces, lo de arriba.
+    /// </para>
     /// </para>
     /// </summary>
     public async Task MarcarEnConflictoAsync(

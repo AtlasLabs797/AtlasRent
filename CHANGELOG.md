@@ -16,6 +16,33 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 16:05] FEAT · F2-05 · Contratos con aprobación que caduca si el contrato cambia, y versionado (orquestador)
+- Qué:
+  - `Data/Contrato.cs`, `Data/ContratoVersion.cs`, `Data/SolicitudAprobacion.cs`, `Dominio/EstadoContrato.cs`, `Dominio/ReglaRenovacion.cs`, migración `20261015133339_Contratos`, `Services/ServicioContratos.cs`, `Services/HuellaContrato.cs`, `Controllers/ContratosController.cs` (13 endpoints), `DTOs/ContratoDtos.cs`.
+  - Flujo completo de §3.5: `Borrador → PendienteAprobacion → Aprobado → Activo → BajaProgramada → Finalizado → Liquidado`, más `BajaProgramada → Activo` para anular una baja.
+  - 30 tests nuevos en `backend/AtlasRent.Tests/Contratos/`.
+  - Dos ficheros de F2-03 tocados **solo en comentarios** (`ServicioReservas`, `EstadoReserva`): decían "al aprobar un contrato" cuando el conflicto se pone al activar. Sin cambio de lógica ni de tests de F2-03.
+- Por qué: es la tarea donde el employee's no puede hacer algo y hay que demostrarlo en serio. Los dos criterios de aceptación del plan:
+  - **"Empleado no puede aprobar ni por API"** → `ElEmpleadoNoPuedeAprobarPorApi` (403 exacto) y `ElEmpleadoTampocoAprobarPorServicio`, que llama al servicio directamente saltándose HTTP. El permiso `ContratoEstado` se comprueba en `ServicioContratos.ExigirEstadoAsync` contra el techo de `MatrizPermisos` en los **siete** métodos de estado y en el cambio en activo, no solo en aprobar. Con `[Accion]` solo, un trabajo o un endpoint mal cableado lo esquivarían.
+  - **"Solicitud que caduca si cambia"** → `LaSolicitudCaducaSiElContratoCambia`: editar caduca la solicitud, aprobar da 409 y hay que reenviar.
+- Decisiones del orquestador, todas comentadas en el código:
+  - **La huella no incluye el estado ni las marcas del cambio.** SHA-256 sobre una cadena canónica de 14 líneas (`contrato.v1`, cultura invariante, importes a dos decimales fijos). Si incluyera el estado, guardar "pendiente" cambiaría la huella recién calculada y el contrato se caducaría solo al enviarlo. Test: `AprobarRecienEnviadoFunciona`.
+  - **La caducidad se comprueba por dos vías**: al editar se marca la solicitud `Caducada` con su motivo (no se borra, la bandeja de F2-10 lo necesita) y al aprobar se re-compara la huella, por si el cambio llega por fuera del servicio.
+  - **El candado de la unidad va al activar, no al aprobar.** §3.5 congela el inventario al activar, y bloquear en "aprobado" dejaría la unidad ocupada desde un estado del que todavía se puede rechazar, obligando a limpiar candados a mano.
+  - **Editar un contrato pendiente está permitido y caduca la solicitud.** Si no existiera la edición, tapar el hueco prohibiéndola obligaría a rechazar el contrato entero para corregir un dato.
+  - **En activo no se cambian cliente, unidad, facturadora, inicio ni duración inicial.** Cambiar de titular o de unidad es otro contrato.
+  - **Sin caducidad temporal por plazo**: no hay número de días en la especificación y no se inventa. Hay `Resultado` + `MotivoCaducidad`.
+- **Desviación del implementador sobre mi instrucción, correcta y aceptada por el orquestador:** le pedí que leer contratos usara `Acciones.ContratoBorrador`; lo cambió a `Acciones.ClienteVer`. La matriz §2 fila 2 es literalmente "Ver clientes, unidades, reservas y contratos", y `contrato.borrador` es permiso de escritura: usarlo para listar dejaría al gerente sin contratos si se recortara ese permiso.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; suite completa **386/386** (356 previos + 30 nuevos, 4m24s). Leídos a mano: la comprobación de permiso en los siete métodos de estado, la huella y su exclusión del estado, la migración con `xmin` fuera y `GRANT` sin `DELETE`, y el diff de los dos ficheros de F2-03 (solo comentarios).
+- NO verificado: `dotnet ef database update` contra la BD de desarrollo del 5433 (necesita credenciales de `.env.dev`, que por AGENTS.md §6 no se leen). **El `GRANT` a `rent_app` no está probado en runtime**: ningún test baja a ese rol, y por eso mismo la línea existe; sin ella la migración aplica bien y la aplicación falla con "permission denied". Tampoco se ha probado la numeración de versiones con **dos cambios de renta simultáneos** (el índice único es la red, pero no hay test de concurrencia), ni que un cambio de renta no toque lo ya facturado (las facturas son de F3-01).
+- Migraciones: sí (`20261015133339_Contratos`).
+- Riesgo / pendiente:
+  - **Ojo con la reserva en conflicto**: al activar el contrato, la reserva en conflicto **suelta su candado** porque dos candados vivos solapados no pueden existir (lo impone la base de F2-01) y porque con contrato vigente quien manda sobre la unidad es el contrato. `MarcarEnConflictoAsync` de F2-03 sigue sin soltar por sí misma; los comentarios de los dos ficheros lo dejan escrito.
+  - `LiquidarAsync` solo cambia el estado: la liquidación de verdad (inventario de salida, fianza y saldos) la firma F2-09, y necesita las tablas de fianza e inventario que aún no existen.
+  - Quedan `TODO(A#)` con la firma de cada trabajo siguiente: F2-06 en `FechaFinVigente`, F2-07 en `PlantillaContratoId`, F2-08 en `ActivarAsync` (junto al candado), F2-09 en `LiquidarAsync`, F2-10 en `SolicitudAprobacion` y en `ContratoDtos`, que ya expone `Solicitudes` por contrato.
+
+---
+
 ## [15/10/2026 15:25] FEAT · F2-03 · Reservas mensual y corta con bloqueo en la misma transacción y alerta a 7 días (orquestador)
 - Qué:
   - `Data/Reserva.cs`, `Data/ReservaDia.cs`, `Dominio/TipoReserva.cs`, `Dominio/EstadoReserva.cs`, migración `20261015124746_Reservas`, `Services/ServicioReservas.cs`, `Controllers/ReservasController.cs`, `DTOs/ReservaDtos.cs`.
