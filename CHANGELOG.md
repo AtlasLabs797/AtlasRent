@@ -16,6 +16,27 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 07:15] FEAT · F1-07 · Roles, permisos, denegar por omisión y auditoría de denegaciones
+- Qué:
+  - Migración `20261015035827_RolesYPermisos`: tablas `rol`, `permiso_rol`, `usuario_rol` y `usuario_permiso`, con la matriz de `docs/ESPECIFICACION.md` §2 **sembrada como datos** (no como `switch` en el código) y conversión de `usuario.es_admin` al modelo de roles. Sin columnas `xmin` y con `GRANT` explícito a `rent_app`.
+  - `backend/AtlasRent.Api/Authorization/`: `Acciones` (los identificadores de las 19 acciones), `MatrizPermisos`, `AccionAttribute`, `IPolicyService`, `PolicyService`, `PermisoDenegadoException` y `FiltroAccionGlobal`.
+  - **Denegar por omisión**: un endpoint de controlador sin `[Accion]` se rechaza.
+  - La denegación escribe auditoría firmada con resultado `denegado` (usuario, acción, recurso e IP).
+  - Endpoints de gestión de usuarios y de **desbloqueo de IP y de cuenta** (solo admin), que era lo que faltaba desde F1-05.
+  - `ServicioMfa` y `ServicioEmergencia` pasan a usar `IPolicyService`; `es_admin` desaparece. `app.rol` de RLS lleva ahora el rol real del usuario.
+  - 83 tests nuevos en `backend/AtlasRent.Tests/Permisos/`.
+- Por qué: F1-07 del plan. Es la bisagra: desbloquea F1-08, F1-09 y F1-10, que dejan de decidir por su cuenta a quién dejan pasar.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **187/187 en verde**. La matriz se comprueba **contra la base de datos real**, no contra una constante en memoria: 19 acciones × 3 roles, verificando si cada permiso está **dentro del techo** del rol. Revisé en el código que `cotizacion.enviar` para empleado aparece como `true` en el techo y que hay un test aparte que confirma que llega desactivada, que es lo que pide D15.
+- NO verificado: la migración de datos sobre una base **con usuarios reales**: en el contenedor se aplica sobre una base vacía, así que el `INSERT … SELECT` de `es_admin` corrió con cero filas. En la base de desarrollo sí transformaría datos reales. Tampoco verificado con proxy delante (`X-Forwarded-For` sigue pendiente).
+- Migraciones: sí. `Migrations/20261015035827_RolesYPermisos`.
+- Riesgo / pendiente:
+  - **Identificadores de acción** (los que usarán F1-08 a F1-10): `configuracion.editar`, `cliente.ver`, `cliente.editar`, `inmueble.documento`, `contrato.borrador`, `contrato.estado`, `factura.ver`, `factura.borrador`, `factura.emitir`, `factura.anular`, `cobro.registrar`, `fianza.mover`, `documento.enviar`, `cotizacion.enviar`, `mensajeria.masivo`, `plantilla.editar`, `informe.ver`, `auditoria.ver`, `ip.desbloquear`, `cuenta.desbloquear`. Técnicas, sembradas aparte: `sesion.ver`, `sesion.cerrar`, `mfa.obligatorio`, `seguridad.acceso_emergencia`.
+  - La fila 6 de la matriz (aprobar/activar/activo/baja/liquidar) se mapea a **un** identificador porque la especificación les da el mismo alcance; la 19 se parte en **dos** (`ip.desbloquear` y `cuenta.desbloquear`).
+  - **El filtro global es un filtro MVC**: cubre endpoints de controlador. Los endpoints mínimos de `/health` quedan fuera, como ya estaban.
+  - `TODO(A#)`: el interruptor de configuración «MFA para gerente» de D4 no está; hoy "obligatorio" es un permiso por rol, y activarlo para el gerente sería una migración.
+  - **Decisión de producto pendiente:** no se bloquea que un admin se quite a sí mismo `configuracion.editar`. Conviene confirmar si debe poder quedarse sin ese permiso o si hay que impedirlo.
+- Commit/PR: `feat(autorizacion): roles, techo de permisos, denegar por omision y auditoria de denegaciones`.
+
 ## [15/10/2026 06:40] FEAT · F1-06 · MFA con TOTP, códigos de recuperación y acceso de emergencia
 - Qué:
   - Migración `20261015031813_MfaYAccesoEmergencia`: `mfa_desafio`, `codigo_recuperacion` y `acceso_emergencia`, con `GRANT` explícito a `rent_app`.

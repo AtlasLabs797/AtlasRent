@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Services;
 using AtlasRent.Tests.Infra;
 using AwesomeAssertions;
@@ -32,7 +33,7 @@ public sealed class DesafioMfaTests(ContenedorBdFixture bd, ApiTestFactoryBloque
     {
         var ct = TestContext.Current.CancellationToken;
         api.Reloj.Avanzar(TimeSpan.FromMinutes(20));
-        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var cliente = api.CrearCliente();
 
         var mfa = await AyudaMfa.ActivarCompletoAsync(cliente, admin, Contrasena, api.Reloj, ct);
@@ -61,7 +62,7 @@ public sealed class DesafioMfaTests(ContenedorBdFixture bd, ApiTestFactoryBloque
     {
         var ct = TestContext.Current.CancellationToken;
         api.Reloj.Avanzar(TimeSpan.FromMinutes(20));
-        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var cliente = api.CrearCliente();
 
         var mfa = await AyudaMfa.ActivarCompletoAsync(cliente, admin, Contrasena, api.Reloj, ct);

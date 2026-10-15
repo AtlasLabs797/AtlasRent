@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Middleware;
 using AtlasRent.Api.Services;
@@ -138,7 +139,13 @@ builder.Services
         };
     });
 
-builder.Services.AddControllers();
+// F1-07: control de acceso. La política (rol + permisos por usuario) es de ámbito de petición,
+// como el contexto de sesión que lee; el filtro global es la única puerta de entrada y deniega lo
+// que no declare [Accion].
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IPolicyService, PolicyService>();
+builder.Services.AddScoped<ServicioUsuarios>();
+builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>

@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 
 namespace AtlasRent.Api.Services;
@@ -17,6 +18,7 @@ public sealed class ServicioEmisionSesion(
     ServicioSesiones sesiones,
     EmisorTokens emisor,
     ServicioBloqueos bloqueos,
+    IPolicyService politica,
     AuditoriaService auditoria,
     TimeProvider reloj)
 {
@@ -35,7 +37,8 @@ public sealed class ServicioEmisionSesion(
     {
         var ahora = reloj.GetUtcNow();
         var sesionId = Guid.NewGuid();
-        var tokens = emisor.Emitir(usuario.Id, sesionId, Roles.Valor);
+        var rol = await politica.RolDeAsync(usuario.Id, ct) ?? string.Empty;
+        var tokens = emisor.Emitir(usuario.Id, sesionId, rol);
 
         usuario.UltimoAcceso = ahora;
         await contexto.SaveChangesAsync(ct);
@@ -74,6 +77,7 @@ public sealed class ServicioEmisionSesion(
             usuario.NombreAcceso,
             usuario.Nombre,
             usuario.Email,
+            rol,
             usuario.DebeCambiarPassword,
             usuario.MfaActivado,
             usuario.MfaPendiente,

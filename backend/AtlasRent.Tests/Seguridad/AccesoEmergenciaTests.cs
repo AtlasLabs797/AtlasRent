@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Services;
 using AtlasRent.Tests.Infra;
@@ -28,8 +29,8 @@ public sealed class AccesoEmergenciaTests(ContenedorBdFixture bd, ApiTestFactory
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var solicitante = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
-        var bloqueado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var solicitante = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        var bloqueado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var sesion = await SesionDeAdminAsync(solicitante, ct);
 
         var solicitud = await sesion.PostAsync(
@@ -63,9 +64,9 @@ public sealed class AccesoEmergenciaTests(ContenedorBdFixture bd, ApiTestFactory
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var solicitante = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
-        var segundo = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
-        var bloqueado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var solicitante = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        var segundo = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        var bloqueado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
 
         using var sesionA = await SesionDeAdminAsync(solicitante, ct);
         using var sesionB = await SesionDeAdminAsync(segundo, ct);
@@ -131,14 +132,17 @@ public sealed class AccesoEmergenciaTests(ContenedorBdFixture bd, ApiTestFactory
         reutilizado.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    /// <summary>Un usuario que no es administrador no puede ni pedir ni aprobar el acceso.</summary>
+    /// <summary>
+    /// Un usuario que no es administrador no puede ni pedir ni aprobar el acceso. Lo corta el filtro
+    /// global de permisos (F1-07), antes de que el servicio llegue a mirar quién lo pidió.
+    /// </summary>
     [Fact]
     public async Task UnUsuarioQueNoEsAdministradorNoPuedePedirElAccesoDeEmergencia()
     {
         var ct = TestContext.Current.CancellationToken;
 
         var empleado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, ct: ct);
-        var bloqueado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var bloqueado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var cliente = api.CrearCliente();
         var login = await AyudaAuth.LoginAsync(cliente, empleado.NombreAcceso, Contrasena, ct);
         login.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -150,7 +154,7 @@ public sealed class AccesoEmergenciaTests(ContenedorBdFixture bd, ApiTestFactory
             ct);
 
         respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain(Problemas.EmergenciaDenegada);
+        (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain(Problemas.PermisoDenegado);
     }
 
     /// <summary>

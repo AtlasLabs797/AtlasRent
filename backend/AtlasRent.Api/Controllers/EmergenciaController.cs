@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.DTOs;
 using AtlasRent.Api.Middleware;
@@ -28,6 +29,7 @@ public sealed class EmergenciaController(
 {
     /// <summary>Primer paso: un administrador pide el acceso para otro que está bloqueado.</summary>
     [HttpPost("solicitar")]
+    [Accion(Acciones.SeguridadAccesoEmergencia)]
     public async Task<IActionResult> Solicitar([FromBody] EmergenciaSolicitarPeticion peticion)
     {
         var solicitante = await UsuarioDeLaPeticionAsync();
@@ -62,6 +64,7 @@ public sealed class EmergenciaController(
     /// la segunda aprobación; el que lo pidió no puede aprobarlo.
     /// </summary>
     [HttpPost("aprobar")]
+    [Accion(Acciones.SeguridadAccesoEmergencia)]
     public async Task<IActionResult> Aprobar([FromBody] EmergenciaAprobarPeticion peticion)
     {
         var aprobador = await UsuarioDeLaPeticionAsync();

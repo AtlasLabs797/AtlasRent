@@ -155,12 +155,3 @@ public static class MotivosRevocacion
     /// <summary>Se detectó reutilización de un token ya rotado y se cayó la familia completa.</summary>
     public const string ReutilizacionDetectada = "reutilizacion_detectada";
 }
-
-/// <summary>
-/// Rol con el que se crea la sesión mientras F1-07 no exista (docs/DOC_TECNICA.md §4.3).
-/// Es un valor por defecto único: cuando llegue la tabla <c>rol</c>, se leerá de ahí.
-/// </summary>
-public static class Roles
-{
-    public const string Valor = "empleado";
-}

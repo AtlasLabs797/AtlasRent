@@ -175,6 +175,15 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - `IpBanMiddleware` es **fail-open** si la base de datos no responde, para que `/health/live` sigaindicando que el proceso vive. Toda ruta real necesita la base de datos.
   - Los intentos fallidos se registran en `intento_login` con su IP; la auditoría firmada solo recoge los hechos relevantes: `auth.bloqueo_cuenta`, `seg.bloqueo_ip`, `seg.desbloqueo_ip` y `auth.ip_nueva`.
   - **Sin endpoint de desbloqueo de IP todavía**: la operación de negocio (`ServicioBloqueos.DesbloquearIpAsync`) existe y está probada, pero exponerla sin `IPPolicyService` (F1-07) dejaría un endpoint de administración abierto.
+- **Implementado en F1-07** (autorización):
+  - `backend/AtlasRent.Api/Authorization/`: `Acciones`, `MatrizPermisos`, `AccionAttribute`, `IPolicyService`, `PolicyService`, `PermisoDenegadoException`, `FiltroAccionGlobal`.
+  - La matriz de `docs/ESPECIFICACION.md` §2 vive **sembrada como datos** en `permiso_rol`, no como un `switch` en el código. Se prueba contra la base de datos real (19 acciones × 3 roles) comprobando si cada permiso está **dentro del techo** del rol.
+  - `usuario_permiso` solo guarda lo que difiere del techo: activado dentro del techo, o desactivado aunque el rol lo traiga. Nunca por encima (D17).
+  - **Denegar por omisión**: un endpoint de controlador sin `[Accion]` se rechaza. Es un filtro MVC, así que los endpoints mínimos de `/health` quedan fuera.
+  - Denegación → **403** con código de referencia y auditoría firmada con resultado `denegado` (usuario, acción, recurso e IP).
+  - Identificadores de acción: `configuracion.editar`, `cliente.ver`, `cliente.editar`, `inmueble.documento`, `contrato.borrador`, `contrato.estado`, `factura.ver`, `factura.borrador`, `factura.emitir`, `factura.anular`, `cobro.registrar`, `fianza.mover`, `documento.enviar`, `cotizacion.enviar`, `mensajeria.masivo`, `plantilla.editar`, `informe.ver`, `auditoria.ver`, `ip.desbloquear`, `cuenta.desbloquear`. Técnicas: `sesion.ver`, `sesion.cerrar`, `mfa.obligatorio`, `seguridad.acceso_emergencia`.
+  - `usuario.es_admin` (provisional de F1-06) desaparece: la migración lo vuelca a `usuario_rol`. `ServicioMfa.NecesitaMfa` y `ServicioEmergencia.EsAdmin` usan ya `IPolicyService`.
+  - `app.rol` de RLS lleva el rol real del usuario, no un valor por defecto.
 - **Logs:** Serilog con redacción de propiedades sensibles.
 - **Implementado en F1-06** (MFA):
   - Activación en dos pasos: se devuelve la URI `otpauth://` y el MFA **solo** queda activo tras confirmar un código válido. El QR lo dibuja el frontend; el backend no genera imágenes.

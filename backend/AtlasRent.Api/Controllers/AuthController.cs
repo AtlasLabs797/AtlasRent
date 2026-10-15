@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.DTOs;
 using AtlasRent.Api.Middleware;
@@ -105,6 +106,7 @@ public sealed class AuthController(
     }
 
     [HttpPost("logout")]
+    [Accion(Acciones.SesionCerrar)]
     public async Task<IActionResult> Logout()
     {
         await autenticacion.CerrarAsync(SesionIdDeLaPeticion(), HttpContext.RequestAborted);
@@ -118,6 +120,7 @@ public sealed class AuthController(
 
     /// <summary>Identidad del usuario de la petición.</summary>
     [HttpGet("yo")]
+    [Accion(Acciones.SesionVer)]
     public async Task<IActionResult> Yo()
     {
         var usuario = await autenticacion.IdentidadAsync(contextoSesion.UsuarioId!.Value, HttpContext.RequestAborted);
@@ -134,7 +137,7 @@ public sealed class AuthController(
         var emergencia = await autenticacion.AccesoEmergenciaDeLaSesionAsync(
             SesionIdDeLaPeticion(), HttpContext.RequestAborted);
 
-        return Ok(IdentidadRespuesta.Desde(usuario, emergencia));
+        return Ok(IdentidadRespuesta.Desde(usuario, emergencia, contextoSesion.Rol));
     }
 
     private Guid SesionIdDeLaPeticion() => Guid.Parse(User.FindFirst("sid")!.Value);

@@ -19,8 +19,8 @@ public sealed class LoginPeticion
 }
 
 /// <summary>
-/// Identidad del usuario de la petición. <see cref="Rol"/> va ya porque F1-07 lo añadirá; aquí es
-/// el valor por defecto (<see cref="Roles.Valor"/>).
+/// Identidad del usuario de la petición. <see cref="Rol"/> viene de <c>usuario_rol</c>, que es lo
+/// mismo que lee <c>app.rol</c> en las políticas de RLS.
 /// </summary>
 public sealed record IdentidadRespuesta(
     Guid Id,
@@ -34,12 +34,12 @@ public sealed record IdentidadRespuesta(
     bool AccesoEmergencia,
     DateTimeOffset? UltimoAcceso)
 {
-    public static IdentidadRespuesta Desde(Usuario usuario, bool accesoEmergencia) => new(
+    public static IdentidadRespuesta Desde(Usuario usuario, bool accesoEmergencia, string rol) => new(
         usuario.Id,
         usuario.NombreAcceso,
         usuario.Nombre,
         usuario.Email,
-        Roles.Valor,
+        rol,
         usuario.DebeCambiarPassword,
         usuario.MfaActivado,
         usuario.MfaPendiente,
@@ -52,7 +52,7 @@ public sealed record IdentidadRespuesta(
         sesion.NombreAcceso,
         sesion.Nombre,
         sesion.Email,
-        Roles.Valor,
+        sesion.Rol,
         sesion.DebeCambiarPassword,
         sesion.MfaActivado,
         sesion.MfaPendiente,

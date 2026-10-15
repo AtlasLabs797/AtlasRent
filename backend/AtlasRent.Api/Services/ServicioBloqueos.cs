@@ -110,10 +110,11 @@ public sealed class ServicioBloqueos(
     }
 
     /// <summary>
-    /// Quita el bloqueo de una IP. Solo lo llama el administrador: es la única vía para levantar un
-    /// bloqueo indefinido, que por definición no caduca solo.
+    /// Quita el bloqueo de una IP. Solo lo llama quien tenga <c>ip.desbloquear</c> (el
+    /// administrador): es la única vía para levantar un bloqueo indefinido, que por definición no
+    /// caduca solo. Devuelve si había algo que desbloquear.
     /// </summary>
-    public async Task DesbloquearIpAsync(string ip, Guid usuarioAdmin, CancellationToken ct)
+    public async Task<bool> DesbloquearIpAsync(string ip, Guid usuarioAdmin, CancellationToken ct)
     {
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
@@ -121,7 +122,7 @@ public sealed class ServicioBloqueos(
         if (fila is null)
         {
             await transaccion.RollbackAsync(ct);
-            return;
+            return false;
         }
 
         contexto.BloqueoIp.Remove(fila);
@@ -137,6 +138,43 @@ public sealed class ServicioBloqueos(
         }, ct);
 
         await transaccion.CommitAsync(ct);
+        return true;
+    }
+
+    /// <summary>
+    /// Levanta el bloqueo de una cuenta. También solo lo llama quien tenga
+    /// <c>cuenta.desbloquear</c>: el desbloqueo automático por tiempo lo hace el propio
+    /// <see cref="CuentaBloqueada"/> al comprobar que la fecha ya pasó.
+    /// </summary>
+    public async Task<bool> DesbloquearCuentaAsync(Guid usuarioId, Guid usuarioAdmin, string ip, CancellationToken ct)
+    {
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        var usuario = await contexto.Usuario.SingleOrDefaultAsync(u => u.Id == usuarioId, ct);
+        if (usuario is null)
+        {
+            await transaccion.RollbackAsync(ct);
+            return false;
+        }
+
+        usuario.BloqueadaHasta = null;
+        usuario.UpdatedAt = reloj.GetUtcNow();
+        usuario.UpdatedBy = usuarioAdmin;
+        await contexto.SaveChangesAsync(ct);
+
+        await auditoria.RegistrarAsync(new RegistroAuditoria
+        {
+            Accion = "seg.desbloqueo_cuenta",
+            Ip = ip,
+            UsuarioId = usuarioAdmin,
+            Entidad = "usuario",
+            EntidadId = usuarioId.ToString("D"),
+            Resultado = "permitido",
+            Origen = "api",
+        }, ct);
+
+        await transaccion.CommitAsync(ct);
+        return true;
     }
 
     private async Task AnotarIntentoAsync(

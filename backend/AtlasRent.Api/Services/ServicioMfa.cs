@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using OtpNet;
@@ -42,6 +43,7 @@ public sealed class ServicioMfa(
     AtlasRentDbContext contexto,
     ServicioEmisionSesion emision,
     ServicioBloqueos bloqueos,
+    IPolicyService politica,
     AuditoriaService auditoria,
     TimeProvider reloj)
 {
@@ -76,15 +78,18 @@ public sealed class ServicioMfa(
     private const string AlfabetoCodigo = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
     /// <summary>
-    /// Si a este usuario le toca segundo factor. Para el administrador es obligatorio aunque no lo
-    /// tenga configurado (docs/ESPECIFICACION.md D4): sin MFA no hay sesión, solo el token
-    /// provisional para configurarlo.
-    /// <para>
-    /// TODO(A#) F1-07: con la tabla de roles, esta decisión pasa a preguntar por el permiso
-    /// "usar MFA" en lugar del indicador de administrador.
-    /// </para>
+    /// Si a este usuario le toca segundo factor. Para quien tiene el permiso <c>mfa.obligatorio</c>
+    /// es obligatorio aunque no lo tenga configurado (docs/ESPECIFICACION.md D4): sin MFA no hay
+    /// sesión, solo el token provisional para configurarlo. Hoy ese permiso es del administrador y
+    /// solo del administrador (D4).
     /// </summary>
-    public static bool NecesitaMfa(Usuario usuario) => usuario.MfaActivado || usuario.EsAdmin;
+    public async Task<bool> NecesitaMfaAsync(Usuario usuario, CancellationToken ct) =>
+        usuario.MfaActivado
+        || await politica.PuedeAsync(Acciones.MfaObligatorio, usuario.Id, ct);
+
+    // TODO(A#) F1-09: el interruptor de configuración "MFA para gerente" que pide D4. Con la
+    // matriz como datos, activarlo es insertar el permiso en permiso_rol para el rol gerente; falta
+    // decidir si ese interruptor debe poder activarlo sin migración, que es lo que sugiere D4.
 
     /// <summary>
     /// Emite el token provisional de un login con la contraseña correcta. Es opaco, dura

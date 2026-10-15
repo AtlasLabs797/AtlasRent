@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +22,7 @@ public sealed class ValidacionSesionMiddleware(RequestDelegate siguiente)
     public async Task InvokeAsync(
         HttpContext http,
         ServicioSesiones sesiones,
+        IPolicyService politica,
         ContextoSesion contextoSesion)
     {
         var endpoint = http.GetEndpoint();
@@ -47,9 +49,10 @@ public sealed class ValidacionSesionMiddleware(RequestDelegate siguiente)
 
         // El 'sub' ya viene firmado por el manejador del JWT, así que la base de datos lo ve en
         // app.usuario_id desde la primera escritura de la petición (la de última actividad).
-        contextoSesion.UsuarioId = principal.FindFirst("sub") is { Value: var sub } && Guid.TryParse(sub, out var usuarioId)
+        var principalUserId = Guid.TryParse(principal.FindFirst("sub")?.Value, out var usuarioId)
             ? usuarioId
-            : null;
+            : (Guid?)null;
+        contextoSesion.UsuarioId = principalUserId;
 
         var resultado = await sesiones.ValidarAsync(sesionId, http.RequestAborted);
         if (!resultado.Valida)
@@ -63,9 +66,11 @@ public sealed class ValidacionSesionMiddleware(RequestDelegate siguiente)
             return;
         }
 
-        // TODO(A#) F1-07: el rol pasa a leerse de la tabla "rol" del usuario en lugar del valor por
-        // defecto que trae el claim.
-        contextoSesion.Rol = Roles.Valor;
+        // El rol sale de la tabla del usuario, no del claim: si el rol cambia, el cambio vale desde la
+        // siguiente petición, sin esperar a que caduque el token. Es lo que lee RLS en app.rol.
+        contextoSesion.Rol = principalUserId is { } idConRol
+            ? await politica.RolDeAsync(idConRol, http.RequestAborted) ?? string.Empty
+            : string.Empty;
 
         await siguiente(http);
     }

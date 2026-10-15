@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,6 +21,7 @@ public sealed class ServicioEmergencia(
     AtlasRentDbContext contexto,
     ServicioEmisionSesion emision,
     ServicioMfa mfa,
+    IPolicyService politica,
     AuditoriaService auditoria,
     TimeProvider reloj)
 {
@@ -43,7 +45,7 @@ public sealed class ServicioEmergencia(
         string ip,
         CancellationToken ct)
     {
-        if (!EsAdmin(solicitante))
+        if (!await PuedeGestionarAsync(solicitante, ct))
         {
             await AuditarDenegadoAsync("solicitud_no_admin", solicitante.Id, usuarioObjetivoId, motivo, ip, ct);
             return null;
@@ -58,7 +60,7 @@ public sealed class ServicioEmergencia(
         var objetivo = await contexto.Usuario
             .SingleOrDefaultAsync(u => u.Id == usuarioObjetivoId && u.Activo && u.DeletedAt == null, ct);
 
-        if (objetivo is null || !objetivo.EsAdmin)
+        if (objetivo is null || !await PuedeGestionarAsync(objetivo, ct))
         {
             await AuditarDenegadoAsync("objetivo_no_admin", solicitante.Id, usuarioObjetivoId, motivo, ip, ct);
             return null;
@@ -106,7 +108,7 @@ public sealed class ServicioEmergencia(
         string ip,
         CancellationToken ct)
     {
-        if (!EsAdmin(aprobador))
+        if (!await PuedeGestionarAsync(aprobador, ct))
         {
             await AuditarDenegadoAsync("aprobacion_no_admin", aprobador.Id, solicitudId, string.Empty, ip, ct);
             return null;
@@ -226,13 +228,11 @@ public sealed class ServicioEmergencia(
     }
 
     /// <summary>
-    /// Quién puede aprobar un acceso de emergencia.
-    /// <para>
-    /// TODO(A#) F1-07: sustituir por la comprobación de permisos de <c>IPolicyService</c>. Está
-    /// aislada aquí a propósito para que ese cambio no toque los controladores ni el resto.
-    /// </para>
+    /// Quién puede pedir y aprobar un acceso de emergencia: quien tenga el permiso
+    /// <c>seguridad.acceso_emergencia</c>, que hoy solo tiene el administrador.
     /// </summary>
-    public static bool EsAdmin(Usuario usuario) => usuario.EsAdmin;
+    private Task<bool> PuedeGestionarAsync(Usuario usuario, CancellationToken ct) =>
+        politica.PuedeAsync(Acciones.SeguridadAccesoEmergencia, usuario.Id, ct);
 
     /// <summary>
     /// Una denegación también se audita, en su propia transacción: si se escribiera dentro de la

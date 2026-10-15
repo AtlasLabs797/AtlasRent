@@ -45,6 +45,21 @@ public static class Problemas
     /// <summary>El acceso de emergencia no se puede pedir ni aprobar con quien lo pide.</summary>
     public const string EmergenciaDenegada = "SEG-006";
 
+    /// <summary>
+    /// El usuario no tiene el permiso que exige el endpoint, o el endpoint no declara ninguno.
+    /// Todo intento denegado queda también en la auditoría firmada.
+    /// </summary>
+    public const string PermisoDenegado = "SEG-007";
+
+    /// <summary>
+    /// Se ha intentado activar a un usuario un permiso que su rol no trae: los permisos por usuario
+    /// recortan el techo del rol, nunca lo amplían (D17).
+    /// </summary>
+    public const string PermisoFueraDeTecho = "SEG-008";
+
+    /// <summary>El usuario, el rol o el recurso al que se refiere la operación no existe.</summary>
+    public const string RecursoNoEncontrado = "SEG-009";
+
     /// <summary>Error de validación de los datos de entrada.</summary>
     public const string Validacion = "API-001";
 

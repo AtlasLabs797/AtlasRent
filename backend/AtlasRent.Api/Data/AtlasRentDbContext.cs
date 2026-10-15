@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -28,6 +29,14 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
     public DbSet<CodigoRecuperacion> CodigoRecuperacion => Set<CodigoRecuperacion>();
 
     public DbSet<AccesoEmergencia> AccesoEmergencia => Set<AccesoEmergencia>();
+
+    public DbSet<Rol> Rol => Set<Rol>();
+
+    public DbSet<PermisoRol> PermisoRol => Set<PermisoRol>();
+
+    public DbSet<UsuarioRol> UsuarioRol => Set<UsuarioRol>();
+
+    public DbSet<UsuarioPermiso> UsuarioPermiso => Set<UsuarioPermiso>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
@@ -166,6 +175,65 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne<Usuario>().WithMany().HasForeignKey(e => e.UsuarioId);
             entidad.HasOne<Usuario>().WithMany().HasForeignKey(e => e.SolicitanteId);
             entidad.HasOne<Usuario>().WithMany().HasForeignKey(e => e.AprobadoPorId);
+        });
+
+        // F1-07: roles y permisos. La matriz de docs/ESPECIFICACION.md §2 va como datos sembrados,
+        // no como un switch en el código: cambiarla es una migración con registro.
+        modelBuilder.Entity<Rol>(entidad =>
+        {
+            entidad.ToTable("rol");
+            entidad.HasKey(e => e.Clave);
+            entidad.Property(e => e.Clave).HasMaxLength(32);
+            entidad.Property(e => e.Nombre).IsRequired();
+            entidad.HasData(
+                MatrizPermisos.PorRol.Keys.Select(clave => new Rol
+                {
+                    Clave = clave,
+                    Nombre = MatrizPermisos.Nombres[clave],
+                }));
+        });
+
+        modelBuilder.Entity<PermisoRol>(entidad =>
+        {
+            entidad.ToTable("permiso_rol");
+            entidad.HasKey(e => new { e.RolClave, e.Accion });
+            entidad.Property(e => e.Accion).HasMaxLength(64);
+            entidad.HasOne<Rol>()
+                .WithMany()
+                .HasForeignKey(e => e.RolClave);
+            entidad.HasData(MatrizPermisos.PorRol
+                .SelectMany(techo => techo.Value.Select(accion => new PermisoRol
+                {
+                    RolClave = techo.Key,
+                    Accion = accion,
+                })));
+        });
+
+        modelBuilder.Entity<UsuarioRol>(entidad =>
+        {
+            entidad.ToTable("usuario_rol");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // Mismo tipo que rol.clave: es su clave ajena.
+            entidad.Property(e => e.RolClave).HasMaxLength(32);
+            // Un usuario tiene un solo rol: es lo que lee el pipeline y lo que pasa a app.rol.
+            entidad.HasIndex(e => e.UsuarioId).IsUnique();
+            entidad.HasOne(e => e.Usuario)
+                .WithOne(e => e.UsuarioRol)
+                .HasForeignKey<UsuarioRol>(e => e.UsuarioId);
+        });
+
+        modelBuilder.Entity<UsuarioPermiso>(entidad =>
+        {
+            entidad.ToTable("usuario_permiso");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Accion).HasMaxLength(64);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // Solo se guarda lo que difiere del techo, y una sola vez por acción.
+            entidad.HasIndex(e => new { e.UsuarioId, e.Accion }).IsUnique();
+            entidad.HasOne<Usuario>()
+                .WithMany()
+                .HasForeignKey(e => e.UsuarioId);
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

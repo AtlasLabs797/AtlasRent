@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,7 @@ public sealed record ResultadoSesion(
     string NombreAcceso,
     string Nombre,
     string? Email,
+    string Rol,
     bool DebeCambiarPassword,
     bool MfaActivado,
     bool MfaPendiente,
@@ -39,7 +41,9 @@ public sealed class ServicioAutenticacion(
     ServicioContrasenas contrasenas,
     ServicioSesiones sesiones,
     ServicioEmisionSesion emision,
+    ServicioMfa mfa,
     EmisorTokens emisor,
+    IPolicyService politica,
     TimeProvider reloj,
     AuditoriaService auditoria,
     ServicioBloqueos bloqueos)
@@ -95,7 +99,7 @@ public sealed class ServicioAutenticacion(
         // Segundo factor obligatorio: la contraseña no abre sesión por sí sola. Ni siquiera se
         // anota el intento como acertado: el login todavía no está completo, y anotarlo como
         // acierto reiniciaría el contador de fallos y dejaría probar códigos TOTP sin límite.
-        if (ServicioMfa.NecesitaMfa(candidato))
+        if (await mfa.NecesitaMfaAsync(candidato, ct))
         {
             return new ResultadoAutenticacion(candidato, Sesion: null, RequiereMfa: true);
         }
@@ -168,7 +172,8 @@ public sealed class ServicioAutenticacion(
         }
 
         var sesionId = Guid.NewGuid();
-        var tokens = emisor.Emitir(usuario.Id, sesionId, Roles.Valor);
+        var rol = await politica.RolDeAsync(usuario.Id, ct) ?? string.Empty;
+        var tokens = emisor.Emitir(usuario.Id, sesionId, rol);
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
@@ -211,6 +216,7 @@ public sealed class ServicioAutenticacion(
             usuario.NombreAcceso,
             usuario.Nombre,
             usuario.Email,
+            rol,
             usuario.DebeCambiarPassword,
             usuario.MfaActivado,
             usuario.MfaPendiente,

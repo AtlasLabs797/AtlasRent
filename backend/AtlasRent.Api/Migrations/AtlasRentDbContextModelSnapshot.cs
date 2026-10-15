@@ -351,6 +351,322 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("mfa_desafio", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.PermisoRol", b =>
+                {
+                    b.Property<string>("RolClave")
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("rol_clave");
+
+                    b.Property<string>("Accion")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("accion");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("RolClave", "Accion")
+                        .HasName("pk_permiso_rol");
+
+                    b.ToTable("permiso_rol", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "configuracion.editar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "cliente.ver"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "cliente.editar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "inmueble.documento"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "contrato.borrador"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "contrato.estado"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "factura.ver"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "factura.borrador"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "factura.emitir"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "factura.anular"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "cobro.registrar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "fianza.mover"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "documento.enviar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "cotizacion.enviar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "mensajeria.masivo"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "plantilla.editar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "informe.ver"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "auditoria.ver"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "ip.desbloquear"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "cuenta.desbloquear"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "sesion.ver"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "sesion.cerrar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "mfa.obligatorio"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "seguridad.acceso_emergencia"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "cliente.ver"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "cliente.editar"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "inmueble.documento"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "contrato.borrador"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "contrato.estado"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "factura.ver"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "factura.borrador"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "factura.emitir"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "factura.anular"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "cobro.registrar"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "fianza.mover"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "documento.enviar"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "cotizacion.enviar"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "mensajeria.masivo"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "informe.ver"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "auditoria.ver"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "sesion.ver"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "sesion.cerrar"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "cliente.ver"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "cliente.editar"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "contrato.borrador"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "factura.ver"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "factura.borrador"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "cotizacion.enviar"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "sesion.ver"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "sesion.cerrar"
+                        });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Rol", b =>
+                {
+                    b.Property<string>("Clave")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("clave");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nombre");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Clave")
+                        .HasName("pk_rol");
+
+                    b.ToTable("rol", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Clave = "admin",
+                            Nombre = "Administrador"
+                        },
+                        new
+                        {
+                            Clave = "gerente",
+                            Nombre = "Gerente"
+                        },
+                        new
+                        {
+                            Clave = "empleado",
+                            Nombre = "Empleado"
+                        });
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -465,10 +781,6 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("email");
 
-                    b.Property<bool>("EsAdmin")
-                        .HasColumnType("boolean")
-                        .HasColumnName("es_admin");
-
                     b.Property<bool>("MfaActivado")
                         .HasColumnType("boolean")
                         .HasColumnName("mfa_activado");
@@ -518,6 +830,108 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_usuario_nombre_acceso");
 
                     b.ToTable("usuario", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.UsuarioPermiso", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Accion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("accion");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("Permitido")
+                        .HasColumnType("boolean")
+                        .HasColumnName("permitido");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usuario_permiso");
+
+                    b.HasIndex("UsuarioId", "Accion")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usuario_permiso_usuario_id_accion");
+
+                    b.ToTable("usuario_permiso", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.UsuarioRol", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("RolClave")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("rol_clave");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usuario_rol");
+
+                    b.HasIndex("UsuarioId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usuario_rol_usuario_id");
+
+                    b.ToTable("usuario_rol", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.AccesoEmergencia", b =>
@@ -576,6 +990,16 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.PermisoRol", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Rol", null)
+                        .WithMany()
+                        .HasForeignKey("RolClave")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_permiso_rol_rol_rol_clave");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
@@ -586,6 +1010,33 @@ namespace AtlasRent.Api.Migrations
                         .HasConstraintName("fk_sesion_usuario_usuario_id");
 
                     b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.UsuarioPermiso", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_usuario_permiso_usuario_usuario_id");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.UsuarioRol", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
+                        .WithOne("UsuarioRol")
+                        .HasForeignKey("AtlasRent.Api.Data.UsuarioRol", "UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_usuario_rol_usuario_usuario_id");
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Usuario", b =>
+                {
+                    b.Navigation("UsuarioRol");
                 });
 #pragma warning restore 612, 618
         }

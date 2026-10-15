@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -25,14 +26,15 @@ public sealed record CookieFijada(string Nombre, string Valor, string Cabecera)
 public static class AyudaAuth
 {
     /// <summary>
-    /// Crea un usuario en el contenedor. El nombre de acceso lleva un sufijo único porque el
-    /// índice de <c>usuario.nombre_acceso</c> es único y todas las pruebas comparten base de datos.
+    /// Crea un usuario en el contenedor con su rol. El nombre de acceso lleva un sufijo único
+    /// porque el índice de <c>usuario.nombre_acceso</c> es único y todas las pruebas comparten base
+    /// de datos.
     /// </summary>
     public static async Task<Usuario> CrearUsuarioAsync(
         ContenedorBdFixture bd,
         string contrasena,
         bool activo = true,
-        bool esAdmin = false,
+        string rol = Roles.Empleado,
         CancellationToken ct = default)
     {
         var nombreAcceso = $"usuario{Guid.NewGuid():N}"[..20];
@@ -49,11 +51,17 @@ public static class AyudaAuth
                 RondasBcrypt = OpcionesSeguridad.RondasBcryptMinimas,
             }).Hashar(contrasena),
             Activo = activo,
-            EsAdmin = esAdmin,
             CreatedAt = DateTimeOffset.UtcNow,
         };
 
         contexto.Usuario.Add(usuario);
+        contexto.UsuarioRol.Add(new UsuarioRol
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuario.Id,
+            RolClave = rol,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
         await contexto.SaveChangesAsync(ct);
 
         return usuario;

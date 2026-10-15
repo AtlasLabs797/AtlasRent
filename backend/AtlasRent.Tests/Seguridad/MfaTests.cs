@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Services;
 using AtlasRent.Tests.Infra;
@@ -31,7 +32,7 @@ public sealed class MfaTests(ContenedorBdFixture bd, ApiTestFactory api)
     public async Task AdminSinMfaNoPuedeHacerLoginNormal()
     {
         var ct = TestContext.Current.CancellationToken;
-        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var cliente = api.CrearCliente();
 
         var login = await AyudaAuth.LoginAsync(cliente, admin.NombreAcceso, Contrasena, ct);
@@ -60,7 +61,7 @@ public sealed class MfaTests(ContenedorBdFixture bd, ApiTestFactory api)
     public async Task ElTokenProvisionalNoEsUnaSesionYNoDejaAbrirNadaMasQueElSegundoFactor()
     {
         var ct = TestContext.Current.CancellationToken;
-        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var cliente = api.CrearCliente();
 
         var login = await AyudaAuth.LoginAsync(cliente, admin.NombreAcceso, Contrasena, ct);
@@ -82,7 +83,7 @@ public sealed class MfaTests(ContenedorBdFixture bd, ApiTestFactory api)
     public async Task ElMfaSoloQuedaActivoTrasConfirmarUnCodigoValido()
     {
         var ct = TestContext.Current.CancellationToken;
-        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var cliente = api.CrearCliente();
         await AyudaAuth.LoginAsync(cliente, admin.NombreAcceso, Contrasena, ct);
 
@@ -166,7 +167,7 @@ public sealed class MfaTests(ContenedorBdFixture bd, ApiTestFactory api)
     public async Task ContrasenaYTotpCorrectosAbrenSesion()
     {
         var ct = TestContext.Current.CancellationToken;
-        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var cliente = api.CrearCliente();
 
         var mfa = await AyudaMfa.ActivarCompletoAsync(cliente, admin, Contrasena, api.Reloj, ct);
@@ -188,7 +189,7 @@ public sealed class MfaTests(ContenedorBdFixture bd, ApiTestFactory api)
     public async Task ElTokenProvisionalCaducaYEsDeUnSoloUso()
     {
         var ct = TestContext.Current.CancellationToken;
-        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, esAdmin: true, ct: ct);
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
 
         // El alta necesita cookies (el token provisional viaja entre login, activar y confirmar).
         using var activador = api.CrearCliente();

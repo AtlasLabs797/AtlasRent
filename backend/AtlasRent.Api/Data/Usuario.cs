@@ -50,16 +50,8 @@ public sealed class Usuario
     /// </summary>
     public bool MfaPendiente => MfaSecreto is not null && !MfaActivado;
 
-    /// <summary>
-    /// Administrador: para ellos el MFA es obligatorio y sin él no hay sesión (D4).
-    /// <para>
-    /// TODO(A#) F1-07: este indicador desaparece cuando exista la tabla de roles y permisos. Las
-    /// dos únicas decisiones que dependen de él están en ServicioMfa (si toca segundo factor) y en
-    /// ServicioEmergencia (quién puede aprobar); hasta entonces no hay forma de crear un
-    /// administrador por la API (esa tarea llega con F1-07).
-    /// </para>
-    /// </summary>
-    public bool EsAdmin { get; set; }
+    /// <summary>Rol del usuario: el techo de sus permisos. Es su navegación, no su permiso.</summary>
+    public UsuarioRol? UsuarioRol { get; set; }
 
     /// <summary>
     /// Hasta cuándo está bloqueada la cuenta por intentos fallidos (docs/SEGURIDAD.md A.2).
