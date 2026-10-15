@@ -129,6 +129,12 @@ public static class NombresCookies
     /// tiene que poder leerlo para mandarlo en <c>X-CSRF-Token</c>.
     /// </summary>
     public const string Csrf = "atlas-rent-csrf";
+
+    /// <summary>
+    /// Token provisional del segundo factor (F1-06). HttpOnly y limitado a las rutas de
+    /// autenticación: con él no se abre sesión, solo se pasa el segundo factor.
+    /// </summary>
+    public const string DesafioMfa = "atlas-rent-mfa";
 }
 
 /// <summary>Motivos de revocación de una sesión (columna <c>motivo_revocacion</c>).</summary>

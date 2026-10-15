@@ -137,14 +137,23 @@
 - Solución prevista: cifrado de campo + índice ciego, permisos por rol, documentos fuera del webroot y servidos por API, sin datos personales en logs, backups cifrados.
 
 ### SEC-003 · Revocación de sesión con JWT
-- Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: CORREGIDO en especificación; implementar en F1-04
+- Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: CORREGIDO e IMPLEMENTADO en F1-04
 - Descripción: un JWT sigue siendo válido hasta caducar; un usuario desactivado seguiría entrando.
 - Solución: la sesión se valida contra la tabla `sesion` en cada petición (o sello de seguridad), además de la firma.
+- Verificado en F1-04: la validación ocurre en `ValidacionSesionMiddleware` con caché de 30 s; hay test de que un usuario desactivado recibe 401 en la siguiente petición.
+
+### SEC-005 · Secreto TOTP en claro
+- Fecha detectado: 15/10/2026 · Gravedad: **Alta** · Estado: **ABIERTO (cierre en F1-09)** · Componente: autenticación
+- Descripción: `usuario.mfa_secreto` guarda el secreto TOTP en claro. Es imprescindible para validar el código, pero mientras no se cifre, cualquiera que lea la tabla `usuario` —una SQL injection, una copia de la base, un backup sin cifrar— puede **generar códigos TOTP válidos de cualquier usuario con MFA**, que es exactamente lo que el segundo factor debe impedir.
+- Por qué está abierto: el cifrado AES-256-GCM con clave fuera de la base (`Seguridad__CifradoClave`) se implementa en F1-09, para los documentos de identidad. El secreto TOTP shares ese mismo requisito y no podía resolverse antes sin adelantar el cifrador.
+- **Mitigación inmediata: no desplegar MFA en producción antes de que F1-09 cierre este punto.** Mientras tanto el sistema no sale de desarrollo.
+- Solución: cifrar `mfa_secreto` en reposo con AES-256-GCM y la misma clave versionada (`Seguridad__CifradoVersion`) que los documentos de identidad.
 
 ### SEC-002 · Auditoría borrable
-- Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: CORREGIDO en especificación; implementar en F1-03 (`db/scripts/03_auditoria_append_only.sql`)
+- Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: CORREGIDO e IMPLEMENTADO en F1-03
 - Descripción: con solo "INSERT/SELECT" el propietario aún podía TRUNCATE o cambiar permisos.
 - Solución: propietario distinto del rol de la app, REVOKE, trigger de rechazo, hash encadenado.
+- Verificado en F1-03: UPDATE, DELETE y TRUNCATE con `rent_app` fallan, el trigger rechaza incluso con permisos y la verificación detecta una fila alterada por debajo.
 
 ### SEC-001 · Generación de PDF con HTML y navegador
 - Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: CORREGIDO en especificación

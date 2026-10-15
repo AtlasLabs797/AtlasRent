@@ -13,6 +13,8 @@
     <!-- Autenticación (F1-04): JWT de acceso en cookie y hash de contraseñas -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
     <PackageVersion Include="BCrypt.Net-Next" Version="4.2.1" />
+    <!-- F1-06: TOTP del segundo factor. El QR lo dibuja el frontend; aquí no hay librería de imagen. -->
+    <PackageVersion Include="Otp.NET" Version="1.4.1" />
     <!-- Tests -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />

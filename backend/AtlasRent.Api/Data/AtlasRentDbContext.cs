@@ -23,6 +23,12 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<BloqueoIp> BloqueoIp => Set<BloqueoIp>();
 
+    public DbSet<MfaDesafio> MfaDesafio => Set<MfaDesafio>();
+
+    public DbSet<CodigoRecuperacion> CodigoRecuperacion => Set<CodigoRecuperacion>();
+
+    public DbSet<AccesoEmergencia> AccesoEmergencia => Set<AccesoEmergencia>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -112,6 +118,54 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.Property(e => e.UpdatedAt).IsRequired();
             // Una fila por IP: es la búsqueda que hace el middleware en cada petición.
             entidad.HasIndex(e => e.Ip).IsUnique();
+        });
+
+        // F1-06: segundo factor. El desafío es el estado del token provisional del login en dos
+        // pasos: un solo uso y con caducidad corta, así que no es una sesión más.
+        modelBuilder.Entity<MfaDesafio>(entidad =>
+        {
+            entidad.ToTable("mfa_desafio");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.TokenHash).IsRequired();
+            entidad.Property(e => e.Ip).IsRequired();
+            entidad.Property(e => e.EmitidoAt).IsRequired();
+            entidad.Property(e => e.CaducaAt).IsRequired();
+            // Único: es la búsqueda del token, igual que con el token de refresco.
+            entidad.HasIndex(e => e.TokenHash).IsUnique();
+            entidad.HasIndex(e => e.UsuarioId);
+            entidad.HasOne(e => e.Usuario)
+                .WithMany()
+                .HasForeignKey(e => e.UsuarioId);
+        });
+
+        // El código en claro solo existe en la respuesta que lo muestra una vez; aquí, su hash.
+        modelBuilder.Entity<CodigoRecuperacion>(entidad =>
+        {
+            entidad.ToTable("codigo_recuperacion");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CodigoHash).IsRequired();
+            entidad.Property(e => e.CreadoAt).IsRequired();
+            // La búsqueda es por usuario y hash, y un mismo código no puede repetirse.
+            entidad.HasIndex(e => new { e.UsuarioId, e.CodigoHash }).IsUnique();
+            entidad.HasOne(e => e.Usuario)
+                .WithMany()
+                .HasForeignKey(e => e.UsuarioId);
+        });
+
+        modelBuilder.Entity<AccesoEmergencia>(entidad =>
+        {
+            entidad.ToTable("acceso_emergencia");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Motivo).IsRequired();
+            entidad.Property(e => e.Ip).IsRequired();
+            entidad.Property(e => e.CreadoAt).IsRequired();
+            entidad.HasIndex(e => e.UsuarioId);
+            entidad.HasIndex(e => e.SolicitanteId);
+            // Tres referencias a usuario (a quién se le da, quién lo pidió y quién lo aprobó): sin
+            // navegación para que EF no las confunda entre sí.
+            entidad.HasOne<Usuario>().WithMany().HasForeignKey(e => e.UsuarioId);
+            entidad.HasOne<Usuario>().WithMany().HasForeignKey(e => e.SolicitanteId);
+            entidad.HasOne<Usuario>().WithMany().HasForeignKey(e => e.AprobadoPorId);
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

@@ -23,6 +23,76 @@ namespace AtlasRent.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AtlasRent.Api.Data.AccesoEmergencia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AprobadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("aprobado_at");
+
+                    b.Property<Guid?>("AprobadoPorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("aprobado_por_id");
+
+                    b.Property<DateTimeOffset?>("CaducaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("caduca_at");
+
+                    b.Property<string>("CodigoHash")
+                        .HasColumnType("text")
+                        .HasColumnName("codigo_hash");
+
+                    b.Property<DateTimeOffset>("CreadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creado_at");
+
+                    b.Property<string>("Ip")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ip");
+
+                    b.Property<string>("Motivo")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("motivo");
+
+                    b.Property<Guid>("SolicitanteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("solicitante_id");
+
+                    b.Property<DateTimeOffset?>("UsadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("usado_at");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_acceso_emergencia");
+
+                    b.HasIndex("AprobadoPorId")
+                        .HasDatabaseName("ix_acceso_emergencia_aprobado_por_id");
+
+                    b.HasIndex("SolicitanteId")
+                        .HasDatabaseName("ix_acceso_emergencia_solicitante_id");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("ix_acceso_emergencia_usuario_id");
+
+                    b.ToTable("acceso_emergencia", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Auditoria", b =>
                 {
                     b.Property<Guid>("Id")
@@ -143,6 +213,46 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("bloqueo_ip", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.CodigoRecuperacion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CodigoHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("codigo_hash");
+
+                    b.Property<DateTimeOffset>("CreadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creado_at");
+
+                    b.Property<DateTimeOffset?>("UsadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("usado_at");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_codigo_recuperacion");
+
+                    b.HasIndex("UsuarioId", "CodigoHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_codigo_recuperacion_usuario_id_codigo_hash");
+
+                    b.ToTable("codigo_recuperacion", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.IntentoLogin", b =>
                 {
                     b.Property<Guid>("Id")
@@ -189,6 +299,58 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("intento_login", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.MfaDesafio", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CaducaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("caduca_at");
+
+                    b.Property<DateTimeOffset?>("ConsumidoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumido_at");
+
+                    b.Property<DateTimeOffset>("EmitidoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("emitido_at");
+
+                    b.Property<string>("Ip")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ip");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("token_hash");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_mfa_desafio");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_mfa_desafio_token_hash");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("ix_mfa_desafio_usuario_id");
+
+                    b.ToTable("mfa_desafio", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -212,6 +374,10 @@ namespace AtlasRent.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("ip");
+
+                    b.Property<bool>("ModoEmergencia")
+                        .HasColumnType("boolean")
+                        .HasColumnName("modo_emergencia");
 
                     b.Property<string>("MotivoRevocacion")
                         .HasColumnType("text")
@@ -299,9 +465,17 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("email");
 
+                    b.Property<bool>("EsAdmin")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_admin");
+
                     b.Property<bool>("MfaActivado")
                         .HasColumnType("boolean")
                         .HasColumnName("mfa_activado");
+
+                    b.Property<string>("MfaSecreto")
+                        .HasColumnType("text")
+                        .HasColumnName("mfa_secreto");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
@@ -346,12 +520,58 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("usuario", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.AccesoEmergencia", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("AprobadoPorId")
+                        .HasConstraintName("fk_acceso_emergencia_usuario_aprobado_por_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("SolicitanteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_acceso_emergencia_usuario_solicitante_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_acceso_emergencia_usuario_usuario_id");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.CodigoRecuperacion", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_codigo_recuperacion_usuario_usuario_id");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.IntentoLogin", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
                         .WithMany()
                         .HasForeignKey("UsuarioId")
                         .HasConstraintName("fk_intento_login_usuario_usuario_id");
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.MfaDesafio", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_mfa_desafio_usuario_usuario_id");
 
                     b.Navigation("Usuario");
                 });

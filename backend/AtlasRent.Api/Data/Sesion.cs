@@ -41,6 +41,13 @@ public sealed class Sesion
     public DateTimeOffset? RevocadaAt { get; set; }
 
     /// <summary>
+    /// La sesión se abrió por un acceso de emergencia (break-glass) y no por el segundo factor
+    /// normal. Se hereda al rotar el token: el rastro de que aquella sesión fue de emergencia no
+    /// se pierde por refrescar (F1-06).
+    /// </summary>
+    public bool ModoEmergencia { get; set; }
+
+    /// <summary>
     /// Motivo de la revocación. <c>rotacion</c> marca un token ya rotado (su reutilización es un
     /// intento de robo); el resto son finales de vida: <c>logout</c>, <c>inactividad</c>,
     /// <c>maximo_absoluto</c> o <c>reutilizacion_detectada</c>.

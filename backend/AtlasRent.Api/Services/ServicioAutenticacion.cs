@@ -12,8 +12,19 @@ public sealed record ResultadoSesion(
     string? Email,
     bool DebeCambiarPassword,
     bool MfaActivado,
+    bool MfaPendiente,
+    bool AccesoEmergencia,
     DateTimeOffset? UltimoAcceso,
     TokensEmitidos Tokens);
+
+/// <summary>
+/// Lo que devuelve el login cuando la contraseña es correcta.
+/// <para>
+/// O bien hay <see cref="Sesion"/> (login completo), o bien <c>RequiereMfa</c>: la contraseña era
+/// correcta pero falta el segundo factor y todavía no se abre ninguna sesión.
+/// </para>
+/// </summary>
+public sealed record ResultadoAutenticacion(Usuario Usuario, ResultadoSesion? Sesion, bool RequiereMfa);
 
 /// <summary>
 /// Login, refresco y cierre de sesión (docs/DOC_TECNICA.md §7).
@@ -27,6 +38,7 @@ public sealed class ServicioAutenticacion(
     AtlasRentDbContext contexto,
     ServicioContrasenas contrasenas,
     ServicioSesiones sesiones,
+    ServicioEmisionSesion emision,
     EmisorTokens emisor,
     TimeProvider reloj,
     AuditoriaService auditoria,
@@ -35,8 +47,12 @@ public sealed class ServicioAutenticacion(
     /// <summary>
     /// Intenta iniciar sesión. Devuelve <c>null</c> para cualquier credencial que no sirva: usuario
     /// inexistente, contraseña incorrecta, cuenta desactivada o borrada.
+    /// <para>
+    /// Con la contraseña correcta y segundo factor pendiente devuelve <see cref="ResultadoAutenticacion"/>
+    /// sin sesión: el token provisional lo emite <see cref="ServicioMfa.EmitirDesafioAsync"/>.
+    /// </para>
     /// </summary>
-    public async Task<ResultadoSesion?> LoginAsync(
+    public async Task<ResultadoAutenticacion?> LoginAsync(
         string nombreAcceso,
         string contrasena,
         string ip,
@@ -76,53 +92,23 @@ public sealed class ServicioAutenticacion(
             return null;
         }
 
-        var ahora = reloj.GetUtcNow();
-        var sesionId = Guid.NewGuid();
-        var tokens = emisor.Emitir(candidato.Id, sesionId, Roles.Valor);
+        // Segundo factor obligatorio: la contraseña no abre sesión por sí sola. Ni siquiera se
+        // anota el intento como acertado: el login todavía no está completo, y anotarlo como
+        // acierto reiniciaría el contador de fallos y dejaría probar códigos TOTP sin límite.
+        if (ServicioMfa.NecesitaMfa(candidato))
+        {
+            return new ResultadoAutenticacion(candidato, Sesion: null, RequiereMfa: true);
+        }
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
         var usuario = await contexto.Usuario.SingleAsync(u => u.Id == candidato.Id, ct);
-        usuario.UltimoAcceso = ahora;
 
-        await sesiones.EmitirAsync(
-            sesionId,
-            usuario.Id,
-            sesionId,
-            EmisorTokens.HashToken(tokens.TokenRefresco),
-            ip,
-            userAgent,
-            ahora.AddHours(ServicioSesiones.MaximoHoras),
-            ultimaActividad: ahora,
-            ct);
-
-        await auditoria.RegistrarAsync(new RegistroAuditoria
-        {
-            Accion = "auth.login",
-            Ip = ip,
-            UsuarioId = usuario.Id,
-            Entidad = "sesion",
-            EntidadId = sesionId.ToString("D"),
-            Resultado = "permitido",
-            Origen = "api",
-        }, ct);
-
-        // También es la fuente de verdad de los contadores de bloqueo, y aquí va dentro de la misma
-        // transacción que el login.
-        await bloqueos.AnotarExitoAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
+        var resultado = await emision.EmitirAsync(usuario, ip, userAgent, modoEmergencia: false, "auth.login", ct);
 
         await transaccion.CommitAsync(ct);
 
-        return new ResultadoSesion(
-            usuario.Id,
-            sesionId,
-            usuario.NombreAcceso,
-            usuario.Nombre,
-            usuario.Email,
-            usuario.DebeCambiarPassword,
-            usuario.MfaActivado,
-            usuario.UltimoAcceso,
-            tokens);
+        return new ResultadoAutenticacion(usuario, resultado, RequiereMfa: false);
     }
 
     /// <summary>
@@ -203,6 +189,8 @@ public sealed class ServicioAutenticacion(
             anterior.CaducaAbsoluta,
             // Y la inactividad también: rotar el token no cuenta como actividad del usuario.
             anterior.UltimaActividad,
+            // Refrescar no borra el rastro: una sesión abierta por emergencia sigue siéndolo.
+            anterior.ModoEmergencia,
             ct);
 
         await auditoria.RegistrarAsync(new RegistroAuditoria
@@ -225,6 +213,8 @@ public sealed class ServicioAutenticacion(
             usuario.Email,
             usuario.DebeCambiarPassword,
             usuario.MfaActivado,
+            usuario.MfaPendiente,
+            anterior.ModoEmergencia,
             usuario.UltimoAcceso,
             tokens);
     }
@@ -245,4 +235,15 @@ public sealed class ServicioAutenticacion(
     /// <summary>Identidad del usuario de la petición, para <c>/api/v1/auth/yo</c>.</summary>
     public async Task<Usuario?> IdentidadAsync(Guid usuarioId, CancellationToken ct) =>
         await contexto.Usuario.AsNoTracking().SingleOrDefaultAsync(u => u.Id == usuarioId, ct);
+
+    /// <summary>
+    /// Si la sesión se abrió por un acceso de emergencia (F1-06). Va en la fila de sesión, no en el
+    /// usuario: el rastro es de aquella sesión concreta.
+    /// </summary>
+    public async Task<bool> AccesoEmergenciaDeLaSesionAsync(Guid sesionId, CancellationToken ct) =>
+        await contexto.Sesion
+            .AsNoTracking()
+            .Where(s => s.Id == sesionId)
+            .Select(s => s.ModoEmergencia)
+            .SingleOrDefaultAsync(ct);
 }

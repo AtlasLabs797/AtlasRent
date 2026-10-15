@@ -27,8 +27,39 @@ public sealed class Usuario
 
     public bool DebeCambiarPassword { get; set; }
 
-    /// <summary>Marcador para F1-06 (MFA/TOTP). Aquí no hace nada más que quedar disponible.</summary>
+    /// <summary>
+    /// Segundo factor activo: el usuario entra con contraseña y además con TOTP o con un código de
+    /// recuperación. Para el administrador es obligatorio (docs/ESPECIFICACION.md D4).
+    /// </summary>
     public bool MfaActivado { get; set; }
+
+    /// <summary>
+    /// Secreto TOTP en base32. Nulo si el usuario nunca empezó a activarlo. Se sustituye cada vez
+    /// que se reinicia la activación y se necesita en claro para validar el código, así que no
+    /// se muestra nunca: sale una sola vez, dentro de la URI <c>otpauth://</c>.
+    /// <para>
+    /// TODO(A#) F1-09: cifrarlo en reposo con la misma clave AES-256-GCM que los documentos de
+    /// identidad. Hasta entonces vive en claro en la base de datos, que es donde está el riesgo.
+    /// </para>
+    /// </summary>
+    public string? MfaSecreto { get; set; }
+
+    /// <summary>
+    /// El segundo factor se empezó a configurar pero todavía no se confirmó con un código válido.
+    /// El usuario entra, pero el frontend tiene que dejarle claro que le falta el segundo factor.
+    /// </summary>
+    public bool MfaPendiente => MfaSecreto is not null && !MfaActivado;
+
+    /// <summary>
+    /// Administrador: para ellos el MFA es obligatorio y sin él no hay sesión (D4).
+    /// <para>
+    /// TODO(A#) F1-07: este indicador desaparece cuando exista la tabla de roles y permisos. Las
+    /// dos únicas decisiones que dependen de él están en ServicioMfa (si toca segundo factor) y en
+    /// ServicioEmergencia (quién puede aprobar); hasta entonces no hay forma de crear un
+    /// administrador por la API (esa tarea llega con F1-07).
+    /// </para>
+    /// </summary>
+    public bool EsAdmin { get; set; }
 
     /// <summary>
     /// Hasta cuándo está bloqueada la cuenta por intentos fallidos (docs/SEGURIDAD.md A.2).

@@ -33,6 +33,18 @@ public static class Problemas
     /// <summary>La IP está bloqueada por intentos fallidos de login.</summary>
     public const string IpBloqueada = "SEG-003";
 
+    /// <summary>
+    /// El token provisional del segundo factor no existe, ya se gastó o caducó, o el código no es
+    /// válido. El mismo código para los tres casos: no se le dice a nadie en cuál falló.
+    /// </summary>
+    public const string MfaInvalido = "SEG-004";
+
+    /// <summary>La petición no lleva con qué comprobar el segundo factor: ni sesión ni token provisional.</summary>
+    public const string MfaNoVerificado = "SEG-005";
+
+    /// <summary>El acceso de emergencia no se puede pedir ni aprobar con quien lo pide.</summary>
+    public const string EmergenciaDenegada = "SEG-006";
+
     /// <summary>Error de validación de los datos de entrada.</summary>
     public const string Validacion = "API-001";
 

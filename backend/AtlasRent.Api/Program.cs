@@ -55,6 +55,13 @@ builder.Services.AddMemoryCache();
 builder.Services.AddScoped<ServicioContrasenas>();
 builder.Services.AddScoped<ServicioSesiones>();
 builder.Services.AddScoped<ServicioBloqueos>();
+// F1-06: segundo factor. ServicioEmisionSesion es el camino único para abrir sesión, así que el
+// login normal, el segundo factor y el acceso de emergencia auditan igual. ServicioAutenticacion
+// usa ServicioMfa.NecesitaMfa, que es estático: no hay ciclo entre los dos.
+builder.Services.AddScoped<ServicioEmisionSesion>();
+builder.Services.AddScoped<ServicioMfa>();
+builder.Services.AddScoped<ServicioEmergencia>();
+builder.Services.AddSingleton<CookiesSesion>();
 builder.Services.AddScoped<ServicioAutenticacion>();
 builder.Services.AddScoped<EmisorTokens>();
 // Sin estado: un solo sitio donde se decide qué es la IP real del cliente.

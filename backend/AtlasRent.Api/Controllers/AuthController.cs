@@ -19,9 +19,10 @@ namespace AtlasRent.Api.Controllers;
 [Route("api/v1/auth")]
 public sealed class AuthController(
     ServicioAutenticacion autenticacion,
+    ServicioMfa mfa,
+    CookiesSesion cookies,
     ContextoSesion contextoSesion,
-    IResolutorIpPeticion resolutorIp,
-    TimeProvider reloj) : ControllerBase
+    IResolutorIpPeticion resolutorIp) : ControllerBase
 {
     /// <summary>Solo se mandan los datos que el frontend necesita tras entrar.</summary>
     [HttpPost("login")]
@@ -48,16 +49,22 @@ public sealed class AuthController(
                 "Usuario o contraseña incorrectos.");
         }
 
-        FijarCookies(resultado);
-        return Ok(new IdentidadRespuesta(
-            resultado.UsuarioId,
-            resultado.NombreAcceso,
-            resultado.Nombre,
-            resultado.Email,
-            Roles.Valor,
-            resultado.DebeCambiarPassword,
-            resultado.MfaActivado,
-            resultado.UltimoAcceso));
+        // La contraseña es correcta pero falta el segundo factor: no hay sesión todavía, solo el
+        // token provisional (obligatorio para el administrador, opcional para el resto).
+        if (resultado.RequiereMfa)
+        {
+            var desafio = await mfa.EmitirDesafioAsync(resultado.Usuario, IpDeLaPeticion(), HttpContext.RequestAborted);
+            FijarCookieDesafio(desafio);
+
+            return Ok(new RespuestaDesafioMfa(
+                RequiereMfa: true,
+                RequiereConfiguracion: desafio.RequiereConfiguracion,
+                NombreAcceso: desafio.NombreAcceso,
+                Caduca: desafio.CaducaAt));
+        }
+
+        FijarCookies(resultado.Sesion!);
+        return Ok(IdentidadRespuesta.Desde(resultado.Sesion!));
     }
 
     /// <summary>
@@ -94,15 +101,7 @@ public sealed class AuthController(
         }
 
         FijarCookies(resultado);
-        return Ok(new IdentidadRespuesta(
-            resultado.UsuarioId,
-            resultado.NombreAcceso,
-            resultado.Nombre,
-            resultado.Email,
-            Roles.Valor,
-            resultado.DebeCambiarPassword,
-            resultado.MfaActivado,
-            resultado.UltimoAcceso));
+        return Ok(IdentidadRespuesta.Desde(resultado));
     }
 
     [HttpPost("logout")]
@@ -110,6 +109,7 @@ public sealed class AuthController(
     {
         await autenticacion.CerrarAsync(SesionIdDeLaPeticion(), HttpContext.RequestAborted);
         BorrarCookies();
+        BorrarCookieDesafio();
 
         // El cierre de sesión se responde 204 aunque el token ya no existiera: al cliente le da
         // igual y así no se le dice si su sesión estaba viva.
@@ -130,7 +130,11 @@ public sealed class AuthController(
                 "El usuario de la sesión ya no existe.");
         }
 
-        return Ok(IdentidadRespuesta.Desde(usuario));
+        // El rastro de una sesión de emergencia viene de la fila de sesión, no del usuario.
+        var emergencia = await autenticacion.AccesoEmergenciaDeLaSesionAsync(
+            SesionIdDeLaPeticion(), HttpContext.RequestAborted);
+
+        return Ok(IdentidadRespuesta.Desde(usuario, emergencia));
     }
 
     private Guid SesionIdDeLaPeticion() => Guid.Parse(User.FindFirst("sid")!.Value);
@@ -138,41 +142,7 @@ public sealed class AuthController(
     /// <summary>IP de origen. El orden del pipeline de F1-13 decide si viene de un proxy de confianza.</summary>
     private string IpDeLaPeticion() => resolutorIp.Resolver(HttpContext);
 
-    private void FijarCookies(ResultadoSesion resultado)
-    {
-        var caduca = reloj.GetUtcNow().AddHours(ServicioSesiones.MaximoHoras);
-
-        Response.Cookies.Append(NombresCookies.Acceso, resultado.Tokens.JwtAcceso, new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Strict,
-            Path = "/",
-            // La cookie de acceso caduca con el JWT que lleva dentro, no con la sesión.
-            Expires = resultado.Tokens.CaducaAcceso,
-        });
-
-        // El token de refresco solo se manda a las rutas de autenticación.
-        Response.Cookies.Append(NombresCookies.Refresco, resultado.Tokens.TokenRefresco, new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Strict,
-            Path = "/api/v1/auth",
-            Expires = caduca,
-        });
-
-        // Sin HttpOnly a propósito: el frontend lo lee de document.cookie y lo devuelve en
-        // X-CSRF-Token (doble envío).
-        Response.Cookies.Append(NombresCookies.Csrf, resultado.Tokens.TokenCsrf, new CookieOptions
-        {
-            HttpOnly = false,
-            Secure = true,
-            SameSite = SameSiteMode.Strict,
-            Path = "/",
-            Expires = caduca,
-        });
-    }
+    private void FijarCookies(ResultadoSesion resultado) => cookies.FijarSesion(Response, resultado);
 
     private void BorrarCookies()
     {
@@ -187,4 +157,13 @@ public sealed class AuthController(
             });
         }
     }
+
+    /// <summary>
+    /// Token provisional del segundo factor (F1-06). HttpOnly como los de sesión y limitado a las
+    /// rutas de autenticación: con él no se abre sesión, solo se pasa el segundo factor.
+    /// </summary>
+    internal void FijarCookieDesafio(DesafioMfa desafio) => cookies.FijarDesafioMfa(Response, desafio);
+
+    /// <summary>Se borra en cuanto el segundo factor pasa: ya no sirve para nada.</summary>
+    internal void BorrarCookieDesafio() => cookies.BorrarDesafioMfa(Response);
 }

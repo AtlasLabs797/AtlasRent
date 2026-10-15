@@ -65,7 +65,8 @@ public sealed class ServicioSesiones(
         string? userAgent,
         DateTimeOffset caducaAbsoluta,
         DateTimeOffset ultimaActividad,
-        CancellationToken ct)
+        bool modoEmergencia = false,
+        CancellationToken ct = default)
     {
         var ahora = reloj.GetUtcNow();
         var sesion = new Sesion
@@ -79,6 +80,7 @@ public sealed class ServicioSesiones(
             EmitidaAt = ahora,
             UltimaActividad = ultimaActividad,
             CaducaAbsoluta = caducaAbsoluta,
+            ModoEmergencia = modoEmergencia,
         };
 
         contexto.Sesion.Add(sesion);

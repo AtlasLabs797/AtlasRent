@@ -32,6 +32,7 @@ public static class AyudaAuth
         ContenedorBdFixture bd,
         string contrasena,
         bool activo = true,
+        bool esAdmin = false,
         CancellationToken ct = default)
     {
         var nombreAcceso = $"usuario{Guid.NewGuid():N}"[..20];
@@ -48,6 +49,7 @@ public static class AyudaAuth
                 RondasBcrypt = OpcionesSeguridad.RondasBcryptMinimas,
             }).Hashar(contrasena),
             Activo = activo,
+            EsAdmin = esAdmin,
             CreatedAt = DateTimeOffset.UtcNow,
         };
 
@@ -104,13 +106,19 @@ public static class AyudaAuth
     public static HttpRequestMessage ConCookies(
         HttpMethod metodo,
         string ruta,
-        (string Nombre, string Valor)[] cookies)
+        (string Nombre, string Valor)[] cookies,
+        object? cuerpo = null)
     {
-        var peticion = new HttpRequestMessage(metodo, ruta) { Content = new StringContent(string.Empty) };
-        var csrf = Array.Find(cookies, cookie => cookie.Nombre == NombresCookies.Csrf);
-        if (csrf.Valor is not null)
+        var peticion = new HttpRequestMessage(metodo, ruta)
         {
-            peticion.Headers.Add("X-CSRF-Token", csrf.Valor);
+            Content = cuerpo is null
+                ? new StringContent(string.Empty)
+                : JsonContent.Create(cuerpo),
+        };
+        var csrf = Array.Find(cookies, cookie => cookie.Nombre == NombresCookies.Csrf);
+        if (csrf.Valor is { Length: > 0 } valor)
+        {
+            peticion.Headers.Add("X-CSRF-Token", valor);
         }
 
         peticion.Headers.Add("Cookie", string.Join("; ", cookies.Select(cookie => $"{cookie.Nombre}={cookie.Valor}")));

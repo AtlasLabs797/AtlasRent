@@ -30,9 +30,11 @@ public sealed record IdentidadRespuesta(
     string Rol,
     bool DebeCambiarPassword,
     bool MfaActivado,
+    bool MfaPendiente,
+    bool AccesoEmergencia,
     DateTimeOffset? UltimoAcceso)
 {
-    public static IdentidadRespuesta Desde(Usuario usuario) => new(
+    public static IdentidadRespuesta Desde(Usuario usuario, bool accesoEmergencia) => new(
         usuario.Id,
         usuario.NombreAcceso,
         usuario.Nombre,
@@ -40,5 +42,20 @@ public sealed record IdentidadRespuesta(
         Roles.Valor,
         usuario.DebeCambiarPassword,
         usuario.MfaActivado,
+        usuario.MfaPendiente,
+        accesoEmergencia,
         usuario.UltimoAcceso);
+
+    /// <summary>Identidad de una sesión recién emitida, sea del login normal o del segundo factor.</summary>
+    public static IdentidadRespuesta Desde(ResultadoSesion sesion) => new(
+        sesion.UsuarioId,
+        sesion.NombreAcceso,
+        sesion.Nombre,
+        sesion.Email,
+        Roles.Valor,
+        sesion.DebeCambiarPassword,
+        sesion.MfaActivado,
+        sesion.MfaPendiente,
+        sesion.AccesoEmergencia,
+        sesion.UltimoAcceso);
 }
