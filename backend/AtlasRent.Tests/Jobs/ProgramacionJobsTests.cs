@@ -109,16 +109,38 @@ public sealed class ProgramacionJobsTests
     public void LosTrabajosDeLaSeccion8QueTodaviaNoExisteNoSePrograman()
     {
         // Los trabajos de §8 que dependen de dominio inexistente (tipos de cambio, renovaciones,
-        // alertas de negocio, recordatorios, envíos, outbox, limpieza de sesiones) no se programan:
-        // sin lo que tienen que hacer, programarlos solo produce errores en el registro cada noche.
+        // recordatorios, envíos, outbox, limpieza de sesiones) no se programan: sin lo que tienen
+        // que hacer, programarlos solo produce errores en el registro cada noche.
         // La vigilancia de la copia sí está porque no depende de nada pendiente: usa el servicio de
-        // copias y la tabla alerta, que ya existen.
+        // copias y la tabla alerta, que ya existen. Y el aviso de reservas (F2-03) por lo mismo: la
+        // tabla reserva y el servicio de alertas ya existen.
         ProgramacionJobs.Todos.Select(t => t.Tipo).Should().BeEquivalentTo(
             [
                 typeof(TrabajoCopiaSeguridad),
                 typeof(TrabajoIntegridadAuditoria),
                 typeof(TrabajoVigilanciaCopia),
+                typeof(TrabajoAlertaReserva),
             ]);
+    }
+
+    /// <summary>
+    /// F2-03: el aviso de la reserva que entra dentro de 7 días va después de todo lo demás de la
+    /// madrugada. Si el servidor se apagó, la copia falta y no tiene sentido avisar de reservas
+    /// sobre un estado que nadie ha verificado.
+    /// </summary>
+    [Fact]
+    public void LaAlertaDeReservaVaLaUltimaDeLaMadrugada()
+    {
+        var alerta = Trabajo(ProgramacionJobs.RutaAlertaReserva);
+
+        alerta.HoraLocal.Should().Be(5, "después de la copia, la integridad y la vigilancia");
+        alerta.Tipo.Should().Be(typeof(TrabajoAlertaReserva));
+        alerta.Metodo.Should().Be(nameof(TrabajoAlertaReserva.EjecutarAsync));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(alerta.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 5, 0, 0));
+
+        alerta.HoraLocal.Should().BeGreaterThan(Trabajo(ProgramacionJobs.RutaVigilanciaCopia).HoraLocal);
     }
 
     [Fact]
@@ -133,6 +155,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaCopiaSeguridad,
                 ProgramacionJobs.RutaIntegridadAuditoria,
                 ProgramacionJobs.RutaVigilanciaCopia,
+                ProgramacionJobs.RutaAlertaReserva,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

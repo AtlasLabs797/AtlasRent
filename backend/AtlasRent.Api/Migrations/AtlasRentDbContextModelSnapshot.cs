@@ -1628,6 +1628,191 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("prospecto", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Reserva", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<decimal?>("AnticipoImporte")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("anticipo_importe");
+
+                    b.Property<string>("AnticipoNota")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("anticipo_nota");
+
+                    b.Property<Guid?>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("EntradaPrevista")
+                        .HasColumnType("date")
+                        .HasColumnName("entrada_prevista");
+
+                    b.Property<DateOnly?>("EntradaReal")
+                        .HasColumnType("date")
+                        .HasColumnName("entrada_real");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<DateOnly>("FechaReserva")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_reserva");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe");
+
+                    b.Property<int>("Modalidad")
+                        .HasColumnType("integer")
+                        .HasColumnName("modalidad");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("observaciones");
+
+                    b.Property<Guid?>("ProspectoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prospecto_id");
+
+                    b.Property<DateOnly?>("SalidaPrevista")
+                        .HasColumnType("date")
+                        .HasColumnName("salida_prevista");
+
+                    b.Property<DateOnly?>("SalidaReal")
+                        .HasColumnType("date")
+                        .HasColumnName("salida_real");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<Guid>("UnidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidad_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_reserva");
+
+                    b.HasIndex("ClienteId")
+                        .HasDatabaseName("ix_reserva_cliente_id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_reserva_created_at");
+
+                    b.HasIndex("ProspectoId")
+                        .HasDatabaseName("ix_reserva_prospecto_id");
+
+                    b.HasIndex("UnidadId")
+                        .HasDatabaseName("ix_reserva_unidad_id");
+
+                    b.HasIndex("Activo", "Estado")
+                        .HasDatabaseName("ix_reserva_activo_estado");
+
+                    b.HasIndex("Estado", "EntradaPrevista")
+                        .HasDatabaseName("ix_reserva_estado_entrada_prevista");
+
+                    b.ToTable("reserva", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_reserva_destinatario", "(cliente_id IS NOT NULL) <> (prospecto_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.ReservaDia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha");
+
+                    b.Property<TimeOnly>("HoraEntrada")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("hora_entrada");
+
+                    b.Property<TimeOnly>("HoraSalida")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("hora_salida");
+
+                    b.Property<Guid>("ReservaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reserva_id");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_reserva_dia");
+
+                    b.HasIndex("ReservaId", "Fecha")
+                        .IsUnique()
+                        .HasDatabaseName("ix_reserva_dia_reserva_id_fecha");
+
+                    b.ToTable("reserva_dia", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Rol", b =>
                 {
                     b.Property<string>("Clave")
@@ -2503,6 +2688,46 @@ namespace AtlasRent.Api.Migrations
                         .HasConstraintName("fk_permiso_rol_rol_rol_clave");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Reserva", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_reserva_cliente_cliente_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Prospecto", "Prospecto")
+                        .WithMany()
+                        .HasForeignKey("ProspectoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_reserva_prospecto_prospecto_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Unidad", "Unidad")
+                        .WithMany()
+                        .HasForeignKey("UnidadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_reserva_unidad_unidad_id");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Prospecto");
+
+                    b.Navigation("Unidad");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.ReservaDia", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Reserva", "Reserva")
+                        .WithMany("Dias")
+                        .HasForeignKey("ReservaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_reserva_dia_reserva_reserva_id");
+
+                    b.Navigation("Reserva");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
@@ -2582,6 +2807,11 @@ namespace AtlasRent.Api.Migrations
             modelBuilder.Entity("AtlasRent.Api.Data.Inmueble", b =>
                 {
                     b.Navigation("Unidades");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Reserva", b =>
+                {
+                    b.Navigation("Dias");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Unidad", b =>

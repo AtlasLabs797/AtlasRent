@@ -54,6 +54,7 @@ public static class ProgramacionJobs
     public const string RutaCopiaSeguridad = "copias-seguridad";
     public const string RutaIntegridadAuditoria = "integridad-auditoria";
     public const string RutaVigilanciaCopia = "vigilancia-copia";
+    public const string RutaAlertaReserva = "alerta-reserva-7-dias";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
@@ -63,6 +64,10 @@ public static class ProgramacionJobs
     /// La vigilancia de la copia sí entra, aunque su nombre sea "alertas", porque no depende de un
     /// dominio pendiente: usa el servicio de copias y la tabla <c>alerta</c>, que ya existen. Lo que
     /// queda para F2-10 es avisar a alguien por correo y enseñarle una bandeja, no detectar el fallo.
+    /// </para>
+    /// <para>
+    /// El aviso de las reservas (F2-03) entra ya por lo mismo: solo necesita la tabla <c>reserva</c>
+    /// y el servicio de alertas, los dos existen.
     /// </para>
     /// </summary>
     public static IReadOnlyList<TrabajoProgramado> Todos { get; } =
@@ -85,6 +90,17 @@ public static class ProgramacionJobs
             typeof(TrabajoVigilanciaCopia),
             nameof(TrabajoVigilanciaCopia.EjecutarAsync),
             4),
+        // F2-03: el aviso de reserva que entra dentro de 7 días. Va a las 05:00, después de la
+        // copia (02:00), la integridad (03:00) y la vigilancia (04:00): si el servidor se apagó
+        // esa madrugada, la copia falta y no tiene sentido avisar de reservas sobre un estado que
+        // nadie ha verificado. Y es el último del día para que a las 05:00 no se solape con nada
+        // que se añada después.
+        new(
+            RutaAlertaReserva,
+            CronDiarioEnUtc(5),
+            typeof(TrabajoAlertaReserva),
+            nameof(TrabajoAlertaReserva.EjecutarAsync),
+            5),
     ];
 
     /// <summary>

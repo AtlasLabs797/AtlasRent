@@ -16,6 +16,29 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 15:25] FEAT · F2-03 · Reservas mensual y corta con bloqueo en la misma transacción y alerta a 7 días (orquestador)
+- Qué:
+  - `Data/Reserva.cs`, `Data/ReservaDia.cs`, `Dominio/TipoReserva.cs`, `Dominio/EstadoReserva.cs`, migración `20261015124746_Reservas`, `Services/ServicioReservas.cs`, `Controllers/ReservasController.cs`, `DTOs/ReservaDtos.cs`.
+  - `Jobs/TrabajoAlertaReserva.cs`: job diario a las **05:00 AST**, detrás de la copia (02:00), la integridad (03:00) y la vigilancia (04:00), registrado en `ProgramacionJobs.Todos` y en DI.
+  - `ServiceDisponibilidad`: un método nuevo, `SincronizarAsync`, que hace la diferencia al editar (suelta lo que desaparece y ocupa lo nuevo) sin borrar ni duplicar el bloqueo.
+  - `GuardadoAuditado`: parámetro `enTransaccionDelLlamador` para que F2-05 marque el conflicto desde su propia transacción.
+  - `MarcarEnConflictoAsync(id, usuario, ip, ct)`: lo invocará F2-05 al aprobar un contrato. **No libera el bloqueo** (la reserva sigue bloqueando hasta que el gerente decida) y solo acepta `Activa`.
+  - 19 tests nuevos en `backend/AtlasRent.Tests/Reservas/`.
+- Por qué: es la primera tarea que consume la capa de disponibilidad de F2-01, y ahí es donde se demuestra que la disponibilidad se comprueba en la base sin carreras, no en el servicio.
+- **Corrección del orquestador sobre el código entregado (esto es lo importante de la tarea):** el `AtlasRentDbContext` dejaba escrito que el índice `ix_reserva_dia_reserva_id_fecha` **no** era único "a propósito, porque dos personas el mismo día son dos medios días en la misma reserva". Eso es falso y era un agujero de sobreventa: `ocupacion_dia` es único por `(origen, origen_id, fecha)`, así que el segundo medio día de una misma reserva **no tenía dónde bloquearse**, y el trigger de F2-01 habría contado **una** fila donde hay **dos**, dejando entrar a un tercero. El servicio ya lo rechazaba con un error de negocio, pero solo por ese camino: una importación, un trabajo o una inserción directa se lo habrían saltado. Se ha puesto el índice **único** en el modelo, en la migración y en la instantánea, y `dotnet ef migrations has-pending-model-changes` confirma que el modelo y la instantánea siguen de acuerdo. Dos personas el mismo día son dos reservas con un medio día cada una, que es lo que dice `ESPECIFICACION.md` §3.4.
+- **Desviación consciente de la orden, razonada y comprobada:** `reserva_dia` **sí** lleva `DELETE` en su `GRANT`, cosa que el orquestador había excluido. Sin él, editar una reserva corta que cambia de día muere en runtime con `permission denied`; el implementador lo comprobó, no es teórico. El motivo es el mismo que ya lleva `cotizacion_linea`: los días son la composición del documento, no el documento. Lo que no se pierde es el *qué*: la auditoría escribe `DiasAnteriores`. `reserva` no lleva `DELETE`: la reserva no se borra nunca.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; suite completa **356/356** (337 previos + 19 nuevos, 3m24s) **después** de poner el índice único, no antes. Los dos criterios de aceptación del plan tienen test propio **de punta a punta por la API**: `DosReservasSolapadasEnParaleloSoloUnaEntra` (dos `HttpClient` distintos, dos usuarios, una barrera `TaskCompletionSource` que suelta las dos peticiones a la vez, sin `Idempotency-Key` para que la segunda llegue a PostgreSQL y no sea un replay) y `DosMediosDiasEntranYElTerceroFalla`.
+- NO verificado: `dotnet ef database update` contra la BD de desarrollo del 5433 (necesita credenciales de `.env.dev`, que por AGENTS.md §6 no se leen); la migración aplica desde cero en la suite. Tampoco se ha comprobado que el planificador de Hangfire dispare el trabajo de las 05:00 de verdad: el test llama al trabajo directamente, que es lo que hacen los tests de F1-12.
+- Migraciones: sí (`20261015124746_Reservas`).
+- Riesgo / pendiente:
+  - **La jornada es una invención y necesita confirmación del negocio.** `ESPECIFICACION.md` §3.4 solo dice "media jornada: 4 horas" y no define la jornada. Se ha fijado **08:00–16:00** como jornada de 8 h, para que el medio día sea exactamente la mitad. Si la jornada real es 08:00–18:00, cambian dos constantes de `ServicioReservas` y el 08:00–16:00 deja de ser día completo. Es lo más urgente de confirmar.
+  - La alerta de 7 días se manda a **toda** reserva `Activa`, mensual o corta. La especificación §3.4 habla de la mensual que lleva 7 días *sin convertirse*, que es otro momento; se ha seguido la decisión del orquestador y está escrito en el comentario del trabajo.
+  - La clave de deduplicación de la alerta es por reserva (`reserva-entrada:{id}`) y sin fecha, para que mover la entrada no repita el aviso.
+  - `Completada` y la conversión a contrato **no** tienen camino todavía: son de F2-04 y F2-05, y no hay ningún test que las cubra.
+  - El trabajo de F2-01 `SincronizarAsync` que se añadió aquí lo van a usar también los contratos de F2-05: es el único punto donde se puede meter la fila de bloqueo mal y dejarla huérfana.
+
+---
+
 ## [15/10/2026 14:35] FEAT · F2-02 · Cotizaciones con el flujo de estados de D18 y PDF básico (orquestador)
 - Qué:
   - `Data/Cotizacion.cs` y `CotizacionLinea.cs`, migración `20261015121719_Cotizaciones`, `Services/ServicioCotizaciones.cs`, `Controllers/CotizacionesController.cs`, `DTOs/CotizacionDtos.cs` y `DocumentoCotizacionPdf` con **QuestPDF**.

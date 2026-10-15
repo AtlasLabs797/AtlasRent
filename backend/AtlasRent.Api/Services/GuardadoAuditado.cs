@@ -13,6 +13,14 @@ namespace AtlasRent.Api.Services;
 /// <paramref name="datosAuditoria"/> lo decide el llamante y nunca lleva el documento de identidad
 /// ni el texto cifrado.
 /// </para>
+/// <param name="antesDeGuardar">Cambios que van en la misma transacción que la fila, como los
+/// bloqueos de disponibilidad de una reserva (F2-03).</param>
+/// <param name="enTransaccionDelLlamador">
+/// <c>true</c> cuando quien llama ya tiene una transacción abierta: el servicio de contratos
+/// (F2-05), que aprueba el contrato y marca la reserva en conflicto en un solo commit. Entonces no
+/// se abre otra ni se confirma, se usa la de fuera y un fallo devuelve el control para que esa
+/// transacción se deshaga entera.
+/// </param>
 /// </summary>
 internal static class GuardadoAuditado
 {
@@ -33,13 +41,16 @@ internal static class GuardadoAuditado
         Func<TEntidad, object> datosAuditoria,
         Func<Task>? antesDeGuardar = null,
         Func<Task>? despuesDeGuardar = null,
+        bool enTransaccionDelLlamador = false,
         CancellationToken ct = default)
         where TEntidad : class, IEntidadTrazada
         where TResultado : notnull
     {
         var ahora = reloj.GetUtcNow();
 
-        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+        await using var transaccion = enTransaccionDelLlamador
+            ? null
+            : await contexto.Database.BeginTransactionAsync(ct);
 
         if (esAlta)
         {
@@ -82,7 +93,10 @@ internal static class GuardadoAuditado
 
         await idempotencia.RegistrarAsync(usuario, mutacion, respuesta, ct);
 
-        await transaccion.CommitAsync(ct);
+        if (transaccion is not null)
+        {
+            await transaccion.CommitAsync(ct);
+        }
 
         return respuesta;
     }

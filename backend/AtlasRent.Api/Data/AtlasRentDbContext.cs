@@ -92,6 +92,12 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<CotizacionLinea> CotizacionLinea => Set<CotizacionLinea>();
 
+    // F2-03: reservas y sus días (docs/ESPECIFICACION.md §3.4). El bloque de la unidad lo escriben
+    // las tablas de ocupación de F2-01, no estas: reserva es el negocio y ocupacion el candado.
+    public DbSet<Reserva> Reserva => Set<Reserva>();
+
+    public DbSet<ReservaDia> ReservaDia => Set<ReservaDia>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -608,6 +614,65 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Cotizacion)
                 .WithMany(c => c.Lineas)
                 .HasForeignKey(e => e.CotizacionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // F2-03: reservas (docs/ESPECIFICACION.md §3.4). Como en la cotización, el destinatario es
+        // un cliente o un prospecto y lo garantiza el CHECK de la base de datos, no solo el servicio.
+        modelBuilder.Entity<Reserva>(entidad =>
+        {
+            entidad.ToTable("reserva", tabla => tabla.HasCheckConstraint(
+                "ck_reserva_destinatario",
+                "(cliente_id IS NOT NULL) <> (prospecto_id IS NOT NULL)"));
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.AnticipoNota).HasMaxLength(300);
+            entidad.Property(e => e.Observaciones).HasMaxLength(1000);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El importe y el anticipo son dinero: numeric(18,2) y half-up (AGENTS.md §6).
+            entidad.Property(e => e.Importe).HasColumnType("numeric(18,2)");
+            entidad.Property(e => e.AnticipoImporte).HasColumnType("numeric(18,2)");
+            // La lista filtra por estado y las vivas por las activas; este es el mismo índice que en
+            // la cotización.
+            entidad.HasIndex(e => new { e.Activo, e.Estado });
+            entidad.HasIndex(e => e.CreatedAt);
+            entidad.HasIndex(e => e.ClienteId);
+            entidad.HasIndex(e => e.ProspectoId);
+            entidad.HasIndex(e => e.UnidadId);
+            // El trabajo diario de las alertas de 7 días busca exactamente las activas cuya entrada
+            // prevista es hoy+7: este índice es para ese recorrido.
+            entidad.HasIndex(e => new { e.Estado, e.EntradaPrevista });
+            entidad.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Prospecto)
+                .WithMany()
+                .HasForeignKey(e => e.ProspectoId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Unidad)
+                .WithMany()
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Los días de la reserva corta son negocio, no bloqueo: se borran y se reescriben al editar
+        // la reserva (como las líneas de una cotización en borrador) y sobreviven a la cancelación.
+        // (reserva_id, fecha) es ÚNICO a propósito: una reserva es de una persona, así que dos personas
+        // el mismo día son dos reservas con un medio día cada una (docs/ESPECIFICACION.md §3.4). Meter
+        // los dos medios días en una sola reserva dejaría medio día sin bloquear —ocupacion_dia es
+        // único por (origen, origen_id, fecha) y la segunda fila del mismo día no tendría dónde
+        // bloquearse— y el trigger de F2-01 contaría una fila donde hay dos, dejando pasar a un
+        // tercero. El servicio ya lo rechaza con un error de negocio; el índice lo cierra en la base
+        // para que ningún camino futuro (importación, trabajo, inserción directa) pueda saltárselo.
+        modelBuilder.Entity<ReservaDia>(entidad =>
+        {
+            entidad.ToTable("reserva_dia");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => new { e.ReservaId, e.Fecha }).IsUnique();
+            entidad.HasOne(e => e.Reserva)
+                .WithMany(r => r.Dias)
+                .HasForeignKey(e => e.ReservaId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

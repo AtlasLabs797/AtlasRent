@@ -127,6 +127,105 @@ public sealed class ServicioDisponibilidad(AtlasRentDbContext contexto, TimeProv
     }
 
     /// <summary>
+    /// Deja la ocupación de una fila de origen exactamente en el estado pedido, en un solo
+    /// <c>SaveChanges</c> y sin borrar ni duplicar filas.
+    /// <para>
+    /// Existe porque <see cref="OcuparRangoAsync"/> y <see cref="LiberarRangoAsync"/> no sirven para
+    /// <i>editar</i> el bloqueo: liberar y volver a ocupar el mismo día choca con el índice único
+    /// (origen, origen_id, fecha) y deja un rango viejo bloqueando la unidad para siempre. Aquí se
+    /// hace la diferencia: lo que sigue se deja como estaba, lo que se va se libera y lo que es
+    /// nuevo se inserta.
+    /// </para>
+    /// <para>
+    /// Un <c>null</c> en cada lado significa "no hay nada de esto": un <c>null</c> en
+    /// <paramref name="rangoDesde"/> libera el rango de esa fila de origen (y por eso también sirve
+    /// para cambiar una reserva de mensual a corta), y un <c>null</c> en <paramref name="dias"/>
+    /// libera sus días.
+    /// </para>
+    /// </summary>
+    public async Task SincronizarAsync(
+        OrigenOcupacion origen,
+        Guid origenId,
+        Guid unidadId,
+        DateOnly? rangoDesde,
+        IReadOnlyList<(DateOnly Fecha, TipoOcupacionDia Tipo)>? dias,
+        CancellationToken ct)
+    {
+        var rango = await contexto.OcupacionRango
+            .SingleOrDefaultAsync(r => r.Origen == origen && r.OrigenId == origenId, ct);
+
+        if (rangoDesde is { } desde)
+        {
+            if (rango is null)
+            {
+                contexto.OcupacionRango.Add(new OcupacionRango
+                {
+                    Id = Guid.NewGuid(),
+                    UnidadId = unidadId,
+                    Origen = origen,
+                    OrigenId = origenId,
+                    FechaInicio = desde,
+                    FechaFin = null,
+                    Bloquea = true,
+                    CreadoAt = reloj.GetUtcNow(),
+                });
+            }
+            else
+            {
+                rango.UnidadId = unidadId;
+                rango.FechaInicio = desde;
+                rango.Bloquea = true;
+            }
+        }
+        else if (rango is { Bloquea: true })
+        {
+            rango.Bloquea = false;
+        }
+
+        var existentes = await contexto.OcupacionDia
+            .Where(d => d.Origen == origen && d.OrigenId == origenId)
+            .ToListAsync(ct);
+
+        // Las fechas del llamante llegan sin repetir: una reserva no lleva dos franjas el mismo día
+        // (lo rechaza el servicio de reservas), que es justo lo que hace único el índice
+        // (origen, origen_id, fecha).
+        var pedidas = dias?.ToDictionary(d => d.Fecha, d => d.Tipo) ?? [];
+
+        foreach (var existente in existentes.Where(d => !pedidas.ContainsKey(d.Fecha)))
+        {
+            existente.Bloquea = false;
+        }
+
+        foreach (var (fecha, tipo) in pedidas)
+        {
+            var fila = existentes.SingleOrDefault(d => d.Fecha == fecha);
+
+            if (fila is null)
+            {
+                contexto.OcupacionDia.Add(new OcupacionDia
+                {
+                    Id = Guid.NewGuid(),
+                    UnidadId = unidadId,
+                    Origen = origen,
+                    OrigenId = origenId,
+                    Fecha = fecha,
+                    Tipo = tipo,
+                    Bloquea = true,
+                    CreadoAt = reloj.GetUtcNow(),
+                });
+            }
+            else
+            {
+                fila.UnidadId = unidadId;
+                fila.Tipo = tipo;
+                fila.Bloquea = true;
+            }
+        }
+
+        await GuardarAsync(ct);
+    }
+
+    /// <summary>
     /// Si la unidad está libre en todo el rango <c>[desde, hasta)</c>. Es una consulta para pintar el
     /// calendario; la garantía de que el alta luego sea posible la dan los bloqueos de la base, no
     /// esta respuesta.

@@ -173,6 +173,9 @@ builder.Services.AddScoped<ServicioDisponibilidad>();
 // F2-02: cotizaciones. El PDF lo compone DocumentoCotizacionPdf con QuestPDF (docs/DESIGN.md §7).
 QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 builder.Services.AddScoped<ServicioCotizaciones>();
+// F2-03: reservas. Es scoped por lo mismo que la disponibilidad: abre su propia transacción y
+// escribe auditoría e idempotencia.
+builder.Services.AddScoped<ServicioReservas>();
 builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
 
 // F1-12: copia de seguridad cifrada de la base de datos y de los documentos, con rotación. El
@@ -225,6 +228,10 @@ builder.Services.AddScoped<IRegistroAlertas, ServicioAlertas>();
 // La vigilancia de la copia solo lee disco y escribe la alerta; no necesita la cadena de volcado,
 // que es la que casi siempre falta cuando esto se ejecuta a mano.
 builder.Services.AddScoped<TrabajoVigilanciaCopia>();
+
+// F2-03: el aviso de la reserva que entra dentro de 7 días. Scoped porque lee la tabla reserva y
+// escribe en alerta con el mismo servicio que los demás trabajos.
+builder.Services.AddScoped<TrabajoAlertaReserva>();
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
