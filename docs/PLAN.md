@@ -68,7 +68,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 | F3-03 | Comprobante fiscal: asignación en emisión, alertas, bloqueo por agotado/vencido, referencia e-factura manual | 3.7 | 50 emisiones concurrentes en serie 3: comprobantes únicos; agotado → emisión bloqueada sin consumir número de factura | F3-02, F0-01 | PENDIENTE |
 | F3-04 | Retenciones y comprobante de retención | 3.9 | cobro + retención = total ⇒ Pagada; indicador sin comprobante | F3-02, F0-01 | PENDIENTE |
 | F3-05 | Facturación periódica con simulación y prorrateo; factura de reserva corta (cobro antes) | 3.8, 3.4 | Doble ejecución no duplica; prorrateo correcto en meses 28-31 | F3-02, F2-06 | PENDIENTE |
-| F3-06 | Cobros: registro, asignación FIFO editable, saldo a favor, corrección con motivo, recibo | 3.10.1 | 200 casos aleatorios: ningún saldo descuadra (property test) | F3-02 | PENDIENTE |
+| F3-06 | Cobros: registro, asignación FIFO editable, saldo a favor, corrección con motivo, recibo | 3.10.1 | 200 casos aleatorios: ningún saldo descuadra (property test) | F3-02 | HECHA (16/10/2026) |
 | F3-07 | Pago en otra moneda + tolerancia + ajuste de diferencia de cambio | 3.10.2 | USD 1.000 pagada con DOP: factura Pagada, ambos importes guardados, sin duplicar factura | F3-06 | PENDIENTE |
 | F3-08 | Modificar, anular (con anulación parcial de cobros multi-factura), duplicar, proforma → factura, rehacer en otra moneda | 3.8 | Cobro de 2 facturas, anular 1: la otra sigue pagada | F3-06 | PENDIENTE |
 | F3-09 | Fianzas: cobro, devolución, descuentos | 3.11 | Devolución parcial exige motivo e importe | F3-06 | PENDIENTE |

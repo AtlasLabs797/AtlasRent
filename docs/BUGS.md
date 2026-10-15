@@ -34,6 +34,21 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 - Commit/PR: pendiente del orquestador.
 - Datos afectados: ninguno; la migración no había salido del entorno de pruebas.
 
+### BUG-006 · La prueba que borra el tipo de cambio del día se rompe en cuanto un documento congela ese cambio
+- Fecha detectado: 16/10/2026 · Fecha corregido: 16/10/2026 (corregido por el orquestador)
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: pruebas / F3-02 → F3-06
+- Detectado por: pruebas de F3-06 (`CobroMonedaTests`), al ejecutar juntas las pruebas de facturas y de cobros
+- Síntoma: `FacturaEmisionTests.SinTipoDeCambioDelDiaLaEmisionFallaYNoGastaElNumero` falla con `23503: update or delete on table "tipo_cambio" violates foreign key constraint "fk_factura_tipo_cambio_tipo_cambio_id"`, en el `QuitarCambioDelDiaAsync` de la línea 296. La prueba de F3-02 es correcta: lo que falla es su helper.
+- Cómo reproducir: `dotnet test -c Release --filter "FullyQualifiedName~AtlasRent.Tests.Cobros|FullyQualifiedName~AtlasRent.Tests.Facturas"`. Con las pruebas de cobros solas, F3-02 pasa; con las dos, falla según el orden.
+- Causa raíz: `QuitarCambioDelDiaAsync` borra la fila de `tipo_cambio` del día **asumiendo que ningún documento la referencia**, y eso era cierto mientras solo emitiera F3-02. En cuanto una factura emitida o un cobro de DOP congela ese cambio (F3-02 con DOP, F3-05 desde el trabajo de facturas periódicas, F3-06 con DOP), la `fk_*_tipo_cambio_tipo_cambio_id` impide el borrado. El diseño del producto es correcto —el cambio congelado no se puede borrar, por eso `tipo_cambio` no concede `DELETE` a `rent_app`—, lo que está mal es la preparación de la prueba, que depende del estado que dejan otras.
+- **Solución definitiva (orquestador):** el helper ya no borra nada. `ApartarCambioDelDiaAsync` mueve la fila del día a una fecha reservada cinco años atrás y `DevolverCambioApartadoAsync` la devuelve, en un `finally`, también si la prueba falla. Mover la fila no rompe ninguna clave foránea porque los documentos la referencian por identificador (`tipo_cambio_id`), no por fecha, y al devolverla la base compartida queda exactamente como estaba. La prueba sigue viendo «hoy sin cambio» sin tocar nada que otras clases dependan.
+- Mitigación que quedó además en F3-06: las pruebas de DOP de cobros se deshacen a sí mismas con `AyudaCobros.SinRastroDeCambio` (`await using` al final): por la conexión de superusuario ponen a `NULL` el `tipo_cambio_id` de los documentos que apuntan a esa fila y borran la fila. Sigue siendo la obligación de cualquier prueba que cree documentos en DOP, porque si una de ellas se queda sin limpiar, la fila que F3-02 aparta ya no es la que hay al volver.
+- **Variante descartada:** adelantar el reloj de pruebas para que cada clase tenga un día propio. Se probó (`ApiTestFactory` con reloj propio) y **no sirve**: el token de acceso se emite con el reloj de la aplicación y JwtBearer lo valida contra el reloj real del sistema, así que con el reloj adelantado toda llamada autenticada sale con 401. Se revirtió por completo; no queda rastro de esa fábrica en el repositorio.
+- Riesgo que queda: la fecha reservada (cinco años antes del día de la prueba) tendría que chocar con otra fila de DOP de esa misma fecha, que es algo que ninguna prueba carga. Si alguna vez se carga, la operación dará error de unicidad en lugar de pisar el cambio de otro día.
+- Test que lo cubre: `backend/AtlasRent.Tests/Facturas/FacturaEmisionTests.cs` (`SinTipoDeCambioDelDiaLaEmisionFallaYNoGastaElNumero`), ejecutada junto a `Cobros/CobroMonedaTests.cs`, que es la combinación que lo Hacía fallar.
+- Commit/PR: pendiente del orquestador.
+- Datos afectados: ninguno; es infraestructura de pruebas.
+
 ### BUG-005 · La serie histórica 9 quedó sembrada activa, aunque no debe emitir
 - Fecha detectado: 16/10/2026 · Fecha corregido: 16/10/2026
 - Gravedad: **Media** · Estado: CORREGIDO · Módulo: configuración / F1-08 → F3-02

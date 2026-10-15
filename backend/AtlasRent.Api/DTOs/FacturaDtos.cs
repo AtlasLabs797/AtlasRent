@@ -89,6 +89,12 @@ public sealed class FacturaLineaPeticion
 /// <b>Sin importes agregados</b> ni totales por periodo: los informes son de §3.15 y solo gerente y
 /// administrador los ven (F3-10).
 /// </para>
+/// <para>
+/// <b>Cobrado, pendiente y estado de cobro son derivados</b> (§3.8) y los rellena
+/// <c>ServicioCobros</c> con la suma de las asignaciones vigentes de la página, en una consulta
+/// agregada y no una por factura. No son columnas de la factura: dependen de los cobros, que
+/// cambian aunque la factura no se toque.
+/// </para>
 /// </summary>
 public sealed record FacturaResumen(
     Guid Id,
@@ -110,14 +116,28 @@ public sealed record FacturaResumen(
     decimal Itbis,
     decimal Total,
     int Lineas,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt)
+{
+    /// <summary>Lo cobrado de esta factura, en su moneda, por asignaciones vigentes (F3-06).</summary>
+    public decimal Cobrado { get; init; }
+
+    /// <summary>Neto a cobrar menos lo cobrado. Nunca negativo: cobrar de más es saldo a favor (§3.10.1).</summary>
+    public decimal Pendiente { get; init; }
+
+    /// <summary>Estado derivado de §3.8: pendiente, parcial o pagada.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter<EstadoCobroFactura>))]
+    public EstadoCobroFactura EstadoCobro { get; init; }
+
+    /// <summary>Pendiente mayor que cero con el vencimiento ya pasado (día de negocio de Santo Domingo).</summary>
+    public bool Vencida { get; init; }
+}
 
 /// <summary>
 /// Factura con sus líneas, que es como la lee el detalle, el PDF y la vista de cuentas (§3.13).
 /// <para>
-/// <b>No expone cobrado, pendiente ni estado de cobro</b>: dependen de <c>cobro</c>, que no existe
-/// hasta F3-06, y la retención es de F3-04. Un campo que sale a cero y miente es peor que un campo
-/// que no existe.
+/// <b>Cobrado, pendiente y estado de cobro los aporta F3-06</b>, que es de donde salen: no son
+/// columnas de la factura sino la suma de las asignaciones vigentes que apuntan a ella (§3.8).
+/// La retención sigue sin salir (TODO(F3-04)).
 /// </para>
 /// </summary>
 public sealed record FacturaRespuesta(
@@ -144,7 +164,21 @@ public sealed record FacturaRespuesta(
     Guid? TipoCambioId,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt,
-    IReadOnlyList<FacturaLineaRespuesta> Lineas);
+    IReadOnlyList<FacturaLineaRespuesta> Lineas)
+{
+    /// <summary>Lo cobrado de esta factura, en su moneda, por asignaciones vigentes (F3-06).</summary>
+    public decimal Cobrado { get; init; }
+
+    /// <summary>Neto a cobrar menos lo cobrado. Nunca negativo: cobrar de más es saldo a favor (§3.10.1).</summary>
+    public decimal Pendiente { get; init; }
+
+    /// <summary>Estado derivado de §3.8: pendiente, parcial o pagada.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter<EstadoCobroFactura>))]
+    public EstadoCobroFactura EstadoCobro { get; init; }
+
+    /// <summary>Pendiente mayor que cero con el vencimiento ya pasado (día de negocio de Santo Domingo).</summary>
+    public bool Vencida { get; init; }
+}
 
 /// <summary>
 /// Línea tal y como se guarda y tal y como se imprime. El porcentaje de ITBIS va porque es el dato

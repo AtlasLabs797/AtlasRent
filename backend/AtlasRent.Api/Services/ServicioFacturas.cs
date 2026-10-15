@@ -43,6 +43,7 @@ public sealed class ServicioFacturas(
     ServicioIdempotencia idempotencia,
     ServicioSeries series,
     ServicioTiposCambio tiposCambio,
+    ServicioCobros cobros,
     IPolicyService politica,
     TimeProvider reloj)
 {
@@ -65,7 +66,7 @@ public sealed class ServicioFacturas(
     /// <b>Sin totales agregados</b>: son de §3.15 y solo gerente y administrador los ven (F3-10).
     /// </para>
     /// </summary>
-    public Task<Pagina<FacturaResumen>> ListarAsync(
+    public async Task<Pagina<FacturaResumen>> ListarAsync(
         ConsultaLista paginacion,
         EstadoFactura? estado,
         Guid? serieId,
@@ -118,15 +119,28 @@ public sealed class ServicioFacturas(
             consulta = consulta.Where(f => f.FechaEmision <= hastaFecha);
         }
 
-        return ConsultaPaginada.PaginarAsync(
+        var pagina = await ConsultaPaginada.PaginarAsync(
             consulta, Ordenes, "createdAt", paginacion, AResumen, ct);
+
+        // Cobrado, pendiente y estado de cobro (F3-06, §3.8) se resuelven en una sola consulta
+        // agregada sobre la página, no con una consulta por factura: son datos de otra tabla
+        // (cobro) y una vista de cuentas de 25 filas no puede costar 26 viajes.
+        var cobrados = await cobros.CobradoPorFacturaAsync(
+            [.. pagina.Data.Select(f => f.Id)], ct);
+
+        return pagina with
+        {
+            Data = [.. pagina.Data.Select(f => ConCobro(f, cobrados.GetValueOrDefault(f.Id)))],
+        };
     }
 
     public async Task<FacturaRespuesta> LeerAsync(Guid id, CancellationToken ct)
     {
         var factura = await CargarAsync(id, ct);
 
-        return ARespuesta(factura);
+        var cobrados = await cobros.CobradoPorFacturaAsync([factura.Id], ct);
+
+        return ConCobro(ARespuesta(factura), cobrados.GetValueOrDefault(factura.Id));
     }
 
     // ---------------------------------------------------------------- escritura de borrador
@@ -638,6 +652,42 @@ public sealed class ServicioFacturas(
 
     // ---------------------------------------------------------------- proyecciones
 
+    /// <summary>
+    /// Rellena los cuatro campos derivados de §3.8 con lo que hay cobrado hoy. El cálculo está en
+    /// <see cref="CalculoCobro"/> y lo pide <c>ServicioCobros</c>, que es quien sabe qué
+    /// asignaciones cuentan: un cobro anulado no cuenta, y eso no lo puede saber un lector de
+    /// facturas por su cuenta.
+    /// <para>
+    /// La retención va a cero porque la columna es de F3-04; el cálculo ya la tiene en cuenta.
+    /// </para>
+    /// </summary>
+    private FacturaResumen ConCobro(FacturaResumen f, decimal cobrado)
+    {
+        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, f.FechaVencimiento);
+
+        return f with
+        {
+            Cobrado = situacion.Cobrado,
+            Pendiente = situacion.Pendiente,
+            EstadoCobro = situacion.Estado,
+            Vencida = situacion.Vencida,
+        };
+    }
+
+    /// <summary>Igual que <see cref="ConCobro"/>, para el detalle.</summary>
+    private FacturaRespuesta ConCobro(FacturaRespuesta f, decimal cobrado)
+    {
+        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, f.FechaVencimiento);
+
+        return f with
+        {
+            Cobrado = situacion.Cobrado,
+            Pendiente = situacion.Pendiente,
+            EstadoCobro = situacion.Estado,
+            Vencida = situacion.Vencida,
+        };
+    }
+
     private static void Aplicar(Factura factura, FacturaPeticion peticion)
     {
         factura.ClienteId = peticion.ClienteId;
@@ -671,6 +721,16 @@ public sealed class ServicioFacturas(
         f.Lineas.Count,
         f.CreatedAt);
 
+    /// <summary>
+    /// Detalle de la factura con sus líneas.
+    /// <para>
+    /// <b>Sale sin <c>cobrado</c> ni <c>pendiente</c> en los caminos de escritura</b> (crear,
+    /// editar líneas, emitir) porque ahí el cero es el valor real: una factura en borrador no admite
+    /// cobros y una recién emitida no puede tenerlos, así que preguntarlo a la base solo añadiría un
+    /// viaje por operación. Quien lea una factura emitida por HTTP pasa por
+    /// <see cref="LeerAsync"/>, que sí lo resuelve.
+    /// </para>
+    /// </summary>
     private static FacturaRespuesta ARespuesta(Factura f) => new(
         f.Id,
         f.ClienteId,

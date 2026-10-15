@@ -128,12 +128,16 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
         {
             var auditoria = new AuditoriaService(contexto);
             var idempotencia = new ServicioIdempotencia(contexto, api.Reloj);
+            var tiposCambio = ConstruirTiposCambio(contexto, auditoria, idempotencia, api.Reloj);
             var servicio = new ServicioFacturas(
                 contexto,
                 auditoria,
                 idempotencia,
                 new ServicioSeries(contexto, auditoria, api.Reloj),
-                ConstruirTiposCambio(contexto, auditoria, idempotencia, api.Reloj),
+                tiposCambio,
+                // F3-06: ServicioFacturas lo usa para resolver cobrado, pendiente y estado de cobro
+                // de la factura en la lectura. En esta prueba solo hace falta que exista.
+                ConstruirCobros(contexto, auditoria, idempotencia, tiposCambio, api.Reloj),
                 new PoliticaSinEmitir(),
                 api.Reloj);
 
@@ -167,6 +171,18 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
             new ServicioAlertas(contexto, reloj),
             new FuenteQueNoSeUsa(),
             reloj);
+
+    /// <summary>
+    /// <c>ServicioCobros</c> (F3-06) con la fuente de tipos de cambio que ya se ha construido: aquí
+    /// solo se usa para resolver el estado de cobro de una factura, no para mover dinero.
+    /// </summary>
+    private static ServicioCobros ConstruirCobros(
+        AtlasRent.Api.Data.AtlasRentDbContext contexto,
+        AuditoriaService auditoria,
+        ServicioIdempotencia idempotencia,
+        ServicioTiposCambio tiposCambio,
+        TimeProvider reloj) =>
+        new(contexto, auditoria, idempotencia, tiposCambio, new PoliticaSinEmitir(), reloj);
 
     private sealed class FuenteQueNoSeUsa : IFuenteTipoCambio
     {

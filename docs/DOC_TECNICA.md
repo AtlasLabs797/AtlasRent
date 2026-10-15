@@ -120,6 +120,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - Comunes: `origen`, `created_at/by`, `updated_at/by`; concurrencia optimista con la columna de sistema `xmin` (`UseXminAsConcurrencyToken` / `IsRowVersion` en Npgsql); conflicto → 409 con el estado actual.
 - Económicos: estado anulado, nunca borrado. Resto: `deleted_at`, `deleted_by`.
 - **Facturas (F3-02):** una sola tabla `factura` para facturas y proformas — lo que las distingue es `serie.tipo`, no el sitio donde viven; con dos tablas habría que duplicar líneas, totales y cobros sin ganar nada. `factura_linea` cuelga de ella con cascada al borrado, que solo se da en borrador. Dos `CHECK`: `(estado = 1) = (numero IS NULL)` (un borrador no tiene número y una emitida lo tiene) y `tipo_cambio_fecha IS NULL OR fecha_emision IS NOT NULL` (el cambio congelado solo existe si el documento salió). El ITBIS se congela **en la línea** (`porcentaje_itbis`, `tipo_itbis_id`), no solo en la cabecera: la factura dice "este importe lleva este impuesto" y cambiar el tipo de ITBIS mañana no puede cambiar lo que una factura ya emitida dice.
+- **Cobros (F3-06):** `cobro` (dinero que entró, con su cambio congelado y su estado), `cobro_asignacion` (a qué factura se aplica) y `saldo_a_favor` (**una fila por contrato y moneda**, no una por cobro: el crédito es un saldo del contrato y se actualiza al cobrar y al consumir). **Ninguna de las tres lleva `DELETE` para `rent_app`**: un cobro se anula con motivo y sus asignaciones se quedan con `vigente = false`, que es la diferencia entre anular y borrar (§3.10.1, AGENTS.md §6). `CHECK` en `cobro`: `importe_recibido > 0`, `saldo_favor_usado >= 0 AND excedente >= 0` y `(estado = 2) = (anulado_at IS NOT NULL AND motivo_anulacion IS NOT NULL)` —anular con motivo y con fecha, o no está anulado. La cascada de `cobro_asignacion` sobre `cobro` no cambia eso: sin `DELETE` concedido, solo un `DROP` de tabla o un script de migración la usaría.
 
 ### 4.3 Piezas críticas en SQL
 - **Exclusión de rangos:** `EXCLUDE USING gist (unidad_id WITH =, daterange(fecha_inicio, fecha_fin, '[)') WITH &&) WHERE (bloquea)` sobre `ocupacion_rango` (`btree_gist`).
@@ -152,7 +153,10 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **ITBIS de la factura (F3-02):** es **por línea** (§3.8), no sobre el total. `CalculoImpuestosLinea.Calcular(cantidad, precio, porcentaje)` redondea una vez el importe (`cantidad × precio`) y una vez su impuesto (`importe × porcentaje / 100`), y los totales de la cabecera son `Subtotal = Σ Importe`, `Itbis = Σ ItbisImporte` y `Total = Subtotal + Itbis`. No es lo mismo que redondear el subtotal entero: dos líneas al 18 % de 100,01 y 0,30 dan 18,00 + 0,05 = **18,05**, mientras que 100,31 × 18 % redondeado da **18,06**. El céntimo se pierde si el impuesto se calcula sobre el total. `CalculoImpuestos.Calcular` (de factura completa, con retenciones) sigue existiendo para lo que venga después; hoy no lo usa nadie. El 100 es un divisor de porcentaje y no una cifra fiscal: el porcentaje sale de `tipo_itbis` (D14).
 - **Signo de las líneas (F3-02):** el tipo lo decide. Una línea `Descuento` con importe positivo se rechaza con 409, y cualquier otro tipo con importe negativo también: restar es tener una línea de descuento, no poner un signo raro. El subtotal es por tanto la suma algebraica de las líneas.
 - **Borrador reescribible (F3-02):** una factura en borrador no tiene número, ni comprobante, ni deuda, así que se le cambian la cabecera y las líneas, y sus líneas se borran. Emitida, ninguna línea se toca: lo que hay es anular y emitir otra (F3-08).
-- **Cobro:** `cobro (moneda_recibida, importe_recibido, cambio_aplicado)`; `cobro_asignacion (destino, importe_moneda_destino, importe_moneda_recibida, estado)`. Propuesta FIFO por vencimiento dentro del contrato. Excedente → `saldo_favor`.
+- **Saldo de factura (F3-06):** `Dominio/CalculoCobro.Calcular(total, retencion, cobrado, vencimiento, hoy)` → record con `Cobrado`, `Pendiente`, `Estado`, `Vencida` y `DiasVencida`. **Pendiente = total − retenciones − cobrado, acotado a cero**: un pendiente negativo significaría que se ha cobrado de más, y eso es saldo a favor (§3.10.1), que vive en otra tabla con otras reglas; devolverlo negativo haría que cualquier suma de pendientes de §3.13 descuadrara contra el dinero real. Estado = `Pagada` / `Parcial` / `Pendiente` (§3.8) y `Vencida` es **una bandera aparte** (pendiente > 0 y hoy > vencimiento), porque vencida no sustituye al estado: la vista de cuentas necesita las dos cosas. `cobrado` sale de una **consulta agregada** de las asignaciones vigentes de la página, no de una por factura. La retención entra por parámetro y hoy vale cero porque la columna es de F3-04; la prueba que heredará F3-04 está en `CobroCalculoTests`.
+- **Cobro (F3-06):** `cobro (moneda_recibida, importe_recibido, tipo_cambio_valor/tipo_cambio_fecha congelados)`; `cobro_asignacion (factura_id, importe en la moneda de la factura, vigente)`; `saldo_a_favor (contrato_id, moneda, importe)`. **FIFO dentro del contrato y de la moneda recibida**, por `FechaVencimiento`, luego `FechaEmision` y luego `Id` (desempate estable: sin él dos facturas del mismo día darían un orden que cambia entre dos llamadas). Un cobro parcial deja la siguiente a medias y no la salta. **Editable**: si quien cobra manda asignaciones, el servicio no propone nada; si no, propone la FIFO. `POST /simular` devuelve esa propuesta **sin escribir nada**. Excedente = `importe_recibido + saldo_favor_usado − Σ asignaciones`, y sin contrato se queda en la columna `excedente` del cobro sin generar crédito. **El crédito se gasta solo cuando quien cobra lo pide** (`usarSaldoAFavor`): §3.10.1 no dice a qué factura se descuenta, y aplicarlo por las reglas al emitir sería inventar la regla.
+- **Anular un cobro (F3-06):** una transacción — el cobro pasa a `Anulado` con motivo y fecha, sus asignaciones quedan con `vigente = false` **sin borrarse**, y el saldo a favor vuelve a como estaba antes (sale el excedente, vuelve el crédito consumido). Las facturas recupuran su pendiente porque sus asignaciones ya no cuentan.
+- **Límite conocido y temporal (F3-06 → F3-07):** un cobro **solo asigna a facturas de la moneda recibida**. Pagar deuda en una moneda con dinero de otra es el pago en otra moneda de §3.10.2, que añade `importe_recibido` y `tipo_cambio_valor` a `cobro_asignacion`; aquí se rechaza con 409 nombrando §3.10.2 en vez de convertir (D7). La deuda del contrato en otra moneda no se asigna pero **sí se devuelve** en la simulación (`deudaEnOtraMoneda`), para que la interfaz pueda decir que el cobro no la cubre.
 - **Pago en otra moneda:** equivalente = importe recibido convertido con el cambio aplicado, redondeado a 2; tolerancia configurable por moneda; `ajuste_diferencia_cambio` auditado.
 - **Anular factura (una transacción):** factura y comprobante anulados; sus `cobro_asignacion` anuladas; cobros sin asignaciones vigentes → anulados; auditoría con la lista de afectados.
 - **Anticipo:** campos de nota en `reserva`; ninguna consulta económica los lee.
@@ -194,8 +198,8 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 
 | Endpoint | Acción | Notas |
 |---|---|---|
-| `GET /api/v1/facturas` | `factura.ver` | Listado paginado; filtros `estado`, `serieId`, `clienteId`, `unidadId`, `moneda`, `desde`/`hasta` (fechas de emisión) y orden `?sortBy=createdAt\|fechaEmision\|vencimiento\|total\|numero`. **Sin totales agregados**: son de §3.15 y solo gerente/admin los ven (F3-10). |
-| `GET /api/v1/facturas/{id}` | `factura.ver` | Factura con sus líneas. No expone `cobrado`, `pendiente` ni `estado_cobro` (dependen de `cobro`, F3-06) ni retención (F3-04). |
+| `GET /api/v1/facturas` | `factura.ver` | Listado paginado; filtros `estado`, `serieId`, `clienteId`, `unidadId`, `moneda`, `desde`/`hasta` (fechas de emisión) y orden `?sortBy=createdAt\|fechaEmision\|vencimiento\|total\|numero`. Cada fila trae también `cobrado`, `pendiente`, `estadoCobro` y `vencida`, resueltos con **una consulta agregada** sobre la página (§3.13). **Sin totales agregados**: son de §3.15 y solo gerente/admin los ven (F3-10). |
+| `GET /api/v1/facturas/{id}` | `factura.ver` | Factura con sus líneas y con `cobrado`, `pendiente`, `estadoCobro` y `vencida` derivados de los cobros (§3.8, F3-06). No expone retención (F3-04). |
 | `POST /api/v1/facturas` | `factura.borrador` | Alta en borrador. Sin número y sin cambio: los dos los pone la emisión. Acepta `Idempotency-Key`. |
 | `PUT /api/v1/facturas/{id}` | `factura.borrador` | Edita la cabecera. 409 si ya no está en borrador. Acepta `Idempotency-Key`. |
 | `POST /api/v1/facturas/{id}/lineas` | `factura.borrador` | Alta de línea; recalcula los totales. `cantidad` × `precioUnitario` y el ITBIS los calcula la aplicación. Acepta `Idempotency-Key`. |
@@ -215,6 +219,38 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   corrige borrando una línea y replace-all obligaría a reenviar todas las demás.
 - **Series 9 y 3**: la histórica (9) queda desactivada por la migración de F3-02 —no emite, la usan las
   importaciones de Factusol conservando su número— y la fiscal (3) es la que genera comprobante (F3-03).
+
+### 6.3 Cobros (F3-06)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/cobros` | `factura.ver` | Listado paginado; filtros `clienteId`, `contratoId`, `moneda`, `estado` (`Registrado`/`Anulado`), `desde`/`hasta` (fechas efectivas) y orden `?sortBy=fechaEfectiva\|createdAt\|importe\|estado`. **Sin totales agregados**: son de §3.15 (F3-10). |
+| `GET /api/v1/cobros/{id}` | `factura.ver` | Cobro con sus asignaciones. Las de un cobro anulado **salen igual**, con `vigente = false`: lo que deja de contar no se esconde. |
+| `POST /api/v1/cobros` | `cobro.registrar` | Registro. Cuerpo = el de `simular`. Acepta `Idempotency-Key`: un reintento devuelve el cobro ya registrado y no mete dos veces el mismo dinero. |
+| `POST /api/v1/cobros/simular` | `cobro.registrar` | **Misma entrada, no muta nada.** Devuelve la propuesta FIFO (factura, importe aplicado, pendiente previo), `totalAsignado`, `excedente`, el crédito disponible y `deudaEnOtraMoneda`. |
+| `POST /api/v1/cobros/{id}/anular` | `cobro.registrar` | Anulación **con motivo obligatorio** (400 sin él). No borra: anula el cobro y desactiva sus asignaciones. Acepta `Idempotency-Key`. |
+
+- **Ninguna acción nueva.** Ver un cobro es `factura.ver` (la fila 7 de §2) y mover dinero es
+  `cobro.registrar`, que D15 deja desactivado al empleado. Registrar, simular y anular llevan la misma
+  acción: **simular es parte de registrar**, y quien no puede registrar tampoco va a ver una propuesta
+  de reparto.
+- **Cuerpo del registro:** `clienteId`, `contratoId` (nulo = cobro suelto), `fechaEfectiva`,
+  `monedaRecibida`, `importeRecibido`, `formaPagoId`, `cuentaReceptoraId`, `referencia`,
+  `usarSaldoAFavor` y `asignaciones` (opcional; `{ facturaId, importe }`, importe **en la moneda de la
+  factura**). Si `asignaciones` no viene, se propone la FIFO.
+- **El 409 es el conflicto de negocio**: asignar más del pendiente, asignar a una factura de otro
+  contrato, a una de otra moneda (§3.10.2, F3-07), a una que no genera deuda (borrador, anulada o serie
+  sin `suma_a_saldos`), usar más crédito del que hay, cuenta receptora de otra moneda, cobro ya
+  anulado, o **falta el tipo de cambio del día** en una moneda que no sea el dólar (D9; la salida es la
+  carga manual de §3.12 y el mensaje la dice).
+- **El servicio también comprueba el permiso**, con `IPolicyService.PuedeAsync`, y no solo el atributo
+  del endpoint: los trabajos de Hangfire entran por el servicio, sin sesión HTTP ni filtro. El intento
+  denegado se audita antes de lanzar.
+- **Una transacción, un commit:** el cobro, sus asignaciones y el movimiento del saldo a favor entran
+  juntos, y la auditoría (`cobro.registrado` y, si hubo crédito, `cobro.saldo_a_favor_usado`) va dentro.
+- **TODO(F4-01): el recibo en PDF no está aquí.** Es de la fase 4, con QuestPDF y las plantillas por
+  serie. **No hay endpoint que devuelva un PDF provisional**: un recibo de dinero provisional es un
+  documento que alguien puede imprimir y archivar.
 
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
@@ -385,6 +421,22 @@ GRANT CONNECT ON DATABASE atlas_rent_jobs TO rent_migrador;
 5. Certificado: HTTPS directo en Kestrel (win-acme / Let's Encrypt o certificado de la empresa) o Caddy delante.
 6. Router: reenviar solo 443.
 7. Comprobar checklist A.1 de SEGURIDAD.md.
+
+**Datos de configuración que la aplicación NO siembra y sin los que no se puede cobrar (F3-06).** Un
+cobro exige `forma_pago_id` y `cuenta_receptora_id`, y **no se pueden registrar sin ellos**: el servicio
+responde 404 y la pantalla de cobro no deja guardar. Se crean desde *Configuración → Formas de pago* y
+*Configuración → Cuentas receptoras* (`POST /api/v1/config/formas-pago` y `POST /api/v1/config/cuentas`,
+permiso `configuracion.editar`), y hay que comprobarlo en la instalación:
+
+- **Al menos una forma de pago activa.** Es dato de configuración y lo da el operador, no la
+  aplicación: sembrarla en el código pondría nombres y intermédiaire de cobros en el código, que es donde
+  no se pueden cambiar sin desplegar.
+- **Al menos una cuenta receptora activa por cada moneda en la que se cobre**, y **su moneda tiene que
+  ser la del importe recibido** (D8): un cobro en dólares contra una cuenta en pesos se rechaza con 409.
+- La **cuenta en USD** es imprescindible: el dólar vale 1 sin consultar `tipo_cambio` (F3-01) y es la
+  base de informes, así que es la moneda con la que se prueba el sistema.
+- Lo mismo con los **tipos de ITBIS** (F1-08): sin ninguno, las facturas se pueden emitir pero ninguna
+  lleva impuesto.
 
 **Actualizaciones:** paquetes publicados en GitHub Releases (, validación de integridad y firma, copia previa, recuperación ante error) mediante `scripts/update.ps1` y Watchdog.
 

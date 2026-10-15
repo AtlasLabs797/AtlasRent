@@ -79,29 +79,36 @@ public sealed class FacturaEmisionTests(ContenedorBdFixture bd, ApiTestFactory a
         using var sesion = await AyudaFacturas.SesionAsync(bd, api, Roles.Admin, ct);
 
         var hoy = await AyudaFacturas.HoyAsync(sesion, ct);
-        await QuitarCambioDelDiaAsync(ct, hoy);
+        var apartado = await ApartarCambioDelDiaAsync(hoy, ct);
 
-        var clienteId = await AyudaFacturas.CrearClienteAsync(sesion, ct);
-        var serieId = await AyudaFacturas.CrearSerieAsync(sesion, TipoSerie.Fiscal, null, ct);
-        var facturaId = await AyudaFacturas.BorradorConLineaAsync(
-            sesion, clienteId, serieId, Moneda.DOP, ct);
+        try
+        {
+            var clienteId = await AyudaFacturas.CrearClienteAsync(sesion, ct);
+            var serieId = await AyudaFacturas.CrearSerieAsync(sesion, TipoSerie.Fiscal, null, ct);
+            var facturaId = await AyudaFacturas.BorradorConLineaAsync(
+                sesion, clienteId, serieId, Moneda.DOP, ct);
 
-        var emitida = await sesion.PostAsync($"/api/v1/facturas/{facturaId:D}/emitir", new { }, ct);
+            var emitida = await sesion.PostAsync($"/api/v1/facturas/{facturaId:D}/emitir", new { }, ct);
 
-        emitida.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        (await emitida.Content.ReadAsStringAsync(ct)).Should().Contain("tipo de cambio");
+            emitida.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            (await emitida.Content.ReadAsStringAsync(ct)).Should().Contain("tipo de cambio");
 
-        await using var contexto = bd.CrearContexto(bd.CadenaApp);
-        var fila = await contexto.Factura.AsNoTracking().SingleAsync(f => f.Id == facturaId, ct);
-        fila.Estado.Should().Be(EstadoFactura.Borrador);
-        fila.Numero.Should().BeNull();
-        fila.TipoCambioValor.Should().BeNull();
+            await using var contexto = bd.CrearContexto(bd.CadenaApp);
+            var fila = await contexto.Factura.AsNoTracking().SingleAsync(f => f.Id == facturaId, ct);
+            fila.Estado.Should().Be(EstadoFactura.Borrador);
+            fila.Numero.Should().BeNull();
+            fila.TipoCambioValor.Should().BeNull();
 
-        (await contexto.Serie.AsNoTracking().SingleAsync(s => s.Id == serieId, ct)).Siguiente
-            .Should().Be(1, "el fallo de la fuente de cambios no puede gastar un número");
+            (await contexto.Serie.AsNoTracking().SingleAsync(s => s.Id == serieId, ct)).Siguiente
+                .Should().Be(1, "el fallo de la fuente de cambios no puede gastar un número");
 
-        (await contexto.NumeroSerie.AsNoTracking().CountAsync(n => n.SerieId == serieId, ct))
-            .Should().Be(0);
+            (await contexto.NumeroSerie.AsNoTracking().CountAsync(n => n.SerieId == serieId, ct))
+                .Should().Be(0);
+        }
+        finally
+        {
+            await DevolverCambioApartadoAsync(apartado, ct);
+        }
     }
 
     /// <summary>
@@ -285,15 +292,37 @@ public sealed class FacturaEmisionTests(ContenedorBdFixture bd, ApiTestFactory a
     }
 
     /// <summary>
-    /// Borra el cambio de DOP del día indicado. Hace falta porque la base es compartida: si otra
-    /// prueba dejó cargado el cambio de hoy, la de "sin tipo de cambio" no estaría probando nada.
-    /// Se borra por la conexión de superusuario porque <c>tipo_cambio</c> no concede DELETE a
-    /// <c>rent_app</c>: ni la aplicación puede borrarlo.
+    /// Deja el día «sin tipo de cambio» sin borrar la fila: la mueve a una fecha reservada y
+    /// devuelve la fecha apartada para poder devolverla después.
+    /// <para>
+    /// Antes se borraba con la conexión de superusuario, y eso tenía dos fallos (BUG-006): si
+    /// cualquier documento había congelado ese cambio, el borrado reventaba por clave foránea; y
+    /// mientras no reventaba, dejaba sin cambio a las pruebas que vinieran después. Mover la fila
+    /// no la destruye —los documentos la referencian por identificador, no por fecha— y
+    /// <c>DevolverCambioApartadoAsync</c> la deja como estaba, también si el test falla.
+    /// </para>
     /// </summary>
-    private async Task QuitarCambioDelDiaAsync(CancellationToken ct, DateOnly fecha)
+    private async Task<DateOnly> ApartarCambioDelDiaAsync(DateOnly fecha, CancellationToken ct)
+    {
+        var fechaApartada = new DateOnly(fecha.Year - 5, fecha.Month, fecha.Day);
+
+        await using var contexto = bd.CrearContexto(bd.CadenaSuperusuario);
+        await contexto.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE tipo_cambio SET fecha = {fechaApartada} WHERE fecha = {fecha} AND moneda = {(int)Moneda.DOP}",
+            ct);
+
+        return fechaApartada;
+    }
+
+    /// <summary>
+    /// Devuelve a su fecha la fila que apartó <see cref="ApartarCambioDelDiaAsync"/>. Si el día no
+    /// tenía cambio, no había fila que apartar y aquí no hay nada que hacer.
+    /// </summary>
+    private async Task DevolverCambioApartadoAsync(DateOnly fechaApartada, CancellationToken ct)
     {
         await using var contexto = bd.CrearContexto(bd.CadenaSuperusuario);
         await contexto.Database.ExecuteSqlInterpolatedAsync(
-            $"DELETE FROM tipo_cambio WHERE fecha = {fecha} AND moneda = {(int)Moneda.DOP}", ct);
+            $"UPDATE tipo_cambio SET fecha = {fechaApartada.AddYears(5)} WHERE fecha = {fechaApartada} AND moneda = {(int)Moneda.DOP}",
+            ct);
     }
 }

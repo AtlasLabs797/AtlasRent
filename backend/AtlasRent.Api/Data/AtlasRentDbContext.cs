@@ -148,6 +148,15 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<FacturaLinea> FacturaLinea => Set<FacturaLinea>();
 
+    // F3-06: cobros y sus aplicaciones a facturas (docs/ESPECIFICACION.md §3.10.1). El saldo a favor
+    // es una tabla y no una columna de contrato porque tiene moneda propia: es crédito en la moneda
+    // en que se cobró de más, y una factura nunca se convierte (D7).
+    public DbSet<Cobro> Cobro => Set<Cobro>();
+
+    public DbSet<CobroAsignacion> CobroAsignacion => Set<CobroAsignacion>();
+
+    public DbSet<SaldoAFavor> SaldoAFavor => Set<SaldoAFavor>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -1126,6 +1135,109 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.TipoItbis)
                 .WithMany()
                 .HasForeignKey(e => e.TipoItbisId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F3-06: cobros (docs/ESPECIFICACION.md §3.10.1). Un cobro es un movimiento de dinero: no
+        // tiene borradores ni borrados, solo registro y anulación con motivo.
+        modelBuilder.Entity<Cobro>(entidad =>
+        {
+            entidad.ToTable("cobro", tabla =>
+            {
+                // Un cobro de cero o de menos no es un cobro: es un error de captura, y dejarlo
+                // pasar metería filas que cuadran en la suma y no en el banco.
+                tabla.HasCheckConstraint("ck_cobro_importe_positivo", "importe_recibido > 0");
+                // Ni el crédito aplicado ni el excedente pueden ser negativos: un importe negativo
+                // es una devolución, y eso se registra con su propio motivo y su propia fecha.
+                tabla.HasCheckConstraint("ck_cobro_no_negativos", "saldo_favor_usado >= 0 AND excedente >= 0");
+                // Anulado significa anulado con motivo y con fecha, y no al revés. Sin esta regla,
+                // la única forma de saber si una anulación está completa es mirando tres columnas
+                // a la vez, y la respuesta puede ser que sí y que no.
+                tabla.HasCheckConstraint(
+                    "ck_cobro_anulado_completo",
+                    "(estado = 2) = (anulado_at IS NOT NULL AND motivo_anulacion IS NOT NULL)");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Referencia).HasMaxLength(120);
+            entidad.Property(e => e.MotivoAnulacion).HasMaxLength(500);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El tipo de cambio congelado es el único decimal de la tabla que no es dinero:
+            // numeric(18,6), como en la fila de tipo_cambio de F3-01 de la que salió.
+            entidad.Property(e => e.TipoCambioValor).HasColumnType("numeric(18,6)");
+            // La vista de cobros filtra por cliente y ordena por fecha efectiva; los listados por
+            // contrato, moneda y estado son las mismas consultas con un filtro más.
+            entidad.HasIndex(e => new { e.ClienteId, e.FechaEfectiva });
+            entidad.HasIndex(e => e.ContratoId);
+            entidad.HasIndex(e => new { e.Estado, e.FechaEfectiva });
+            entidad.HasIndex(e => new { e.MonedaRecibida, e.FechaEfectiva });
+            entidad.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Contrato)
+                .WithMany()
+                .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.FormaPago)
+                .WithMany()
+                .HasForeignKey(e => e.FormaPagoId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.CuentaReceptora)
+                .WithMany()
+                .HasForeignKey(e => e.CuentaReceptoraId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.TipoCambio)
+                .WithMany()
+                .HasForeignKey(e => e.TipoCambioId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Las asignaciones no se borran cuando se anula el cobro ni cuando se anula la factura que
+        // pagaban (D6): se quedan sin vigor. Por eso el borrado en cascada es el mismo patrón que el
+        // de las líneas de factura: no hay documento que se borre nunca, y lo que se borra es lo que
+        // ya no está. Nunca hay DELETE desde la API, así que la cascada solo existe para las
+        // migraciones y los scripts.
+        modelBuilder.Entity<CobroAsignacion>(entidad =>
+        {
+            entidad.ToTable("cobro_asignacion", tabla =>
+            {
+                // Una asignación de cero no asigna nada y haría creer que esa factura se pagó.
+                tabla.HasCheckConstraint("ck_cobro_asignacion_importe_positivo", "importe > 0");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El índice por factura es el que resuelve la suma de lo cobrado de una página de
+            // facturas en una sola consulta, sin N+1 (§3.13).
+            entidad.HasIndex(e => e.FacturaId);
+            entidad.HasIndex(e => e.CobroId);
+            entidad.HasOne(e => e.Cobro)
+                .WithMany(c => c.Asignaciones)
+                .HasForeignKey(e => e.CobroId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entidad.HasOne(e => e.Factura)
+                .WithMany()
+                .HasForeignKey(e => e.FacturaId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // El saldo a favor es un saldo del contrato, y el único es por contrato y moneda: es el
+        // mismo crédito del mismo contrato el que se actualiza al cobrar y al consumir, y dos filas
+        // para lo mismo harían que la deuda del cliente se leyera dos veces.
+        modelBuilder.Entity<SaldoAFavor>(entidad =>
+        {
+            entidad.ToTable("saldo_a_favor", tabla =>
+            {
+                // Un saldo a favor negativo no es un saldo a favor: es un cobro sin asignar, y eso
+                // es la columna excedente del cobro, que sí tiene su propia historia.
+                tabla.HasCheckConstraint("ck_saldo_a_favor_no_negativo", "importe >= 0");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => new { e.ContratoId, e.Moneda })
+                .IsUnique();
+            entidad.HasOne(e => e.Contrato)
+                .WithMany()
+                .HasForeignKey(e => e.ContratoId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

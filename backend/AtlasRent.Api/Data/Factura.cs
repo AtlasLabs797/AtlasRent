@@ -113,9 +113,10 @@ public sealed class Factura : IEntidadTrazada
     // TODO(F3-04): aquí van la retención y las líneas de retención (§3.9, D14). El neto a cobrar es
     // total menos retenciones, y hasta que F3-04 exista no se puede exponer un neto que no existe.
 
-    // TODO(F3-06): aquí van cobrado y pendiente, y con ellos el estado de cobro derivado
-    // (Pendiente / Parcial / Pagada) de §3.8. Dependen de `cobro`, que no existe hasta F3-06; por eso
-    // el DTO de la factura no expone ni cobrado, ni pendiente, ni estado_cobro.
+    // F3-06: cobrado, pendiente y estado de cobro derivado (Pendiente / Parcial / Pagada, §3.8) ya
+    // salen en el DTO y los calcula Dominio/CalculoCobro a partir de las asignaciones vivas de
+    // cobro_asignacion. No son columnas: dependen de los cobros, que cambian aunque la factura no
+    // se toque. La retención (F3-04) entra en ese mismo cálculo y hoy vale cero.
 
     /// <inheritdoc />
     public DateTimeOffset CreatedAt { get; set; }

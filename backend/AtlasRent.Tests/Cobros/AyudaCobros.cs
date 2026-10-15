@@ -1,0 +1,308 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using AtlasRent.Api.Data;
+using AtlasRent.Api.Dominio;
+using AtlasRent.Tests.Contratos;
+using AtlasRent.Tests.Facturas;
+using AtlasRent.Tests.Infra;
+using AtlasRent.Tests.Reservas;
+using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
+
+namespace AtlasRent.Tests.Cobros;
+
+/// <summary>
+/// Apoyo común de las pruebas de cobros (F3-06).
+/// <para>
+/// Cliente, serie, tipo de cambio y factura salen de <see cref="AyudaFacturas"/>: son las mismas
+/// piezas que usa F3-02 y duplicar su alta haría que las dos tareas probaran datos distintos.
+/// Lo que se añade aquí es lo que es propio de esta tarea: forma de pago y cuenta receptora, que son
+/// configuración y las siembra el operador (§9 de <c>DOC_TECNICA.md</c>), y el contrato, sin el cual
+/// no hay a qué facturas asignar.
+/// </para>
+/// <para>
+/// La base es única y la comparten todas las pruebas de la colección, así que nada puede afirmar sobre
+/// valores absolutos: cada prueba trae su cliente, su contrato, su serie y sus facturas.
+/// </para>
+/// </summary>
+internal static class AyudaCobros
+{
+    /// <summary>
+    /// Cambio del día en pesos que usan las pruebas que necesitan uno.
+    /// <para>
+    /// <b>Es el mismo valor que carga F3-02</b> y tiene que serlo: la base es única y
+    /// <c>tipo_cambio</c> es único por día y moneda, así que dos tareas que escribieran valores
+    /// distintos el mismo día se pisarían y una de las dos assertions leería el cambio de la otra. Por
+    /// eso el valor vive aquí y no se elige por prueba.
+    /// </para>
+    /// </summary>
+    public const decimal CambioDelDia = 60.123456m;
+
+    /// <summary>
+    /// Devuelve el cambio de un día al estado en que lo encontró la base compartida: sin fila y sin
+    /// documentos apuntando a ella. Se usa con <c>await using</c> al final de una prueba que haya emitido
+    /// documentos en DOP.
+    /// <para>
+    /// El problema que resuelve está anotado en <c>docs/BUGS.md</c> (BUG-006): la prueba de F3-02 que
+    /// comprueba el 409 de la emisión **borra** la fila de <c>tipo_cambio</c> del día, y en cuanto
+    /// cualquier factura emitida o cualquier cobro de DOP la congela, ese borrado choca con
+    /// <c>fk_*_tipo_cambio_tipo_cambio_id</c> y la prueba de F3-02 falla con un error de clave foránea. El
+    /// diseño del producto es correcto (el cambio congelado no se puede borrar, y por eso
+    /// <c>tipo_cambio</c> no concede <c>DELETE</c> a <c>rent_app</c>); lo que hay que devolver es la base
+    /// compartida al punto de partida, y eso solo lo puede hacer la conexión de superusuario.
+    /// </para>
+    /// <para>
+    /// Solo toca los documentos de <b>esta</b> prueba, que ya no se vuelven a mirar: el borrado va al
+    /// cambio del día indicado y los documentos que lo referencian.
+    /// </para>
+    /// </summary>
+    public static IAsyncDisposable SinRastroDeCambio(ContenedorBdFixture bd, DateOnly fecha, Moneda moneda)
+        => new LimpiezaDeCambio(bd, fecha, moneda);
+
+    private sealed class LimpiezaDeCambio(ContenedorBdFixture bd, DateOnly fecha, Moneda moneda) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await using var contexto = bd.CrearContexto(bd.CadenaSuperusuario);
+
+            await contexto.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                 UPDATE factura SET tipo_cambio_id = NULL
+                 WHERE tipo_cambio_id IN (SELECT id FROM tipo_cambio WHERE fecha = {fecha} AND moneda = {(int)moneda});
+                 UPDATE cobro SET tipo_cambio_id = NULL
+                 WHERE tipo_cambio_id IN (SELECT id FROM tipo_cambio WHERE fecha = {fecha} AND moneda = {(int)moneda});
+                 DELETE FROM tipo_cambio WHERE fecha = {fecha} AND moneda = {(int)moneda};
+                 """);
+        }
+    }
+
+    public static Task<SesionCliente> SesionAsync(
+        ContenedorBdFixture bd,
+        ApiTestFactory api,
+        string rol,
+        CancellationToken ct) =>
+        AyudaFacturas.SesionAsync(bd, api, rol, ct);
+
+    /// <summary>
+    /// Forma de pago de la prueba, creada por la configuración. No se siembra en el código: es dato de
+    /// configuración y quien lo pone es el operador, así que la prueba lo crea por la misma API que
+    /// usaría él.
+    /// </summary>
+    public static async Task<Guid> FormaPagoAsync(SesionCliente sesion, CancellationToken ct)
+    {
+        var creada = await sesion.PostAsync(
+            "/api/v1/config/formas-pago",
+            new { nombre = $"Forma {Guid.NewGuid():N}"[..20], activa = true },
+            ct);
+
+        creada.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        return (await creada.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
+    }
+
+    /// <summary>Cuenta receptora de la prueba, en la moneda que le pida la prueba.</summary>
+    public static async Task<Guid> CuentaAsync(SesionCliente sesion, Moneda moneda, CancellationToken ct)
+    {
+        var creada = await sesion.PostAsync(
+            "/api/v1/config/cuentas",
+            new
+            {
+                nombre = $"Cuenta {Guid.NewGuid():N}"[..20],
+                banco = "Prueba",
+                moneda = moneda.ToString(),
+                activa = true,
+            },
+            ct);
+
+        creada.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        return (await creada.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
+    }
+
+    /// <summary>
+    /// Cliente y contrato de la prueba. El contrato se queda en borrador: para asignar un cobro solo
+    /// hace falta que exista y que sea del cliente, y recorrer el flujo entero de aprobación de §3.5
+    /// probaría el recorrido de contratos, no el de cobros.
+    /// </summary>
+    public static async Task<(Guid ClienteId, Guid ContratoId)> ContratoAsync(
+        SesionCliente sesion,
+        ContenedorBdFixture bd,
+        CancellationToken ct)
+    {
+        var clienteId = await AyudaFacturas.CrearClienteAsync(sesion, ct);
+        var unidadId = await AyudaReserva.UnidadAsync(sesion, ct);
+        var facturadoraId = await AyudaContrato.SubempresaAsync(bd, ct);
+
+        var contratoId = await AyudaContrato.CrearAsync(
+            sesion,
+            AyudaContrato.Peticion(clienteId, unidadId, facturadoraId, moneda: "USD"),
+            ct);
+
+        return (clienteId, contratoId);
+    }
+
+    /// <summary>
+    /// Factura emitida del contrato, con una única línea de renta y el total pedido. Va por la API
+    /// porque el número y el congelado del tipo de cambio los saca el contador transaccional de
+    /// §3.7, y una factura emitida sin pasar por ahí no es una factura emitida.
+    /// </summary>
+    public static async Task<Guid> EmitidaAsync(
+        SesionCliente sesion,
+        Guid clienteId,
+        Guid? contratoId,
+        Guid serieId,
+        Moneda moneda,
+        DateOnly vencimiento,
+        decimal total,
+        CancellationToken ct)
+    {
+        var creada = await sesion.PostAsync(
+            "/api/v1/facturas",
+            new
+            {
+                clienteId,
+                contratoId,
+                serieId,
+                moneda = moneda.ToString(),
+                fechaVencimiento = vencimiento.ToString("yyyy-MM-dd"),
+                concepto = $"Factura {Guid.NewGuid():N}"[..30],
+            },
+            ct);
+
+        creada.StatusCode.Should().Be(HttpStatusCode.OK, "la factura se crea en borrador");
+        var facturaId = (await creada.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
+
+        await AyudaFacturas.AgregarLineaAsync(sesion, facturaId, TipoLineaFactura.Renta, 1m, total, null, ct);
+
+        var emitida = await sesion.PostAsync($"/api/v1/facturas/{facturaId:D}/emitir", new { }, ct);
+        emitida.StatusCode.Should().Be(HttpStatusCode.OK, await emitida.Cuerpo());
+
+        return facturaId;
+    }
+
+    /// <summary>Cuerpo de un cobro, con los campos que no dependen del test ya puestos.</summary>
+    public static object Peticion(
+        Guid clienteId,
+        Guid? contratoId,
+        DateOnly fechaEfectiva,
+        Moneda moneda,
+        decimal importeRecibido,
+        Guid formaPagoId,
+        Guid cuentaReceptoraId,
+        decimal usarSaldoAFavor = 0m,
+        string? referencia = null,
+        object? asignaciones = null) =>
+        new
+        {
+            clienteId,
+            contratoId,
+            fechaEfectiva = fechaEfectiva.ToString("yyyy-MM-dd"),
+            monedaRecibida = moneda.ToString(),
+            importeRecibido,
+            formaPagoId,
+            referencia,
+            cuentaReceptoraId,
+            usarSaldoAFavor,
+            asignaciones,
+        };
+
+    /// <summary>
+    /// Carga (o recarga) el cambio de un día por la API de F3-01, que es la carga manual que el propio
+    /// 409 le señala a quien lo lee.
+    /// </summary>
+    public static async Task CargarCambioAsync(
+        SesionCliente sesion,
+        DateOnly fecha,
+        Moneda moneda,
+        decimal valor,
+        CancellationToken ct)
+    {
+        var cargado = await sesion.PostAsync(
+            "/api/v1/tipos-cambio",
+            new
+            {
+                fecha = fecha.ToString("yyyy-MM-dd"),
+                moneda = moneda.ToString(),
+                valor = valor.ToString(CultureInfo.InvariantCulture),
+            },
+            ct);
+
+        cargado.StatusCode.Should().Be(HttpStatusCode.OK, await cargado.Cuerpo());
+    }
+
+    /// <summary>
+    /// Borra el cambio de un día. Hace falta porque la base es compartida: si otra prueba dejó
+    /// cargado el cambio de hoy, la de «sin tipo de cambio» no estaría probando nada. Se borra por la
+    /// conexión de superusuario porque <c>tipo_cambio</c> no concede <c>DELETE</c> a <c>rent_app</c>:
+    /// ni la propia aplicación puede borrarlo.
+    /// </summary>
+    public static async Task QuitarCambioAsync(
+        ContenedorBdFixture bd,
+        DateOnly fecha,
+        Moneda moneda,
+        CancellationToken ct)
+    {
+        await using var contexto = bd.CrearContexto(bd.CadenaSuperusuario);
+        await contexto.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM tipo_cambio WHERE fecha = {fecha} AND moneda = {(int)moneda}", ct);
+    }
+
+    /// <summary>Saldo a favor del contrato leído de la base, que es donde se comprueba.</summary>
+    public static async Task<decimal?> SaldoAsync(
+        ContenedorBdFixture bd,
+        Guid contratoId,
+        Moneda moneda,
+        CancellationToken ct)
+    {
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+
+        return await contexto.SaldoAFavor.AsNoTracking()
+            .Where(s => s.ContratoId == contratoId && s.Moneda == moneda)
+            .Select(s => (decimal?)s.Importe)
+            .SingleOrDefaultAsync(ct);
+    }
+
+    /// <summary>
+    /// Asignaciones de una factura tal y como están en la tabla, vivas y ninguna: para comprobar que la
+    /// anulación las deja de contar sin borrarlas.
+    /// </summary>
+    public static async Task<List<CobroAsignacion>> AsignacionesAsync(
+        ContenedorBdFixture bd,
+        Guid facturaId,
+        CancellationToken ct)
+    {
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+
+        return await contexto.CobroAsignacion.AsNoTracking().Where(a => a.FacturaId == facturaId).ToListAsync(ct);
+    }
+
+    /// <summary>Facturas del contrato con su total, para las sumas del test que las necesite.</summary>
+    public static async Task<List<(Guid Id, decimal Total)>> FacturasAsync(
+        ContenedorBdFixture bd,
+        Guid contratoId,
+        CancellationToken ct)
+    {
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+
+        var filas = await contexto.Factura.AsNoTracking()
+            .Where(f => f.ContratoId == contratoId)
+            .Select(f => new { f.Id, f.Total })
+            .ToListAsync(ct);
+
+        return [.. filas.Select(f => (f.Id, f.Total))];
+    }
+
+    /// <summary>Lo que dice la factura leída por la API, que es el DTO que hay que comprobar.</summary>
+    public static async Task<JsonElement> FacturaAsync(
+        SesionCliente sesion,
+        Guid facturaId,
+        CancellationToken ct)
+    {
+        var leida = await sesion.GetAsync($"/api/v1/facturas/{facturaId:D}", ct);
+        leida.StatusCode.Should().Be(HttpStatusCode.OK, await leida.Cuerpo());
+
+        return await leida.Content.ReadFromJsonAsync<JsonElement>(ct);
+    }
+}
