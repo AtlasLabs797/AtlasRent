@@ -23,6 +23,8 @@
          denegación de servicio por JSON anidado). Se fija la versión parcheada que ya resolutions
          el proyecto de la API por EF Core, para que ningún proyecto quede con la vulnerable. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <!-- F2-02: PDF por código, sin HTML (docs/DESIGN.md §7). Licencia Community: no pide clave ni contacto. -->
+    <PackageVersion Include="QuestPDF" Version="2026.9.1" />
     <!-- Tests -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />

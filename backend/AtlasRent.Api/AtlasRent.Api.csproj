@@ -22,6 +22,8 @@
     <!-- F1-12: fija la versión parcheada de Newtonsoft.Json para todo el grafo (ver
          Directory.Packages.props): Hangfire arrastra la 11.0.1, con CVE-2024-21907. -->
     <PackageReference Include="Newtonsoft.Json" />
+    <!-- F2-02: PDF de cotizaciones por código (docs/DESIGN.md §7) -->
+    <PackageReference Include="QuestPDF" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

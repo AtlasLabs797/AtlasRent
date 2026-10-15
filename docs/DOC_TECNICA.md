@@ -31,7 +31,7 @@ Salidas: SMTP (Google) · ExchangeRate-API · Google Drive (backups cifrados) ·
 | Serilog.AspNetCore | 10.0.0 |
 | MailKit / MimeKit | 4.18.1 |
 | ClosedXML | 0.105.1 |
-| QuestPDF | 2026.9.1 — **[Verificar licencia]**: Community gratuita solo con facturación bruta anual < 1 M USD |
+| QuestPDF | 2026.9.1 — **verificada en F2-02**: `LicenseType.Community` es gratuita solo si la facturación bruta anual consolidada de la organización es **< 1 M USD**. Organismos públicos y empresas cotizadas **no** pueden usarla sea cual sea su facturación; si se deja de cumplir hay 90 días para comprar licencia o dejar de usar la librería, sin retroactividad. Es *source-available*, **no** una licencia aprobada por OSI, así que `SEGURIDAD.md` §A.4 no puede asumir MIT. Pendiente de confirmar los datos de la empresa antes de producción |
 | BCrypt.Net-Next | 4.2.1 (12 rondas) — subido desde 4.2.0 en F1-04: es la última estable (5.0.0 es prerelease) |
 | Otp.NET | 1.4.1 (TOTP; el QR se dibuja en el frontend) |
 | PostgreSQL | ≥16 (desarrollo: imagen 16; producción: instancia existente ≥16 o 18 si se instala nueva) |

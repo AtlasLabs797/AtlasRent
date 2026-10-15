@@ -761,6 +761,7 @@
           "Newtonsoft.Json": "[13.0.4, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "Otp.NET": "[1.4.1, )",
+          "QuestPDF": "[2026.9.1, )",
           "Serilog.AspNetCore": "[10.0.0, )"
         }
       },
@@ -851,6 +852,12 @@
         "requested": "[1.4.1, )",
         "resolved": "1.4.1",
         "contentHash": "UXjZ80T6BfVACJWmEcz4UFZ93hwX3STKojKvVpPk3qUhubjnLwIiZMsI4Hh91HhYxC0JlatNdNrVK2wkv4O9/Q=="
+      },
+      "QuestPDF": {
+        "type": "CentralTransitive",
+        "requested": "[2026.9.1, )",
+        "resolved": "2026.9.1",
+        "contentHash": "i2BT/v+Ui6Hg9+BZbOci/VfsyvmtY8nlQqAOmFt8iOZ4Hm9aKZZRgZZ+LfrKWYXAHRb3l1EjDcMVfjRaZTt+Cw=="
       },
       "Serilog.AspNetCore": {
         "type": "CentralTransitive",

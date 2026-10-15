@@ -523,6 +523,152 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("contacto_cliente", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Cotizacion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<Guid?>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<Guid?>("ProspectoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prospecto_id");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total");
+
+                    b.Property<Guid?>("UnidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidad_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cotizacion");
+
+                    b.HasIndex("ClienteId")
+                        .HasDatabaseName("ix_cotizacion_cliente_id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_cotizacion_created_at");
+
+                    b.HasIndex("ProspectoId")
+                        .HasDatabaseName("ix_cotizacion_prospecto_id");
+
+                    b.HasIndex("UnidadId")
+                        .HasDatabaseName("ix_cotizacion_unidad_id");
+
+                    b.HasIndex("Activo", "Estado")
+                        .HasDatabaseName("ix_cotizacion_activo_estado");
+
+                    b.ToTable("cotizacion", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_cotizacion_destinatario", "(cliente_id IS NOT NULL) <> (prospecto_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.CotizacionLinea", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cantidad");
+
+                    b.Property<Guid>("CotizacionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cotizacion_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("descripcion");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe");
+
+                    b.Property<int>("Posicion")
+                        .HasColumnType("integer")
+                        .HasColumnName("posicion");
+
+                    b.Property<decimal>("PrecioUnitario")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("precio_unitario");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cotizacion_linea");
+
+                    b.HasIndex("CotizacionId", "Posicion")
+                        .IsUnique()
+                        .HasDatabaseName("ix_cotizacion_linea_cotizacion_id_posicion");
+
+                    b.ToTable("cotizacion_linea", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.CuentaReceptora", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2236,6 +2382,45 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Cliente");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Cotizacion", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_cotizacion_cliente_cliente_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Prospecto", "Prospecto")
+                        .WithMany()
+                        .HasForeignKey("ProspectoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_cotizacion_prospecto_prospecto_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Unidad", "Unidad")
+                        .WithMany()
+                        .HasForeignKey("UnidadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_cotizacion_unidad_unidad_id");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Prospecto");
+
+                    b.Navigation("Unidad");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.CotizacionLinea", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Cotizacion", "Cotizacion")
+                        .WithMany("Lineas")
+                        .HasForeignKey("CotizacionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_cotizacion_linea_cotizacion_cotizacion_id");
+
+                    b.Navigation("Cotizacion");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.DocumentoInmueble", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Inmueble", null)
@@ -2387,6 +2572,11 @@ namespace AtlasRent.Api.Migrations
             modelBuilder.Entity("AtlasRent.Api.Data.Cliente", b =>
                 {
                     b.Navigation("Contactos");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Cotizacion", b =>
+                {
+                    b.Navigation("Lineas");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Inmueble", b =>

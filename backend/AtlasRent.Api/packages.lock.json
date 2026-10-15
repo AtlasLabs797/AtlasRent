@@ -97,6 +97,12 @@
         "resolved": "1.4.1",
         "contentHash": "UXjZ80T6BfVACJWmEcz4UFZ93hwX3STKojKvVpPk3qUhubjnLwIiZMsI4Hh91HhYxC0JlatNdNrVK2wkv4O9/Q=="
       },
+      "QuestPDF": {
+        "type": "Direct",
+        "requested": "[2026.9.1, )",
+        "resolved": "2026.9.1",
+        "contentHash": "i2BT/v+Ui6Hg9+BZbOci/VfsyvmtY8nlQqAOmFt8iOZ4Hm9aKZZRgZZ+LfrKWYXAHRb3l1EjDcMVfjRaZTt+Cw=="
+      },
       "Serilog.AspNetCore": {
         "type": "Direct",
         "requested": "[10.0.0, )",

@@ -86,6 +86,12 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<OcupacionDia> OcupacionDia => Set<OcupacionDia>();
 
+    // F2-02: cotizaciones y sus líneas (docs/ESPECIFICACION.md §3.3). El destinatario es un cliente
+    // o un prospecto, nunca los dos ni ninguno, y la unidad es opcional.
+    public DbSet<Cotizacion> Cotizacion => Set<Cotizacion>();
+
+    public DbSet<CotizacionLinea> CotizacionLinea => Set<CotizacionLinea>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -553,6 +559,55 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne<Unidad>()
                 .WithMany()
                 .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // F2-02: cotizaciones (docs/ESPECIFICACION.md §3.3). El destinatario es un cliente o un
+        // prospecto: la restricción la pone la base de datos con un CHECK, porque es la única forma
+        // de que "los dos" y "ninguno" queden excluidos también si algo escribe por fuera de la API.
+        // Estado y moneda son enums mapeados a entero, como el resto del dominio.
+        modelBuilder.Entity<Cotizacion>(entidad =>
+        {
+            entidad.ToTable("cotizacion", tabla => tabla.HasCheckConstraint(
+                "ck_cotizacion_destinatario",
+                "(cliente_id IS NOT NULL) <> (prospecto_id IS NOT NULL)"));
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // La lista filtra por estado y ordena por fecha: el índice acompaña a las dos cosas.
+            entidad.HasIndex(e => new { e.Activo, e.Estado });
+            entidad.HasIndex(e => e.CreatedAt);
+            entidad.HasIndex(e => e.ClienteId);
+            entidad.HasIndex(e => e.ProspectoId);
+            entidad.HasIndex(e => e.UnidadId);
+            entidad.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Prospecto)
+                .WithMany()
+                .HasForeignKey(e => e.ProspectoId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Unidad)
+                .WithMany()
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Las líneas se reemplazan enteras mientras la cotización está en borrador, así que el
+        // borrado en cascada es el mismo patrón que las modalidades y las tarifas de una unidad: se
+        // borra lo que ya no está, nunca el documento. Una vez enviada, la cotización no se edita y
+        // sus líneas quedan congeladas.
+        modelBuilder.Entity<CotizacionLinea>(entidad =>
+        {
+            entidad.ToTable("cotizacion_linea");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Descripcion).HasMaxLength(300).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El orden del documento sale de aquí, no del orden en que PostgreSQL devuelva las filas.
+            entidad.HasIndex(e => new { e.CotizacionId, e.Posicion }).IsUnique();
+            entidad.HasOne(e => e.Cotizacion)
+                .WithMany(c => c.Lineas)
+                .HasForeignKey(e => e.CotizacionId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

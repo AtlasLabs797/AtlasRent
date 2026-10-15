@@ -16,6 +16,27 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 14:35] FEAT · F2-02 · Cotizaciones con el flujo de estados de D18 y PDF básico (orquestador)
+- Qué:
+  - `Data/Cotizacion.cs` y `CotizacionLinea.cs`, migración `20261015121719_Cotizaciones`, `Services/ServicioCotizaciones.cs`, `Controllers/CotizacionesController.cs`, `DTOs/CotizacionDtos.cs` y `DocumentoCotizacionPdf` con **QuestPDF**.
+  - Estados `EstadoCotizacion` (`Borrador`/`Enviada`/`Aceptada`/`Rechazada`) como `int`, y una tabla de transiciones en el servicio: solo `Borrador → Enviada` y `Enviada → Aceptada|Rechazada`. Desde `Aceptada` o `Rechazada` no se vuelve atrás.
+  - 25 tests nuevos en `backend/AtlasRent.Tests/Cotizaciones/`.
+- Por qué: es el primer módulo de Fase 2 y el que fija el patrón de tabla cabecera + líneas que luego reutilizan facturas y contratos. Tres decisiones son del orquestador y están justificadas en el código:
+  - **Una cotización no lleva ITBIS ni retenciones.** La especificación §3.8 las pide para facturas y proformas; meterlas aquí sería inventar reglas de impuestos.
+  - **Pasar a Enviada, Aceptada o Rechazada exige `cotizacion.enviar`.** La matriz de roles §2 no tiene fila para "aceptar una cotización" y la más cercana llega desactivada al empleado (D15), que es justo la protección buscada.
+  - **Sin número visible de cotización.** La especificación no lo pide y darle uno inventaría una regla de series que es de §3.7 y de las fases de finanzas. Queda un `TODO(A#)` en el código preguntando si hace falta y con qué serie.
+  - **Desde Aceptada no se crea nada.** La especificación dice "botón Crear reserva o Crear contrato con los datos copiados, no se crea nada automáticamente", así que hay dos endpoints de lectura (`para-reserva`, `para-contrato`) que devuelven los datos copiados y exigen el estado Aceptada. Las reservas y los contratos son de F2-03 y F2-05.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; suite completa **337/337** (312 previos + 25 nuevos, 2m58s). Leídos a mano: los 9 endpoints llevan `[Accion]`, la migración quita `xmin` y trae `GRANT`, el documento de identidad del cliente solo se descifra para el PDF (D16) y no aparece en respuestas ni logs, y QuestPDF 2026.9.1 es la versión ya fijada en `docs/DOC_TECNICA.md` §2.
+- NO verificado: `dotnet ef database update` contra la BD de desarrollo del 5433 (necesita credenciales de `.env.dev`, que por AGENTS.md §6 no se leen). La migración sí aplica desde cero en la suite. El diseño visual del PDF solo está comprobado por el test que verifica que empieza por `%PDF`: nadie lo ha visto todavía, porque las pantallas de cotizaciones son de las que el propio `frontend/src/navegacion/menu.ts` tiene marcadas como pendientes con `TODO(A#)`.
+- Migraciones: sí (`20261015121719_Cotizaciones`).
+- Riesgo / pendiente:
+  - **Licencia de QuestPDF (legal, no técnico).** El código fija `LicenseType.Community`. Verificada en la documentación oficial: es gratuita solo con facturación bruta anual consolidada **< 1 M USD**, y **organismos públicos y empresas cotizadas quedan excluidos** sea cual sea su facturación. Si se deja de cumplir hay 90 días para comprar licencia o dejar de usar la librería, **sin retroactividad**. Además QuestPDF es *source-available*, no una licencia OSI, así que la auditoría de dependencias de `SEGURIDAD.md` §A.4 no puede asumir MIT. Queda anotado en `DOC_TECNICA.md` §2 y **requiere confirmar los datos de la empresa antes de producción**.
+  - `Aceptada` y `Rechazada` son estados finales. Si el negocio necesita reabrir una cotización rechazada para corregirla, es un estado más en la tabla de transiciones y su test, no un atajo.
+  - La baja es lógica y **solo se permite en borrador**: una cotización enviada no se retira. Es una decisión del orquestador; si hay que poder retirar una enviada, hay que decidir antes qué pasa con la que el cliente ya tiene descargada.
+  - Los endpoints `para-reserva` y `para-contrato` son de lectura y no idempotentes por themselves; su consumidor (F2-03, F2-05) es quien debe tratar el caso de que la cotización cambie entre la llamada y el alta.
+
+---
+
 ## [15/10/2026 14:10] FEAT · F2-01 · Disponibilidad calculada en la base: exclusión de rangos y capacidad de medio día (orquestador)
 - Qué:
   - `backend/AtlasRent.Api/Data/OcupacionRango.cs` y `OcupacionDia.cs`: dos tablas que **son** la disponibilidad. `ocupacion_rango` bloquea por rango (contrato, reserva mensual) con `EXCLUDE USING gist (unidad_id WITH =, daterange(fecha_inicio, fecha_fin, '[)') WITH &&) WHERE (bloquea)`; `ocupacion_dia` bloquea por día suelto (reserva corta, mantenimiento) con el tipo 1 = medio día y 2 = día completo.

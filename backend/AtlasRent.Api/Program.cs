@@ -170,6 +170,9 @@ builder.Services.AddScoped<ServicioDocumentosInmueble>();
 // (F2-03) y de contratos (F2-05) desde su transacción, porque el bloqueo va escrito en la misma
 // que la fila de negocio que lo origina.
 builder.Services.AddScoped<ServicioDisponibilidad>();
+// F2-02: cotizaciones. El PDF lo compone DocumentoCotizacionPdf con QuestPDF (docs/DESIGN.md §7).
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+builder.Services.AddScoped<ServicioCotizaciones>();
 builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
 
 // F1-12: copia de seguridad cifrada de la base de datos y de los documentos, con rotación. El
