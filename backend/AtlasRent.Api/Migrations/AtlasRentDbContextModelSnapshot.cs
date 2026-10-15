@@ -595,6 +595,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("fianza");
 
+                    b.Property<DateTimeOffset?>("InventarioCongeladoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("inventario_congelado_at");
+
                     b.Property<int>("Moneda")
                         .HasColumnType("integer")
                         .HasColumnName("moneda");
@@ -807,8 +811,60 @@ namespace AtlasRent.Api.Migrations
 
                     b.ToTable("contrato_incremento", null, t =>
                         {
-                            t.HasCheckConstraint("ck_contrato_incremento_tipo_valor", "(tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)\nOR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)");
+                            t.HasCheckConstraint("ck_contrato_incremento_tipo_valor", "(tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)\r\nOR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)");
                         });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoInventarioItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cantidad");
+
+                    b.Property<Guid>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<Guid?>("InventarioBaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventario_base_id");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notas");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contrato_inventario_item");
+
+                    b.HasIndex("InventarioBaseId")
+                        .HasDatabaseName("ix_contrato_inventario_item_inventario_base_id");
+
+                    b.HasIndex("ContratoId", "Orden")
+                        .HasDatabaseName("ix_contrato_inventario_item_contrato_id_orden");
+
+                    b.ToTable("contrato_inventario_item", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoPlantillaCongelada", b =>
@@ -1440,6 +1496,71 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_intento_login_usuario_id_exito");
 
                     b.ToTable("intento_login", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.InventarioBaseItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cantidad");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notas");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden");
+
+                    b.Property<Guid>("UnidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidad_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_inventario_base_item");
+
+                    b.HasIndex("UnidadId", "Activo", "Orden")
+                        .HasDatabaseName("ix_inventario_base_item_unidad_id_activo_orden");
+
+                    b.ToTable("inventario_base_item", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.MfaDesafio", b =>
@@ -2353,6 +2474,125 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("reserva_dia", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.RevisionInventario", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset>("FirmadaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("firmada_at");
+
+                    b.Property<Guid?>("FirmadaPorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firmada_por_id");
+
+                    b.Property<decimal?>("ImportePropuesto")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe_propuesto");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("observacion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_revision_inventario");
+
+                    b.HasIndex("ContratoId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_revision_inventario_contrato_id");
+
+                    b.ToTable("revision_inventario", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.RevisionInventarioItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContratoInventarioItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_inventario_item_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<string>("Nota")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("nota");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revision_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_revision_inventario_item");
+
+                    b.HasIndex("ContratoInventarioItemId")
+                        .HasDatabaseName("ix_revision_inventario_item_contrato_inventario_item_id");
+
+                    b.HasIndex("RevisionId", "ContratoInventarioItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_revision_inventario_item_revision_id_contrato_inventario_it");
+
+                    b.ToTable("revision_inventario_item", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Rol", b =>
                 {
                     b.Property<string>("Clave")
@@ -3244,6 +3484,26 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Contrato");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoInventarioItem", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithMany("Inventario")
+                        .HasForeignKey("ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contrato_inventario_item_contrato_contrato_id");
+
+                    b.HasOne("AtlasRent.Api.Data.InventarioBaseItem", "InventarioBaseItem")
+                        .WithMany()
+                        .HasForeignKey("InventarioBaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_contrato_inventario_item_inventario_base_item_inventario_ba");
+
+                    b.Navigation("Contrato");
+
+                    b.Navigation("InventarioBaseItem");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoPlantillaCongelada", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
@@ -3344,6 +3604,18 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.InventarioBaseItem", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Unidad", "Unidad")
+                        .WithMany("InventarioBase")
+                        .HasForeignKey("UnidadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_inventario_base_item_unidad_unidad_id");
+
+                    b.Navigation("Unidad");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.MfaDesafio", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
@@ -3438,6 +3710,39 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Reserva");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.RevisionInventario", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithOne("RevisionInventario")
+                        .HasForeignKey("AtlasRent.Api.Data.RevisionInventario", "ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_revision_inventario_contrato_contrato_id");
+
+                    b.Navigation("Contrato");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.RevisionInventarioItem", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.ContratoInventarioItem", "ContratoInventarioItem")
+                        .WithMany()
+                        .HasForeignKey("ContratoInventarioItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_revision_inventario_item_contrato_inventario_item_contrato_");
+
+                    b.HasOne("AtlasRent.Api.Data.RevisionInventario", "Revision")
+                        .WithMany("Items")
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_revision_inventario_item_revision_inventario_revision_id");
+
+                    b.Navigation("ContratoInventarioItem");
+
+                    b.Navigation("Revision");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
@@ -3527,7 +3832,11 @@ namespace AtlasRent.Api.Migrations
 
                     b.Navigation("Incrementos");
 
+                    b.Navigation("Inventario");
+
                     b.Navigation("PlantillaCongelada");
+
+                    b.Navigation("RevisionInventario");
 
                     b.Navigation("Solicitudes");
 
@@ -3549,8 +3858,15 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Dias");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.RevisionInventario", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Unidad", b =>
                 {
+                    b.Navigation("InventarioBase");
+
                     b.Navigation("Modalidades");
 
                     b.Navigation("Tarifas");

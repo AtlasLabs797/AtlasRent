@@ -38,6 +38,13 @@ public sealed class Unidad : IEntidadTrazada
     /// <summary>Tarifa por modalidad y moneda.</summary>
     public List<TarifaUnidad> Tarifas { get; set; } = [];
 
+    /// <summary>
+    /// Inventario base de la unidad (F2-08, §3.1): lo que hay aquí, vivo y corregible. Opcional y sin
+    /// fotos. El contrato que se firme sobre esta unidad se lleva su <b>copia congelada</b>
+    /// (<c>ContratoInventarioItem</c>), que no se actualiza aunque esto se cambie después.
+    /// </summary>
+    public List<InventarioBaseItem> InventarioBase { get; set; } = [];
+
     // Opcionales: no todos los espacios los tienen.
     public decimal? MetrosCuadrados { get; set; }
 

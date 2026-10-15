@@ -121,6 +121,19 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<ContratoPlantillaCongelada> ContratoPlantillaCongelada => Set<ContratoPlantillaCongelada>();
 
+    // F2-08: inventario. Son tres tablas y no una porque son tres momentos distintos
+    // (docs/ESPECIFICACION.md §3.1, §3.5 y §3.6): el catálogo vivo de la unidad, la copia congelada
+    // que el contrato firma al activar y la revisión que se firma cuando el cliente se va. Ninguna se
+    // borra: el base se desactiva, la copia no se reescribe y la revisión firmada no se vuelve a
+    // firmar.
+    public DbSet<InventarioBaseItem> InventarioBaseItem => Set<InventarioBaseItem>();
+
+    public DbSet<ContratoInventarioItem> ContratoInventarioItem => Set<ContratoInventarioItem>();
+
+    public DbSet<RevisionInventario> RevisionInventario => Set<RevisionInventario>();
+
+    public DbSet<RevisionInventarioItem> RevisionInventarioItem => Set<RevisionInventarioItem>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -890,6 +903,83 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
                 .WithMany()
                 .HasForeignKey(e => e.PlantillaId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F2-08 (1/3): inventario base de la unidad. Catálogo vivo y opcional (§3.1): sin fotos y sin
+        // columna de imagen, porque §3.1 lo dice y nadie pidió lo contrario. El índice por
+        // (unidad, activo, orden) es el de las lecturas de la pantalla de la unidad.
+        modelBuilder.Entity<InventarioBaseItem>(entidad =>
+        {
+            entidad.ToTable("inventario_base_item");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.Notas).HasMaxLength(1000);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => new { e.UnidadId, e.Activo, e.Orden });
+            entidad.HasOne(e => e.Unidad)
+            .WithMany(u => u.InventarioBase)
+            .HasForeignKey(e => e.UnidadId)
+            .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F2-08 (2/3): la copia congelada. Mismo patrón que la plantilla congelada: no implementa
+        // IEntidadTrazada y no tiene updated_at, porque no existe ningún camino que la escriba después
+        // de la activación. La única referencia al catálogo es InventarioBaseId y va en Restrict: es
+        // para rastrear de dónde salió la línea, no para colgar de ella.
+        modelBuilder.Entity<ContratoInventarioItem>(entidad =>
+        {
+            entidad.ToTable("contrato_inventario_item");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.Notas).HasMaxLength(1000);
+            entidad.HasIndex(e => new { e.ContratoId, e.Orden });
+            entidad.HasIndex(e => e.InventarioBaseId);
+            entidad.HasOne(e => e.Contrato)
+            .WithMany(c => c.Inventario)
+            .HasForeignKey(e => e.ContratoId)
+            .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.InventarioBaseItem)
+            .WithMany()
+            .HasForeignKey(e => e.InventarioBaseId)
+            .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F2-08 (3/3): la revisión de salida. Nace firmada y no se vuelve a escribir, así que el
+        // índice único sobre contrato_id es la regla de "se firma una sola vez" puesta en la base y no
+        // solo en el servicio: es la misma red que evita dos liquidaciones para el mismo contrato.
+        // El importe propuesto va en la moneda del contrato y por eso no lleva columna de moneda: una
+        // moneda por documento (§6).
+        modelBuilder.Entity<RevisionInventario>(entidad =>
+        {
+            entidad.ToTable("revision_inventario");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Observacion).HasMaxLength(1000);
+            entidad.Property(e => e.FirmadaAt).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.ContratoId).IsUnique();
+            entidad.HasOne(e => e.Contrato)
+            .WithOne(c => c.RevisionInventario)
+            .HasForeignKey<RevisionInventario>(e => e.ContratoId)
+            .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RevisionInventarioItem>(entidad =>
+        {
+            entidad.ToTable("revision_inventario_item");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nota).HasMaxLength(1000);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // Una línea por elemento del inventario congelado: el índice único es lo que impide que
+            // dos líneas opinen sobre el mismo mueble.
+            entidad.HasIndex(e => new { e.RevisionId, e.ContratoInventarioItemId }).IsUnique();
+            entidad.HasOne(e => e.Revision)
+            .WithMany(r => r.Items)
+            .HasForeignKey(e => e.RevisionId)
+            .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.ContratoInventarioItem)
+            .WithMany()
+            .HasForeignKey(e => e.ContratoInventarioItemId)
+            .OnDelete(DeleteBehavior.Restrict);
         });
 
         // RLS sobre documento_inmueble (docs/SEGURIDAD.md A.4 y DOC_TECNICA.md §4.3): solo gerente y

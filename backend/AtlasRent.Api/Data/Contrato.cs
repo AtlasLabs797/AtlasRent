@@ -144,6 +144,27 @@ public sealed class Contrato : IEntidadTrazada
     /// </summary>
     public ContratoPlantillaCongelada? PlantillaCongelada { get; set; }
 
+    /// <summary>
+    /// Inventario congelado del contrato (F2-08, §3.5): la copia del inventario base de la unidad en el
+    /// momento de activar. <b>Copia, no referencia</b>, y es el mismo patrón que
+    /// <see cref="PlantillaCongelada"/>: corregir el inventario base mañana no cambia lo que este
+    /// contrato firmado tiene por suyo. Vacío cuando la unidad no tenía inventario base, que §3.1
+    /// permite.
+    /// </summary>
+    public List<ContratoInventarioItem> Inventario { get; set; } = [];
+
+    /// <summary>
+    /// Cuándo se congeló el inventario, si la unidad lo tenía. Nulo cuando el contrato se activó sin
+    /// inventario base, que es el caso normal de una unidad sin inventario.
+    /// </summary>
+    public DateTimeOffset? InventarioCongeladoAt { get; set; }
+
+    /// <summary>
+    /// Revisión de inventario de salida (F2-08, §3.6), si ya se firmó. Nula mientras el cliente no se
+    /// ha ido. Nace firmada y no se vuelve a escribir: es lo que desbloquea la liquidación de F2-09.
+    /// </summary>
+    public RevisionInventario? RevisionInventario { get; set; }
+
     /// <summary>Estado del flujo.</summary>
     public EstadoContrato Estado { get; set; }
 

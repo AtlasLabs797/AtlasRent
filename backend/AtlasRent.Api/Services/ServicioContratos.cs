@@ -50,6 +50,7 @@ public sealed class ServicioContratos(
     ServicioDisponibilidad disponibilidad,
     ServicioReservas reservas,
     ServicioPlantillas plantillas,
+    ServicioInventario inventario,
     IPolicyService politica,
     TimeProvider reloj)
 {
@@ -452,6 +453,12 @@ public sealed class ServicioContratos(
     /// misma transacción que el cambio de estado: si algo falla, la unidad no queda bloqueada sin
     /// contrato.
     /// </para>
+    /// <para>
+    /// Aquí se congela también el inventario de la unidad (F2-08, §3.5: "el inventario se copia y
+    /// congela al activar"), por la misma razón: un contrato activo sin inventario congelado ya no
+    /// podría demostrar qué había cuando entró el cliente. Una unidad sin inventario base se activa
+    /// igual y sale sin inventario, que es el caso normal (§3.1).
+    /// </para>
     /// </summary>
     public async Task<ContratoResumen> ActivarAsync(
         Guid id,
@@ -491,9 +498,12 @@ public sealed class ServicioContratos(
                     contrato.UnidadId, OrigenOcupacion.Contrato, contrato.Id, contrato.FechaInicio, null, ct);
                 CambiarEstado(contrato, EstadoContrato.Activo, usuario, "Activado.");
                 contexto.ContratoVersion.Add(version);
-                // TODO(A#) F2-08: aquí se copia el inventario de la unidad al contrato y se congela,
-                // que es lo que dice §3.5 ("el inventario se copia y congela al activar"). Con eso,
-                // el cambio de estado, el candado y el inventario salen en un solo commit.
+                // F2-08 (§3.5): el inventario de la unidad se copia y se congela aquí, no antes. Va
+                // en el mismo antesDeGuardar que el cambio de estado y el candado de la unidad, así que
+                // el inventario congelado, el estado activo y el candado salen en un solo commit o no
+                // sale ninguno. Una unidad sin inventario base no tiene nada que congelar y activa
+                // igual (§3.1 lo hace opcional). Mismo patrón que la plantilla congelada de F2-07.
+                await inventario.CongelarAsync(contrato, ct);
             },
             ct: ct);
     }
@@ -721,6 +731,23 @@ public sealed class ServicioContratos(
         // TODO(A#) F2-09: la liquidación (inventario de salida, devolución de fianza y saldos, §3.6)
         // se resuelve en la misma transacción que este cambio de estado, con los datos que el
         // contrato deja aquí. Faltan las tablas de fianza e inventario para firmarla.
+        //
+        // Con F2-08 la condición de inventario ya está escrita y comprobable, y hay que exigirla
+        // ANTES de este GuardarAsync, dentro del antesDeGuardar para que vaya en la misma
+        // transacción:
+        //
+        //     await inventario.ExigirRevisionFirmadaAsync(id, ct);
+        //
+        // con la firma exacta:
+        //
+        //     public Task ExigirRevisionFirmadaAsync(Guid contratoId, CancellationToken ct)
+        //
+        // en ServicioInventario. Lanza InvalidOperationException (409) si el contrato tiene
+        // inventario congelado y no hay revisión de salida firmada, que es el criterio del plan
+        // ("no se liquida sin revisión si hay inventario"). Si el contrato se activó sin inventario
+        // base no hay copia congelada y no exige nada: §3.6 dice "si el contrato tiene inventario" y
+        // §3.1 deja el inventario base como opcional. El importe del faltante que se liquida sale de
+        // RevisionInventario.ImportePropuesto, que F2-08 deja escrito al firmar la revisión.
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
             contexto.Contrato, contrato,

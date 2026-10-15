@@ -187,6 +187,9 @@ public sealed class ContratoAprobacionTests(ContenedorBdFixture bd, ApiTestFacto
                         ClaveHmacDocumento = api.ClaveHmacDocumento,
                     }),
                     api.Reloj),
+                // F2-08: la activación congela el inventario de la unidad al contrato, dentro de la
+                // misma transacción que el cambio de estado.
+                new ServicioInventario(contexto, auditoria, idempotencia, politica, api.Reloj),
                 politica,
                 api.Reloj),
             contexto);

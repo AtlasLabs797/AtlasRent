@@ -251,6 +251,10 @@ builder.Services.AddScoped<ServicioIncrementos>();
 // contrato. Scoped, y con el cifrado dentro porque el PDF descifra el documento del cliente (D16).
 builder.Services.AddScoped<ServicioPlantillas>();
 
+// F2-08: inventario base de la unidad, la copia congelada que se lleva el contrato al activarse y la
+// revisión de salida. Scoped, y sin cifrado porque no hay fotos (§3.1 lo dice del inventario base).
+builder.Services.AddScoped<ServicioInventario>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {
