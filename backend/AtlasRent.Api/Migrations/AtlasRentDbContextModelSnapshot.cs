@@ -667,6 +667,150 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("contrato", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoBloque", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("FechaFin")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_fin");
+
+                    b.Property<DateOnly>("FechaInicio")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_inicio");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero");
+
+                    b.Property<decimal>("Renta")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("renta");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contrato_bloque");
+
+                    b.HasIndex("ContratoId", "Numero")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contrato_bloque_contrato_id_numero");
+
+                    b.ToTable("contrato_bloque", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoIncremento", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Aplicado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("aplicado");
+
+                    b.Property<DateTimeOffset?>("AplicadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("aplicado_at");
+
+                    b.Property<bool>("Cancelado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("cancelado");
+
+                    b.Property<DateTimeOffset?>("CanceladoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelado_at");
+
+                    b.Property<Guid>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("FechaVigencia")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_vigencia");
+
+                    b.Property<decimal?>("Importe")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe");
+
+                    b.Property<decimal?>("Porcentaje")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("porcentaje");
+
+                    b.Property<decimal?>("RentaAntes")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("renta_antes");
+
+                    b.Property<decimal?>("RentaDespues")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("renta_despues");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contrato_incremento");
+
+                    b.HasIndex("ContratoId", "Aplicado", "FechaVigencia")
+                        .HasDatabaseName("ix_contrato_incremento_contrato_id_aplicado_fecha_vigencia");
+
+                    b.ToTable("contrato_incremento", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contrato_incremento_tipo_valor", "(tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)\nOR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2895,6 +3039,30 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Unidad");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoBloque", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithMany("Bloques")
+                        .HasForeignKey("ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contrato_bloque_contrato_contrato_id");
+
+                    b.Navigation("Contrato");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoIncremento", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithMany("Incrementos")
+                        .HasForeignKey("ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contrato_incremento_contrato_contrato_id");
+
+                    b.Navigation("Contrato");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoVersion", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
@@ -3153,6 +3321,10 @@ namespace AtlasRent.Api.Migrations
 
             modelBuilder.Entity("AtlasRent.Api.Data.Contrato", b =>
                 {
+                    b.Navigation("Bloques");
+
+                    b.Navigation("Incrementos");
+
                     b.Navigation("Solicitudes");
 
                     b.Navigation("Versiones");

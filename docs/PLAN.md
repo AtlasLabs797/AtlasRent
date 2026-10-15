@@ -54,7 +54,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 | F2-03 | Reservas mensuales y cortas, anticipo como nota, estados, alerta 7 días, conflicto | 3.4 | Anticipo no aparece en ningún saldo ni informe económico | F2-01 | HECHA (15/10/2026) |
 | F2-04 | Calendario de disponibilidad | 3.1 | Muestra contratos, reservas, medios días y mantenimiento | F2-03, F2-05 *(dependencia corregida 15/10: el criterio pide contratos y no existían hasta F2-05)* | HECHA (15/10/2026) |
 | F2-05 | Contratos: flujo, aprobación (solicitud que caduca si cambia), versionado | 3.5 | Empleado no puede aprobar ni por API | F2-03 | HECHA (15/10/2026) |
-| F2-06 | Renovaciones automáticas e incrementos (job Hangfire diario idempotente) | 3.5 | Ejecutar el job dos veces no duplica | F2-05 | PENDIENTE |
+| F2-06 | Renovaciones automáticas e incrementos (job Hangfire diario idempotente) | 3.5 | Ejecutar el job dos veces no duplica | F2-05 | HECHA (15/10/2026) |
 | F2-07 | Plantillas de contrato y anexos; PDF de contrato | 3.5 | Plantilla congelada al aprobar | F2-05 | PENDIENTE |
 | F2-08 | Inventario base, inventario de contrato, revisión de salida | 3.6 | No se liquida sin revisión si hay inventario | F2-05 | PENDIENTE |
 | F2-09 | Baja programada, fin y liquidación | 3.5 | La unidad queda libre desde la fecha efectiva | F2-08 | PENDIENTE |

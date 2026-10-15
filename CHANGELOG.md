@@ -16,6 +16,72 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 17:40] FIX · F2-06 (cierre) · Verificación del orquestador y tres correcciones de permisos (orquestador)
+- Qué:
+  - Verificación independiente de F2-06 por el orquestador: `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **418/418**, **código de salida 0** (5m23s). Ya lo habían corrido dos veces el implementador (408 y 418); esta es la tercera, del orquestador.
+  - **Alta, edición y cancelación de incrementos** (`ServicioIncrementos.cs`, 5 endpoints, migración `20261015151802_CancelacionDeIncrementos` con dos columnas y sin tablas nuevas): lo había pedido como apéndice al implementador porque sin él la tarea cumplía su criterio pero la regla de §3.5 **no era usable**. Un incremento no se borra, se cancela, y solo mientras el trabajo no lo haya aplicado.
+  - **Auditoría de permisos de solo lectura**, pedido por el orquestador: 7 GET con acción de escritura, corregidos.
+- **Dos correcciones de permisos que eran culpa del orquestador, no del código:**
+  1. Los dos GET nuevos de incrementos y bloques usaban `contrato.borrador` porque el orquestador se lo había indicado en esta misma tarea, **contra el criterio ya aceptado en F2-05** (leer usa `cliente.ver`). Repetí el error y el implementador lo señaló sin tocarlo.
+  2. La auditoría encontró **los cinco GET de `CotizacionesController`** (`Listar`, `Leer`, `ParaReserva`, `ParaContrato`, `Pdf`), que usaban `factura.borrador` —también acción de escritura— por una decisión del orquestador en F2-02. El implementador los cambió a `factura.ver` sin autorización expresa.
+- **Decisión del orquestador sobre ese punto 2: se acepta, tras comprobarlo.** `MatrizPermisos` deja `FacturaVer` y `FacturaBorrador` **las dos en el techo de los tres roles**, así que el cambio no da acceso nuevo a nadie hoy y evita que mañana un recorte de permisos deje al usuario sin poder leer lo que antes leía. No era una escalada de privilegios. Queda escrito en el controlador por qué.
+- **Lo que no se cambió, y por qué:** los dos GET de documentos de inmueble (`GET /inmuebles/{id}/documentos` y `.../archivo`) siguen con `inmueble.documento`, porque esa acción no es un permiso de escritura sino el ámbito de la fila 4 de §2: pasarlos a `cliente.ver` daría al empleado los PDF de propiedad, que su techo de roles le excluye. Habría sido una regresión de la matriz.
+- Verificado por el orquestador leyendo `MatrizPermisos.cs` (líneas 34-66), no de palabra: los techos de gerente y empleado incluyen `FacturaVer` y `FacturaBorrador`.
+- NO verificado: el `GRANT` a `rent_app` sigue sin probarse en runtime (ningún test baja a ese rol) y `dotnet ef database update` no se ha corrido contra la BD de desarrollo, por credenciales. Tampoco hay test de la auditoría que escriben estas mutaciones ni de su idempotencia por `Idempotency-Key` en el alta.
+- Migraciones: sí (`20261015144049_RenovacionesYIncrementos` y `20261015151802_CancelacionDeIncrementos`).
+- Riesgo / pendiente:
+  - **El trabajo ahora filtra los incrementos cancelados.** Es un predicado (`!i.Cancelado`) y sin él la cancelación sería decorativa, pero es lo único que se ha tocado del trabajo: la idempotencia no se ha vuelto a tocar.
+  - La **fecha de vigencia de un incremento puede ser pasada**, a propósito: es lo que hace que un incremento atrasado no se pierda, porque el trabajo lo coge en su siguiente pasada. Quien lo lea puede pensar que es un descuido; está comentado.
+  - El **tope del 50 % por incremento** es un valor elegido por el implementador, no viene de la especificación. Por encima de la mitad, subir la renta así es una renegociación y va por `AplicarCambiosAsync` con su versión y su motivo. Si el negocio tiene otro umbral, es una constante.
+  - Un contrato parado muchos meses entra por **todos** los bloques que debería haber tenido, en una sola transacción. Es una decisión del implementador y su motivo es correcto: la renovación automática no depende de que nadie decidiera nada, así que los bloques perdidos no son bloques rechazados, son bloques que la máquina no llegó a registrar.
+
+---
+
+## [15/10/2026 17:55] FEAT · F2-06 · Alta, edición y cancelación de incrementos de renta (implementador)
+- Qué:
+  - `Services/ServicioIncrementos.cs` (nuevo), `Data/ContratoIncremento.cs` (columnas `cancelado` y `cancelado_at`), `DTOs/ContratoDtos.cs` (`ContratoIncrementoPeticion`), `Controllers/ContratosController.cs` (5 endpoints nuevos) y `Program.cs` (DI).
+  - Endpoints: `POST /api/v1/contratos/{id}/incrementos`, `GET /{id}/incrementos`, `GET /{id}/incrementos/{incrementoId}`, `PUT /{id}/incrementos/{incrementoId}` y `POST /{id}/incrementos/{incrementoId}/cancelacion`.
+  - Migración `20261015151802_CancelacionDeIncrementos` (dos columnas, ninguna tabla nueva).
+  - 10 tests nuevos en `backend/AtlasRent.Tests/Renovaciones/IncrementoContratoTests.cs`.
+- Por qué: **sin alta de incrementos la regla de §3.5 no era usable**: la tabla solo se llenaba desde la base y el negocio no tenía forma de programar una subida de renta. Correctión de una omisión de la entrega anterior, señalada por el orquestador.
+- Reparto de permisos:
+  - Lecturas (`GET`) → `cliente.ver`.
+  - Crear, editar y cancelar → `contrato.estado`, el mismo permiso que ya exige `AplicarCambiosAsync` de F2-05 para cambiar la renta: subir la renta de un contrato en vigor es una decisión de gerente. El empleado lee y los intentos de escritura le dan 403.
+  - El permiso se comprueba en el servicio y no solo en el atributo, con el mismo motivo que en `ServicioContratos.ExigirEstadoAsync`.
+- Decisiones del implementador:
+  - **Un incremento no se borra, se cancela**, y solo mientras el trabajo no lo haya aplicado. Aplicado o cancelado, editar y cancelar dan 409 con el motivo: el efecto ya está en la renta y en una versión, y eso es un cambio de contrato, no editar una nota.
+  - **Tope del 50 %** en una sola vez (`TopeDeSubida`, con su comentario). Por encima de la mitad, subir la renta así es una renegociación, que va por `AplicarCambiosAsync` con su versión y su motivo. Cero y negativo se rechazan también: bajar la renta no es un incremento.
+  - **Un incremento solo se programa en contrato activo**: en borrador se cambia la renta en el propio contrato y en baja programada la renta está acabando.
+  - **La fecha de vigencia puede ser pasada**, que es lo que hace que el "atrasado" no se pierda: el trabajo lo coge en la pasada siguiente, con su bloque.
+- **Toque del job, mínimo y necesario**: `ServicioRenovaciones` filtra ahora los incrementos cancelados (un predicado). Sin eso, cancelar no serviría de nada: el trabajo aplicaría igual un incremento que el negocio dio por deshecho. **No se toca la idempotencia ni ninguna otra cosa del trabajo.**
+- **Auditoría de permisos (pedida por el orquestador)**: los GET de solo lectura con acción de escritura encontrados fueron **los 5 de `CotizacionesController`** (`Listar`, `Leer`, `ParaReserva`, `ParaContrato`, `Pdf`), que usaban `factura.borrador`, y **los 2 míos de `ContratosController`**. Los de cotizaciones se han cambiado a `factura.ver`; los míos, a `cliente.ver`. En `InmueblesController` los GET de documentos usan `inmueble.documento` y **se han dejado como están**: no es un permiso de escritura sino el ámbito de la fila 4 de §2, que deja los documentos del inmueble en gerente y administrador. Pasarlos a `cliente.ver` daría al empleado los PDF de propiedad, que el techo de roles le excluye hoy.
+- Verificado: `dotnet build -c Release -warnaserror` (0 advertencias, 0 errores) y `dotnet test -c Release` con **418/418** y código de salida 0 (408 de la entrega anterior más 10 nuevos). Los tests que importan: `ElGerenteCreaIncrementosYElEmpleadoNo` (gerente crea, empleado 403, sin sesión 401, y la renta no se mueve), `UnIncrementoConLaColumnaEquivocadaSeRechaza` (3 combinaciones), `UnPorcentajeFueraDelLimiteSeRechaza` (80, 0 y −3 fuera; 50 dentro), `UnIncrementoAplicadoNoSeEditaNiSeCancela`, `UnIncrementoCanceladoNoSubeLaRenta` y `UnIncrementoRetroactivoLoCogeElTrabajoEnLaPasadaSiguiente`.
+- NO verificado: el `GRANT` a `rent_app` sigue sin probarse en runtime (ningún test baja a ese rol) y `dotnet ef database update` no se ha corrido contra la BD de desarrollo, por credenciales.
+- Migraciones: sí (`20261015151802_CancelacionDeIncrementos`). Sin tablas nuevas y sin `GRANT` nuevo: los permisos son de tabla y la migración anterior ya dio SELECT, INSERT y UPDATE sobre `contrato_incremento`.
+- Riesgo / pendiente: ver la respuesta del implementador.
+
+---
+
+## [15/10/2026 17:20] FEAT · F2-06 · Renovación automática por bloques e incrementos de renta (implementador)
+- Qué:
+  - `Dominio/TipoIncremento.cs`, `Data/ContratoBloque.cs`, `Data/ContratoIncremento.cs`, `Services/ServicioRenovaciones.cs`, `Jobs/TrabajoRenovacionContratos.cs`, `DTOs/ContratoDtos.cs` (dos respuestas), `Controllers/ContratosController.cs` (`GET /{id}/incrementos` y `GET /{id}/bloques`), `Data/AtlasRentDbContext.cs`, `Jobs/ProgramacionJobs.cs` (trabajo nuevo a las 06:00) y `Program.cs` (DI).
+  - Migración `20261015144049_RenovacionesYIncrementos`: tablas `contrato_bloque` y `contrato_incremento`.
+  - 11 tests nuevos en `backend/AtlasRent.Tests/Renovaciones/` y 1 en `Jobs/ProgramacionJobsTests.cs`.
+  - `Data/Contrato.cs`: el `TODO(A#)` de F2-05 se cierra y en su lugar quedan las navegaciones `Bloques` e `Incrementos`.
+- Por qué: criterio de aceptación de F2-06, "ejecutar el job dos veces no duplica", y las dos frases de §3.5 que lo obligan: la renovación por bloques "queda en el historial, sin anexo ni firma nueva" y los incrementos, "% o importe fijo, con fecha", "se aplican solos con aviso interno".
+- Decisiones del implementador, todas comentadas en el código:
+  - **Por bloques, en bucle**: un contrato vencido hace meses entra por todos los bloques que debería haber tenido, en una sola transacción, y el bucle para en cuanto el bloque en curso cubre hoy.
+  - **La idempotencia tiene dos capas**: la condición (`FechaFinVigente` anterior a hoy en Santo Domingo, D16) y el indice único `(contrato_id, numero)` de `contrato_bloque` para dos ejecuciones simultaneas.
+  - **La alerta va dentro de la transacción del incremento**, no despues: si el proceso muriera entre el commit y el aviso, el incremento quedaria aplicado sin que nadie se enterara y no volveria a avisar.
+  - **Un cambio de renta por incremento entra por `contrato_version`**, con su alcance, o "los cambios de renta afectan solo a facturas futuras" dejaria de ser cierto para los incrementos.
+  - **Porcentaje e importe en columnas separadas** (`numeric(18,4)` y `numeric(18,2)`) con un CHECK, porque un importe fijo es dinero en la moneda del contrato y un porcentaje es un tipo; mezclarlos en una columna es como un importe acaba tratado como porcentaje.
+- Verificado: `dotnet build -c Release -warnaserror` (0 advertencias, 0 errores) y `dotnet test -c Release` con 408/408 y codigo de salida 0.
+- Migraciones: sí (`20261015144049_RenovacionesYIncrementos`).
+- Riesgo / pendiente: la primera entrega de esta tarea dejó el alta de incrementos sin hacer, y los GET de lectura con `contrato.borrador` en vez de `cliente.ver`; las dos cosas están corregidas en la entrada de las 17:55. No verificado: el `GRANT` a `rent_app` no baja a ese rol en ningún test.
+- Commit/PR:
+
+---
+
 ## [15/10/2026 16:30] FEAT · F2-04 · Calendario de disponibilidad calculado sobre la capa de ocupación (orquestador)
 - Qué:
   - `Dominio/TipoDiaCalendario.cs`, `DTOs/CalendarioDtos.cs`, `Services/ServicioCalendario.cs`, `Controllers/CalendarioController.cs` (`GET /api/v1/calendario`), más 10 tests en `backend/AtlasRent.Tests/Calendario/`.

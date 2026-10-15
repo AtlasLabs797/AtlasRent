@@ -55,11 +55,12 @@ public static class ProgramacionJobs
     public const string RutaIntegridadAuditoria = "integridad-auditoria";
     public const string RutaVigilanciaCopia = "vigilancia-copia";
     public const string RutaAlertaReserva = "alerta-reserva-7-dias";
+    public const string RutaRenovacionContratos = "renovacion-contratos";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
-    /// existe (tipos de cambio, renovaciones, recordatorios, envíos, outbox y limpieza de sesiones)
-    /// NO se inventan aquí: se añaden cuando exista lo que tienen que hacer.
+    /// existe (tipos de cambio, recordatorios, envíos, outbox y limpieza de sesiones) NO se inventan
+    /// aquí: se añaden cuando exista lo que tienen que hacer.
     /// <para>
     /// La vigilancia de la copia sí entra, aunque su nombre sea "alertas", porque no depende de un
     /// dominio pendiente: usa el servicio de copias y la tabla <c>alerta</c>, que ya existen. Lo que
@@ -67,7 +68,8 @@ public static class ProgramacionJobs
     /// </para>
     /// <para>
     /// El aviso de las reservas (F2-03) entra ya por lo mismo: solo necesita la tabla <c>reserva</c>
-    /// y el servicio de alertas, los dos existen.
+    /// y el servicio de alertas, los dos existen. Y la renovación de contratos (F2-06) porque su
+    /// dominio —<c>contrato</c>, <c>contrato_bloque</c>, <c>contrato_incremento</c>— ya está.
     /// </para>
     /// </summary>
     public static IReadOnlyList<TrabajoProgramado> Todos { get; } =
@@ -101,6 +103,19 @@ public static class ProgramacionJobs
             typeof(TrabajoAlertaReserva),
             nameof(TrabajoAlertaReserva.EjecutarAsync),
             5),
+        // F2-06: la renovación automática por bloques y los incrementos de renta (§3.5). Va a las
+        // 06:00, detrás de todos los demás, por dos motivos. Primero, porque escribe en
+        // `contrato`, `contrato_bloque`, `contrato_incremento`, `contrato_version` y `alerta`: si
+        // el servidor se apagó, la copia de las 02:00 falta y no tiene sentido mover la renta de
+        // nadie sobre una base de la que nadie sabe cuál era su estado. Segundo, porque renovar
+        // mueve datos que mañana factura F3-01: es el último trabajo del día para que cualquier
+        // fallo suyo se vea en la mañana de F3-01 y no en medio de la operación del día.
+        new(
+            RutaRenovacionContratos,
+            CronDiarioEnUtc(6),
+            typeof(TrabajoRenovacionContratos),
+            nameof(TrabajoRenovacionContratos.EjecutarAsync),
+            6),
     ];
 
     /// <summary>

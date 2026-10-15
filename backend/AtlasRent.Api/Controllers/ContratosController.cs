@@ -41,6 +41,8 @@ namespace AtlasRent.Api.Controllers;
 [Route("api/v1/contratos")]
 public sealed class ContratosController(
     ServicioContratos contratos,
+    ServicioRenovaciones renovaciones,
+    ServicioIncrementos increments,
     ServicioIdempotencia idempotencia,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
@@ -65,6 +67,112 @@ public sealed class ContratosController(
     [Accion(Acciones.ClienteVer)]
     public async Task<IActionResult> Leer(Guid id, CancellationToken ct) =>
         await ResponderAsync(() => contratos.LeerAsync(id, ct));
+
+    /// <summary>
+    /// Incrementos de renta pactados con fecha, y si el trabajo diario ya los aplicó (F2-06).
+    /// <para>
+    /// Lectura pura, así que va con <c>cliente.ver</c> y no con <c>contrato.borrador</c>: la fila 2 de
+    /// §2 es literalmente "Ver clientes, unidades, reservas y contratos", y <c>contrato.borrador</c>
+    /// es permiso de escritura. Si un usuario pierde ese permiso, debe seguir viendo los
+    /// incrementos de un contrato suyo, no dejar de verlos de golpe. Lo que se escribe (crear,
+    /// editar, cancelar) sí exige <c>contrato.estado</c>, que es de gerente y administrador.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/incrementos")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> ListarIncrementos(Guid id, CancellationToken ct) =>
+        await ResponderAsync(() => increments.ListarAsync(id, ct));
+
+    /// <summary>Historial de bloques de renovación (F2-06). Lectura, con <c>cliente.ver</c>.</summary>
+    [HttpGet("{id:guid}/bloques")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> ListarBloques(Guid id, CancellationToken ct) =>
+        await ResponderAsync(() => renovaciones.ListarBloquesAsync(id, ct));
+
+    /// <summary>
+    /// Un incremento suelto, para ver su efecto.
+    /// </summary>
+    [HttpGet("{id:guid}/incrementos/{incrementoId:guid}")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> LeerIncremento(
+        Guid id,
+        Guid incrementoId,
+        CancellationToken ct) =>
+        await ResponderAsync(() => increments.LeerAsync(id, incrementoId, ct));
+
+    /// <summary>
+    /// Programa un incremento de renta (docs/ESPECIFICACION.md §3.5).
+    /// <para>
+    /// Exige <c>contrato.estado</c>, el mismo permiso que un cambio de renta en un contrato
+    /// vigente: subir la renta de alguien es una decisión de negocio, y el empleado prepara
+    /// contratos pero no decide cuánto se paga.
+    /// </para>
+    /// <para>
+    /// No toca la renta todavía: eso lo hace el trabajo diario cuando abre el bloque que contiene la
+    /// fecha de vigencia, que es lo que dice "se aplican solos con aviso interno".
+    /// </para>
+    /// </summary>
+    [HttpPost("{id:guid}/incrementos")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> CrearIncremento(
+        Guid id,
+        ContratoIncrementoPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/contratos/{id:D}/incrementos");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => increments.CrearAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct),
+            creado: true);
+    }
+
+    /// <summary>
+    /// Corrige un incremento que el trabajo todavía no aplicó. Con el efecto ya en la renta, 409:
+    /// eso es un cambio de contrato y va por su propio camino.
+    /// </summary>
+    [HttpPut("{id:guid}/incrementos/{incrementoId:guid}")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> EditarIncremento(
+        Guid id,
+        Guid incrementoId,
+        ContratoIncrementoPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/contratos/{id:D}/incrementos/{incrementoId:D}");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => increments.ActualizarAsync(
+                id, incrementoId, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Cancela un incremento pendiente. No se borra: la fila queda con su marca, y ya aplicado el
+    /// trabajo, cancelarlo tampoco cabe.
+    /// </summary>
+    [HttpPost("{id:guid}/incrementos/{incrementoId:guid}/cancelacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> CancelarIncremento(Guid id, Guid incrementoId, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { incrementoId }, $"/api/v1/contratos/{id:D}/incrementos/{incrementoId:D}/cancelacion");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => increments.CancelarAsync(id, incrementoId, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
 
     /// <summary>Alta en borrador (docs/ESPECIFICACION.md §2: el empleado crea borradores).</summary>
     [HttpPost]
@@ -198,7 +306,9 @@ public sealed class ContratosController(
     /// 409 de disponibilidad y la transacción se deshace entera, así que no queda bloqueada sin
     /// contrato.
     /// </summary>
-    private async Task<IActionResult> GuardarAsync(Func<Task<ContratoResumen>> operacion, bool creado = false)
+    private async Task<IActionResult> GuardarAsync<TResultado>(
+        Func<Task<TResultado>> operacion,
+        bool creado = false)
     {
         try
         {

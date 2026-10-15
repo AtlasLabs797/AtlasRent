@@ -58,11 +58,23 @@ public sealed class Contrato : IEntidadTrazada
 
     /// <summary>
     /// Fin del bloque que está en curso. Empieza valiendo <see cref="FechaFinInicial"/> y lo mueve la
-    /// renovación automática.
-    /// TODO(A#) F2-06: la renovación automática (y los incrementos del IPC, §3.5) escriben aquí y
-    /// crean la versión del cambio. Hasta entonces este campo es el final del primer bloque.
+    /// renovación automática (F2-06).
+    /// <para>
+    /// Es lo que decide si a un contrato hay que renovarlo: cuando ya es anterior a hoy en Santo
+    /// Domingo. <see cref="FechaFinInicial"/> no lo mueve nadie nunca, porque es la duración que se
+    /// firmó; los bloques que van después quedan en <see cref="Bloques"/>.
+    /// </para>
     /// </summary>
     public DateOnly FechaFinVigente { get; set; }
+
+    /// <summary>
+    /// Bloques que abrió la renovación automática. El primero no está aquí: es
+    /// <see cref="FechaInicio"/>–<see cref="FechaFinInicial"/>.
+    /// </summary>
+    public List<ContratoBloque> Bloques { get; set; } = [];
+
+    /// <summary>Incrementos de renta pactados con fecha, aplicados o no.</summary>
+    public List<ContratoIncremento> Incrementos { get; set; } = [];
 
     /// <summary>
     /// Renta del periodo, en la moneda del contrato (<c>numeric(18,2)</c>, redondeo medio hacia

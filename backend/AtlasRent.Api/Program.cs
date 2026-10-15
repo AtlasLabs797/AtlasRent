@@ -240,6 +240,13 @@ builder.Services.AddScoped<TrabajoVigilanciaCopia>();
 // escribe en alerta con el mismo servicio que los demás trabajos.
 builder.Services.AddScoped<TrabajoAlertaReserva>();
 
+// F2-06: la renovación automática por bloques y los incrementos de renta (§3.5). El servicio lleva
+// la lógica y el trabajo solo la dispara, para que las pruebas puedan ejercitar la renovación sin
+// pasar por el planificador.
+builder.Services.AddScoped<ServicioRenovaciones>();
+builder.Services.AddScoped<TrabajoRenovacionContratos>();
+builder.Services.AddScoped<ServicioIncrementos>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

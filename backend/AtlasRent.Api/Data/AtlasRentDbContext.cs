@@ -106,6 +106,12 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<SolicitudAprobacion> SolicitudAprobacion => Set<SolicitudAprobacion>();
 
+    // F2-06: bloques de renovación e incrementos de renta (docs/ESPECIFICACION.md §3.5). También
+    // de solo añadir: el bloque es historial y el incremento es valor económico.
+    public DbSet<ContratoBloque> ContratoBloque => Set<ContratoBloque>();
+
+    public DbSet<ContratoIncremento> ContratoIncremento => Set<ContratoIncremento>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -762,6 +768,51 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasIndex(e => new { e.Resultado, e.SolicitadoAt });
             entidad.HasOne(e => e.Contrato)
                 .WithMany(c => c.Solicitudes)
+                .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F2-06: historial de bloques de renovación. (contrato_id, numero) único por el mismo motivo
+        // que en contrato_version y solicitud_aprobacion: el trabajo diario calcula el número leyendo
+        // el máximo y el índice es la red contra dos ejecuciones simultáneas del mismo trabajo.
+        modelBuilder.Entity<ContratoBloque>(entidad =>
+        {
+            entidad.ToTable("contrato_bloque");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.Renta).HasColumnType("numeric(18,2)");
+            entidad.HasIndex(e => new { e.ContratoId, e.Numero }).IsUnique();
+            entidad.HasOne(e => e.Contrato)
+                .WithMany(c => c.Bloques)
+                .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F2-06: incrementos de renta. El porcentaje y el importe van en columnas distintas y
+        // numéricas, no en una sola "valor": un importe fijo es dinero en la moneda del contrato
+        // (numeric(18,2)) y un porcentaje es un tipo (numeric(18,4)); mezclarlos en una columna
+        // obliga a convertir cada vez que se lee y es como un importe fijo acaba tratado como si
+        // fuera un porcentaje. El CHECK de la migración es lo que impide tener las dos columnas
+        // llenas o las dos vacías.
+        modelBuilder.Entity<ContratoIncremento>(entidad =>
+        {
+            entidad.ToTable("contrato_incremento", tabla => tabla.HasCheckConstraint(
+                "ck_contrato_incremento_tipo_valor",
+                """
+                (tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)
+                OR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)
+                """));
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.Porcentaje).HasColumnType("numeric(18,4)");
+            entidad.Property(e => e.Importe).HasColumnType("numeric(18,2)");
+            entidad.Property(e => e.RentaAntes).HasColumnType("numeric(18,2)");
+            entidad.Property(e => e.RentaDespues).HasColumnType("numeric(18,2)");
+            // El trabajo diario busca los de un contrato que aún no se aplicaron y cuya fecha ya
+            // toca, ordenados por fecha: ese índice es su consulta.
+            entidad.HasIndex(e => new { e.ContratoId, e.Aplicado, e.FechaVigencia });
+            entidad.HasOne(e => e.Contrato)
+                .WithMany(c => c.Incrementos)
                 .HasForeignKey(e => e.ContratoId)
                 .OnDelete(DeleteBehavior.Restrict);
         });

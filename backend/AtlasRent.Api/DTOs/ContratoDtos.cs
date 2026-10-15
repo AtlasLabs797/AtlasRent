@@ -183,3 +183,65 @@ public sealed record ContratoRespuesta(
     IReadOnlyList<ContratoVersionRespuesta> Versiones,
     IReadOnlyList<SolicitudAprobacionRespuesta> Solicitudes,
     DateTimeOffset CreatedAt);
+
+/// <summary>
+/// Un incremento de renta, tal como se devuelve (F2-06). El porcentaje y el importe salen en
+/// columnas separadas y solo uno de los dos viene lleno, que es como está en la base de datos.
+/// </summary>
+public sealed record ContratoIncrementoRespuesta(
+    Guid Id,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<TipoIncremento>))] TipoIncremento Tipo,
+    decimal? Porcentaje,
+    decimal? Importe,
+    DateOnly FechaVigencia,
+    bool Aplicado,
+    DateTimeOffset? AplicadoAt,
+    bool Cancelado,
+    DateTimeOffset? CanceladoAt,
+    decimal? RentaAntes,
+    decimal? RentaDespues);
+
+/// <summary>
+/// Alta o edición de un incremento. Solo se admiten los que el trabajo va a poder aplicar: un tipo,
+/// un valor y una fecha.
+/// <para>
+/// Las columnas que no corresponden al tipo tienen que venir vacías. Con el <c>CHECK</c> de la base
+/// se rechaza igual, pero aquí el mensaje dice cuál de las dos sobró, que es lo que el que lo escribe
+/// quiere saber.
+/// </para>
+/// </summary>
+public sealed class ContratoIncrementoPeticion
+{
+    /// <summary>Porcentaje o importe fijo.</summary>
+    [Required]
+    [JsonConverter(typeof(JsonStringEnumConverter<TipoIncremento>))]
+    public TipoIncremento? Tipo { get; set; }
+
+    /// <summary>Puntos porcentuales, no la fracción: un 5 % es <c>5</c>, no <c>0,05</c>.</summary>
+    public decimal? Porcentaje { get; set; }
+
+    /// <summary>Importe absoluto a sumar, en la moneda del contrato.</summary>
+    public decimal? Importe { get; set; }
+
+    /// <summary>
+    /// Día en que entra en vigor. Puede ser pasado: un incremento olvidado el día que tocaba sigue
+    /// siendo legítimo, y lo coje el bloque que corresponda cuando el trabajo vuelva a correr.
+    /// </summary>
+    [Required]
+    public DateOnly? FechaVigencia { get; set; }
+
+    /// <summary>Motivo de la edición. Va escrito en la auditoría.</summary>
+    [StringLength(500)]
+    public string? Comentario { get; set; }
+}
+
+/// <summary>
+/// Un bloque de renovación del historial (F2-06). El bloque 1, el que se firmó, no aparece aquí:
+/// son las fechas del propio contrato.
+/// </summary>
+public sealed record ContratoBloqueRespuesta(
+    int Numero,
+    DateOnly FechaInicio,
+    DateOnly FechaFin,
+    decimal Renta,
+    DateTimeOffset CreadoAt);

@@ -105,21 +105,22 @@ public sealed class ProgramacionJobsTests
         vigilancia.HoraLocal.Should().BeGreaterThan(Trabajo(ProgramacionJobs.RutaCopiaSeguridad).HoraLocal);
     }
 
+    /// <summary>
+    /// Los trabajos de §8 que dependen de dominio inexistente (tipos de cambio, recordatorios,
+    /// envíos, outbox, limpieza de sesiones) no se programan: sin lo que tienen que hacer,
+    /// programarlos solo produce errores en el registro cada noche. Las renovaciones (F2-06) ya no
+    /// entran por aquí: su dominio existe y es lo que programa.
+    /// </summary>
     [Fact]
     public void LosTrabajosDeLaSeccion8QueTodaviaNoExisteNoSePrograman()
     {
-        // Los trabajos de §8 que dependen de dominio inexistente (tipos de cambio, renovaciones,
-        // recordatorios, envíos, outbox, limpieza de sesiones) no se programan: sin lo que tienen
-        // que hacer, programarlos solo produce errores en el registro cada noche.
-        // La vigilancia de la copia sí está porque no depende de nada pendiente: usa el servicio de
-        // copias y la tabla alerta, que ya existen. Y el aviso de reservas (F2-03) por lo mismo: la
-        // tabla reserva y el servicio de alertas ya existen.
         ProgramacionJobs.Todos.Select(t => t.Tipo).Should().BeEquivalentTo(
             [
                 typeof(TrabajoCopiaSeguridad),
                 typeof(TrabajoIntegridadAuditoria),
                 typeof(TrabajoVigilanciaCopia),
                 typeof(TrabajoAlertaReserva),
+                typeof(TrabajoRenovacionContratos),
             ]);
     }
 
@@ -143,6 +144,31 @@ public sealed class ProgramacionJobsTests
         alerta.HoraLocal.Should().BeGreaterThan(Trabajo(ProgramacionJobs.RutaVigilanciaCopia).HoraLocal);
     }
 
+    /// <summary>
+    /// F2-06: la renovación va a las 06:00, la última de todas. Es la que mueve la renta que factura
+    /// el día siguiente, así que su fallo se tiene que ver en la mañana siguiente y no en mitad de la
+    /// operación; y no solapa con ningún trabajo anterior de la madrugada.
+    /// </summary>
+    [Fact]
+    public void LaRenovacionVaDetrasDeTodosLosDemasTrabajos()
+    {
+        var renovacion = Trabajo(ProgramacionJobs.RutaRenovacionContratos);
+
+        renovacion.HoraLocal.Should().Be(6);
+        renovacion.Tipo.Should().Be(typeof(TrabajoRenovacionContratos));
+        renovacion.Metodo.Should().Be(nameof(TrabajoRenovacionContratos.EjecutarAsync));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(renovacion.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 6, 0, 0));
+
+        foreach (var otra in ProgramacionJobs.Todos.Where(t => t.Ruta != ProgramacionJobs.RutaRenovacionContratos))
+        {
+            renovacion.HoraLocal.Should().BeGreaterThan(
+                otra.HoraLocal,
+                $"la renovación va detrás de {otra.Ruta}");
+        }
+    }
+
     [Fact]
     public void RegistrarDejaCadaTrabajoConSuCronYSuMetodo()
     {
@@ -156,6 +182,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaIntegridadAuditoria,
                 ProgramacionJobs.RutaVigilanciaCopia,
                 ProgramacionJobs.RutaAlertaReserva,
+                ProgramacionJobs.RutaRenovacionContratos,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);
