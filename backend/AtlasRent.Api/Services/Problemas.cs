@@ -73,6 +73,12 @@ public static class Problemas
     public const string ValorDuplicado = "API-003";
 
     /// <summary>
+    /// La unidad no está disponible para esas fechas: la chocan con un contrato, con otra reserva o
+    /// con la capacidad del día (F2-01, docs/ESPECIFICACION.md §3.4).
+    /// </summary>
+    public const string UnidadNoDisponible = "DIS-001";
+
+    /// <summary>
     /// Construye la respuesta de error y la registra. No lleva traza: solo el código, el título y
     /// una explicación que no delate datos internos.
     /// </summary>

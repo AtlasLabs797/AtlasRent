@@ -49,7 +49,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 ## Fase 2 · Operación de alquiler
 | ID | Tarea | Spec | Aceptación | Depende | Estado |
 |---|---|---|---|---|---|
-| F2-01 | Disponibilidad: exclusión por rangos + capacidad de medio día (trigger + bloqueo por unidad) | 3.4, 5 | Test concurrente: dos reservas solapadas → una falla; 2 medios días OK, el 3.º falla | F1-10 | PENDIENTE |
+| F2-01 | Disponibilidad: exclusión por rangos + capacidad de medio día (trigger + bloqueo por unidad) | 3.4, 5 | Test concurrente: dos reservas solapadas → una falla; 2 medios días OK, el 3.º falla | F1-10 | HECHA (15/10/2026) |
 | F2-02 | Cotizaciones: CRUD, estados, PDF básico, crear reserva/contrato desde Aceptada | 3.3 | Estados según D18 | F1-09 | PENDIENTE |
 | F2-03 | Reservas mensuales y cortas, anticipo como nota, estados, alerta 7 días, conflicto | 3.4 | Anticipo no aparece en ningún saldo ni informe económico | F2-01 | PENDIENTE |
 | F2-04 | Calendario de disponibilidad | 3.1 | Muestra contratos, reservas, medios días y mantenimiento | F2-03 | PENDIENTE |

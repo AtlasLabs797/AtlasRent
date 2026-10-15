@@ -16,6 +16,27 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 14:10] FEAT · F2-01 · Disponibilidad calculada en la base: exclusión de rangos y capacidad de medio día (orquestador)
+- Qué:
+  - `backend/AtlasRent.Api/Data/OcupacionRango.cs` y `OcupacionDia.cs`: dos tablas que **son** la disponibilidad. `ocupacion_rango` bloquea por rango (contrato, reserva mensual) con `EXCLUDE USING gist (unidad_id WITH =, daterange(fecha_inicio, fecha_fin, '[)') WITH &&) WHERE (bloquea)`; `ocupacion_dia` bloquea por día suelto (reserva corta, mantenimiento) con el tipo 1 = medio día y 2 = día completo.
+  - Dos triggers en la migración `DisponibilidadOcupacion`: uno comprueba la capacidad del día (2 medios días o 1 día completo) y el otro el trigger simétrico que impide que un rango tape días ya reservados. Ambos serializan con `SELECT ... FROM unidad WHERE id = NEW.unidad_id FOR UPDATE`, que es lo que hace que dos altas simultáneas no se cuelen.
+  - `Services/ServicioDisponibilidad.cs`: `OcuparRangoAsync`, `LiberarRangoAsync`, `OcuparDiasAsync`, `LiberarDiasAsync` y `EstaLibreAsync`. No abre transacción ni audita: es pieza de llamador y lo usan F2-03 y F2-05 desde su propia transacción.
+  - `Problemas.cs`: código `DIS-001` para unidad no disponible. `Program.cs`: el servicio en DI. 13 tests nuevos en `backend/AtlasRent.Tests/Disponibilidad/DisponibilidadOcupacionTests.cs`, todos contra PostgreSQL real.
+  - `docs/DOC_TECNICA.md` §4.3 y `docs/PLAN.md` actualizados.
+- Por qué: es el primer requisito de AGENTS.md §6 y de la especificación §5 que la disponibilidad se compruebe **en la base**, sin carreras entre dos usuarios. El diseño previsto en DOC_TECNICA §4.3 (una restricción de exclusión en `contrato` y otra en `reserva`) tenía un agujero: una restricción de exclusión no puede abarcar dos tablas, así que un contrato y una reserva mensual del mismo rango se habrían solapado **en silencio**. Por eso el bloqueo vive en una capa propia que escriben los dos servicios en la misma transacción que su fila de negocio. También cambia `reserva_dia (recurso_id, fecha, mitades)` por un tipo explícito, porque el calendario de F2-04 tiene que distinguir "día completo" de "dos medios días".
+- Verificado (por el orquestador, no solo el implementador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; suite completa **312/312** (299 previos + 13 nuevos, 2m34s). Los dos criterios de aceptación del plan tienen test propio: `SolapamientoConcurrente` (dos conexiones, barrera de arranque, exactamente una gana) y `DosMediosDiasOKYTerceroFalla`. `MediosDiasConcurrentes` prueba que de tres medios días simultáneos sobreviven exactamente dos, que es donde se ve el bloqueo por unidad.
+- NO verificado: `dotnet ef database update` contra la BD de desarrollo del puerto 5433 (necesita las credenciales de `.env.dev`, que por AGENTS.md §6 no se leen). La migración sí aplica desde cero en los tests, con `rent_migrador` sobre una base recién creada. Tampoco se comprobó que el planificador de Hangfire dispare trabajo de F2-01, porque esta tarea no añade jobs.
+- Migraciones: sí (`20261015114531_DisponibilidadOcupacion`).
+- Riesgo / pendiente:
+  - El `GRANT` a `rent_app` **no lleva `DELETE`**, a diferencia de las migraciones anteriores. Es deliberado: liberar es `bloquea = false` (AGENTS.md §6), así que la aplicación no necesita borrar y antes que dejar el permiso puesto está quitarlo.
+  - Los enums se mapean como `int` y el trigger compara con los literales `1` y `2`. Si alguien reordena `TipoOcupacionDia`, el trigger se queda comparando contra valores distintos y rompe **en silencio**. Está avisado en el enum y en un comentario dentro del SQL, y los tests lo detectan.
+  - `ServicioDisponibilidad` llama a `SaveChanges` sin transacción propia. Quien lo use (F2-03, F2-05) tiene que abrir una antes: si no, el bloqueo se confirmaría aparte de la fila de negocio y quedaría huérfano al fallar el guardado posterior.
+  - Reintentar la misma fila de origen devuelve `23505` del índice único `(origen, origen_id)`, que el servicio **no** traduce a error de dominio. Quien lo use debe tratar `23505` como "ya bloqueada".
+  - `EstaLibreAsync` es una consulta de painted para el calendario, no una garantía. Si alguien la usa como comprobación previa reintroduce la carrera: la garantía son los triggers.
+  - Los SQLSTATE usados son `23001` (triggers) y `23P01` (exclusión); ambos significan "no disponible" para quien llama.
+
+---
+
 ## [15/10/2026 11:40] FEAT · F1-12 (cont.) · Vigilancia de que la copia del día exista de verdad (orquestador)
 - Qué:
   - `backend/AtlasRent.Api/Jobs/TrabajoVigilanciaCopia.cs`, programado a las **04:00 AST** (después de la copia de las 02:00 y de la integridad de las 03:00), registrado en `ProgramacionJobs.Todos` y en el contenedor de DI.

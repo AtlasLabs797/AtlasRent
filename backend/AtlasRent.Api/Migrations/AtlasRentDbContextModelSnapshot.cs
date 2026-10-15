@@ -1019,6 +1019,114 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("numero_serie", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.OcupacionDia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Bloquea")
+                        .HasColumnType("boolean")
+                        .HasColumnName("bloquea");
+
+                    b.Property<DateTimeOffset>("CreadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creado_at");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha");
+
+                    b.Property<int>("Origen")
+                        .HasColumnType("integer")
+                        .HasColumnName("origen");
+
+                    b.Property<Guid>("OrigenId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("origen_id");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<Guid>("UnidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidad_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ocupacion_dia");
+
+                    b.HasIndex("UnidadId", "Fecha")
+                        .HasDatabaseName("ix_ocupacion_dia_unidad_id_fecha");
+
+                    b.HasIndex("Origen", "OrigenId", "Fecha")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ocupacion_dia_origen_origen_id_fecha");
+
+                    b.ToTable("ocupacion_dia", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.OcupacionRango", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Bloquea")
+                        .HasColumnType("boolean")
+                        .HasColumnName("bloquea");
+
+                    b.Property<DateTimeOffset>("CreadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creado_at");
+
+                    b.Property<DateOnly?>("FechaFin")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_fin");
+
+                    b.Property<DateOnly>("FechaInicio")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_inicio");
+
+                    b.Property<int>("Origen")
+                        .HasColumnType("integer")
+                        .HasColumnName("origen");
+
+                    b.Property<Guid>("OrigenId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("origen_id");
+
+                    b.Property<Guid>("UnidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidad_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ocupacion_rango");
+
+                    b.HasIndex("UnidadId")
+                        .HasDatabaseName("ix_ocupacion_rango_unidad_id");
+
+                    b.HasIndex("Origen", "OrigenId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ocupacion_rango_origen_origen_id");
+
+                    b.ToTable("ocupacion_rango", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.PermisoRol", b =>
                 {
                     b.Property<string>("RolClave")
@@ -2178,6 +2286,26 @@ namespace AtlasRent.Api.Migrations
                         .HasConstraintName("fk_unidad_modalidad_unidad_unidad_id");
 
                     b.Navigation("Unidad");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.OcupacionDia", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Unidad", null)
+                        .WithMany()
+                        .HasForeignKey("UnidadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ocupacion_dia_unidad_unidad_id");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.OcupacionRango", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Unidad", null)
+                        .WithMany()
+                        .HasForeignKey("UnidadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ocupacion_rango_unidad_unidad_id");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.PermisoRol", b =>

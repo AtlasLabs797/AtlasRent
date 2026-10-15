@@ -80,6 +80,12 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<DocumentoInmueble> DocumentoInmueble => Set<DocumentoInmueble>();
 
+    // F2-01: disponibilidad. La ocupación no es un campo de la unidad sino estas dos tablas, que la
+    // base de datos mantiene coherentes por sí sola (docs/ESPECIFICACION.md §3.4 y §5).
+    public DbSet<OcupacionRango> OcupacionRango => Set<OcupacionRango>();
+
+    public DbSet<OcupacionDia> OcupacionDia => Set<OcupacionDia>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -509,6 +515,43 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasIndex(e => new { e.UnidadId, e.Modalidad, e.Moneda }).IsUnique();
             entidad.HasOne(e => e.Unidad)
                 .WithMany(u => u.Tarifas)
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // F2-01: disponibilidad calculada (AGENTS.md §6, docs/ESPECIFICACION.md §5). Estas tablas
+        // no declaran nada que no exista en la base: la restricción de exclusión de
+        // ocupacion_rango y el trigger de capacidad de ocupacion_dia los crea la migración, porque
+        // son reglas que solo PostgreSQL puede cumplir sin carreras.
+        //
+        // Origen y tipo son enums mapeados a entero, como el resto del dominio. Los valores
+        // posibles están en OrigenOcupacion y TipoOcupacionDia, y los comparan también los triggers
+        // de la migración, que es SQL escrito a mano.
+        modelBuilder.Entity<OcupacionRango>(entidad =>
+        {
+            entidad.ToTable("ocupacion_rango");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreadoAt).IsRequired();
+            // Uno por fila de origen: reintentar la misma ocupación no duplica el bloqueo.
+            entidad.HasIndex(e => new { e.Origen, e.OrigenId }).IsUnique();
+            entidad.HasIndex(e => e.UnidadId);
+            entidad.HasOne<Unidad>()
+                .WithMany()
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OcupacionDia>(entidad =>
+        {
+            entidad.ToTable("ocupacion_dia");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreadoAt).IsRequired();
+            // Un día por fila de origen: reintentar la misma reserva no duplica sus días.
+            entidad.HasIndex(e => new { e.Origen, e.OrigenId, e.Fecha }).IsUnique();
+            // La consulta de disponibilidad y la del trigger de capacidad son por unidad y día.
+            entidad.HasIndex(e => new { e.UnidadId, e.Fecha });
+            entidad.HasOne<Unidad>()
+                .WithMany()
                 .HasForeignKey(e => e.UnidadId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
