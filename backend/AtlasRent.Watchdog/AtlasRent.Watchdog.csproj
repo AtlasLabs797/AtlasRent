@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AtlasRent.Watchdog</RootNamespace>
+    <AssemblyName>AtlasRent.Watchdog</AssemblyName>
+    <UserSecretsId>atlas-rent-watchdog</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

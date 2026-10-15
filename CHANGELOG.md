@@ -16,6 +16,22 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 03:05] FEAT · F1-01 · Esqueleto backend (solución, Serilog, health checks, PostgreSQL)
+- Qué:
+  - `global.json` en la raíz (SDK 10.0.302, `rollForward: latestFeature`) **y sección `test: { runner: Microsoft.Testing.Platform }`**: el SDK 10 ya no soporta el target `VSTest`, así que `dotnet test` sin ese opt-in falla.
+  - `AtlasRent.slnx` en la raíz con `backend/AtlasRent.Api`, `backend/AtlasRent.Watchdog` y `backend/AtlasRent.Tests`. La CI ejecuta `dotnet restore/build/test` en la raíz, por eso la solución y `global.json` viven ahí y no en `backend/`.
+  - `Directory.Build.props` (`net10.0`, nullable, warnings como errores, `RestorePackagesWithLockFile`) y `Directory.Packages.props` (gestión centralizada de versiones de DOC_TECNICA §2). `packages.lock.json` versionados en los tres proyectos: la CI restaura con `--locked-mode` y sin ellos falla.
+  - `backend/AtlasRent.Api/Program.cs`: Serilog (`ReadFrom.Configuration`, override de `Microsoft.AspNetCore`), `NpgsqlDataSource` registrado a mano, `AddControllers`, `UseSerilogRequestLogging`, `MapControllers` y `MapHealthChecks` en `/health/live` (solo vida del proceso) y `/health` (vida + PostgreSQL).
+  - `backend/AtlasRent.Watchdog/Program.cs`: proceso en pie y registrándose; las operaciones críticas llegan en F1-12.
+  - `backend/AtlasRent.Tests/Arranque/ArranqueApiTests.cs`: 4 tests con `WebApplicationFactory` sobre la API real.
+  - `.github/workflows/ci.yml`: Node de 24.14.1 a **24.15.0** para igualarlo a DOC_TECNICA §2.
+- Por qué: F1-01 del plan. Base de la que dependen F1-02 a F1-12.
+- Verificado: `dotnet build -c Release -warnaserror` en verde, 0 advertencias; `dotnet test -c Release` 4/4 en verde; `dotnet list package --vulnerable --include-transitive` sin vulnerabilidades en los tres proyectos; `dotnet restore --locked-mode` correcto; `dotnet run` arranca y `/health/live` responde 200 `Healthy`; `/health` responde 200 `Healthy` con la BD de desarrollo conectada y 503 cuando no puede conectar.
+- NO verificado: la CI en GitHub no se ha ejecutado (falta `push`, que `AGENTS.md` §5 prohíbe sin permiso). La conexión validada usa el superusuario del contenedor de desarrollo, cuya contraseña está versionada en `docker-compose.dev.yml`; **no** se pudo validar con `rent_app` porque su contraseña vive en `.env.dev`, que no se lee. Los endpoints usan `text/plain` (escritor por defecto de `MapHealthChecks`).
+- Migraciones: no.
+- Riesgo / pendiente: alinear la contraseña de `rent_app` en `.env.dev` y en los user-secrets de `AtlasRent.Api` con la del entorno; Npgsql 10 ya no expone `AddNpgsqlDataSource`, así que el `NpgsqlDataSource` se construye a mano; el frontend estático (`MapFallbackToFile`) se añade en F1-13.
+- Commit/PR: `feat(backend): esqueleto de solución, Serilog, health checks y conexión a PostgreSQL`.
+
 ## [14/10/2026 23:59] DECISION · F0 · Proyecto independiente, instrucciones neutras y modo oscuro (spec v3.2)
 - Qué:
   - **Sin Atlas Balance:** eliminada toda reutilización y dependencia de Atlas Balance en `docs/ESPECIFICACION.md` (v3.2; D1, D2, D20, D30, párrafo de reutilización, 3.18, §4, §5, §5.1, §7), `docs/DOC_TECNICA.md`, `docs/PLAN.md`, `docs/SEGURIDAD.md`, CI, `config/variables-entorno.example` y `docker-compose.dev.yml`. Donde había "mecanismo de Balance" queda la decisión concreta: concurrencia con `xmin`, auditoría con hash encadenado, RLS con variable de sesión fijada por interceptor de EF Core, formato de paginación, refresco de sesión en Axios, validación con `JsonUnmappedMemberHandling.Disallow`.

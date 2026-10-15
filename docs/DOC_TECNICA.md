@@ -56,6 +56,13 @@ AwesomeAssertions sustituye a FluentAssertions porque esta pasó a licencia come
 En F1-01 estas versiones se fijan en `global.json`, los `.csproj` y `package-lock.json`. Cualquier cambio posterior se propone y se anota aquí.
 
 ## 3. Estructura
+Raíz del repositorio (la CI ejecuta `dotnet restore/build/test` y `setup-dotnet` desde aquí, así que la solución y `global.json` van en la raíz):
+```
+global.json                 SDK 10.0.302 + `test.runner = Microsoft.Testing.Platform`
+AtlasRent.slnx              solución: Api, Watchdog, Tests
+Directory.Build.props       net10.0, nullable, warnings como errores, packages.lock.json
+Directory.Packages.props    gestión centralizada de versiones (DOC_TECNICA §2)
+```
 ```
 backend/AtlasRent.Api/
   Program.cs        pipeline (orden en §7)
@@ -73,6 +80,12 @@ frontend/src/       pages (lazy), components, design-system (tokens y componente
 scripts/            PowerShell: install, update, start, uninstall
 db/scripts/         SQL de roles y auditoría
 ```
+
+**Pruebas en .NET 10:** `xunit.v3` corre sobre Microsoft.Testing.Platform. El opt-in va en la sección `test` de `global.json`; con el target `VSTest` el SDK 10 da error. Consecuencias: no se usan `Microsoft.NET.Test.Sdk` ni `xunit.runner.visualstudio`, y los tests pasan `TestContext.Current.CancellationToken` (el analizador `xUnit1051` es error por `TreatWarningsAsErrors`).
+
+**Npgsql 10:** ya no expone la extensión `AddNpgsqlDataSource`; el `NpgsqlDataSource` se registra a mano con `NpgsqlDataSourceBuilder`.
+
+**Health checks:** `/health/live` solo comprueba que el proceso vive (tag `vivo`); `/health` añade la comprobación de PostgreSQL con `SELECT 1`. Ambos responden `text/plain`, que es el escritor por defecto de `MapHealthChecks`.
 Dominios: `Auth`, `Usuarios`, `Configuracion`, `Clientes`, `Inmuebles`, `Cotizaciones`, `Reservas`, `Contratos`, `Facturacion`, `Comprobantes`, `Cobros`, `Fianzas`, `TipoCambio`, `Documentos`, `Mensajeria`, `Informes`, `Alertas`, `Aprobaciones`, `Importacion`, `Backups`.
 
 ### 3.1 Frontend: design system y temas
