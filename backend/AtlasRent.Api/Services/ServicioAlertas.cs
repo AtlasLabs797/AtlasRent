@@ -1,6 +1,5 @@
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Serilog;
 
 namespace AtlasRent.Api.Services;
@@ -49,11 +48,13 @@ public sealed class ServicioAlertas(AtlasRentDbContext contexto, TimeProvider re
                  """,
                 ct);
         }
-        catch (Exception e) when (e is DbUpdateException or NpgsqlException or InvalidOperationException
-            or OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             // Perder la alerta es malo, pero tumbar el job por no poder guardarla es peor: el
             // respaldo falló igual, y eso ya está en el log y en el propio fallo del job.
+            // El filtro es todo menos la cancelación, a propósito: se llama desde el manejador del
+            // fallo del respaldo, y una excepción propia de la alerta —un timeout del driver, un
+            // error de socket— no puede tapar el fallo que había que avisar.
             Log.Error("No se pudo registrar la alerta {Tipo}/{Clave}: {TipoExcepcion}: {Motivo}",
                 tipo, clave, e.GetType().Name, e.Message);
         }

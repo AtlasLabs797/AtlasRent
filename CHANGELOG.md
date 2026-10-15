@@ -16,6 +16,35 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 11:20] FIX · F1-12 / F1-13 · Fecha de la copia dentro del contenedor, "fallo → alerta" y el frontend en el paquete (orquestador)
+- Qué:
+  - `ServicioBackup`: el contenedor de copia pasa a `ARBK2` y **lleva la fecha dentro**, protegida por la etiqueta GCM. `VerificarAsync` rechaza todo archivo cuyo nombre no coincida con la fecha de su contenido. `CopiaVerificada` distingue `FechaDelNombre` (puede mentir) de `Fecha` (la del contenido).
+  - Tabla `alerta` (migración `20261015090307_AlertaDeFallo`), entidad `Data/Alerta.cs` y `Services/ServicioAlertas.cs`, registrado en DI. `ServicioBackup` deja alerta del fallo del día y del fallo de subida al almacén remoto.
+  - Target `AtlasRentPublicarFrontend` en `AtlasRent.Api.csproj`: copia `frontend/dist` a `wwwroot/` en `dotnet publish`.
+  - Paso nuevo en la CI que publica y comprueba que `wwwroot/index.html` está en el paquete.
+  - Registros: `docs/BUGS.md` (BUG-001, BUG-002, BUG-003) y notas de DOC_TECNICA §3.1/§8.1 y `SEGURIDAD.md` A.8.
+- Por qué: los tres son criterios de aceptación o riesgos altos de F1 que la revisión adversarial dejó abiertos. El detalle de cada uno está en su entrada de `docs/BUGS.md`.
+- Verificado (por el orquestador):
+  - `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores.
+  - Suite backend completa **294/294** en verde, contra migraciones aplicadas desde cero en Testcontainers.
+  - `frontend/`: 18/18 tests, `lint` y `typecheck` limpios.
+  - H2 a mano: `npm run build` + `dotnet publish` deja `wwwroot/index.html` y 33 ficheros en el paquete; sin `frontend/dist` avisa por consola y publica sin interfaz.
+  - El test anti-subversión **comprobado no vacío**: desactivada la validación, el test falla enseñando `Fecha=2026-10-16` frente a `FechaDelNombre=2026-10-17`.
+  - La alerta se escribe **sin rol de sesión**, que es como corre el job desde Hangfire (test `LaAlertaSeEscribeSinRolDeSesionPorqueElJobNoTiene`), mirando filas y no que la llamada no rompiera.
+  - Segunda verificación adversarial (subagente verificador, PASS CON RESERVAS, sin hallazgos altos) sobre este mismo árbol.
+- NO verificado:
+  - **La CI no se ha ejecutado nunca**: `AGENTS.md` §5 prohíbe `git push` sin permiso y la rama nunca ha salido de la máquina. Lo que se ha reproducido son los comandos, no el runner.
+  - El disparo real del respaldo diario por Hangfire contra PostgreSQL real, y la subida a Google Drive (depende de F0-04).
+  - Que la API **publicada** sirva `/`: no arranca sin una base de datos real y no hay instancia con el rol `rent_backup` configurada.
+  - Restauración real aplicando un volcado (runbook FP-03, fuera de bloque).
+- Migraciones: sí — `20261015090307_AlertaDeFallo` (crea `alerta` con `clave` única e índices; concede `SELECT, INSERT, UPDATE` a `rent_app`; **no** crea la columna `xmin`).
+- Riesgo / pendiente:
+  - `ARBK2` **no es retrocompatible**: las copias de un binario anterior dejan de abrirse. Al desplegar un binario nuevo hay que regenerar la copia del día.
+  - La alerta vive en la misma base del respaldo: si lo que cae es PostgreSQL, no hay dónde escribirla. Cubierto en `SEGURIDAD.md` A.8 y DOC_TECNICA §8.1.
+  - Sigue sin implementarse el aviso de **backup que no llega a ejecutarse** (solo se detecta el que falla).
+  - `Rotar()` ordena por nombre de archivo: un archivo con fecha futura y que no verifica ocupa una ranura y baja la retención efectiva de 4 a 3. Exige escritura en la carpeta de copias.
+- Commit/PR: `38ebc78`, `7dc9eea`, `5207e3a`
+
 ## [15/10/2026 13:30] FEAT · F1-12 (cont.) · Disparo diario de los jobs con Hangfire
 - Qué:
   - Hangfire 1.8.25 / Hangfire.PostgreSql 1.21.1 en la API, con los jobs de F1-12 programados: **copia de seguridad cifrada a las 02:00 de Santo Domingo** y **verificación de integridad de auditoría a las 03:00**.

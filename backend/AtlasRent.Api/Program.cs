@@ -269,7 +269,7 @@ app.MapControllers();
 
 // F1-13: el backend sirve el frontend compilado. En desarrollo Vite va en su propio servidor y este
 // wwwroot no existe: por eso los archivos estáticos solo se registran si hay contenido, y en ese
-// caso index.js debe existir. Si no, la API arranca igual (los tests de integración, por ejemplo).
+// caso index.html debe existir. Si no, la API arranca igual (los tests de integración, por ejemplo).
 if (WebRootConIndice())
 {
     app.UseDefaultFiles();

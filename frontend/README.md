@@ -33,5 +33,5 @@ src/
 - Los componentes del design system se cambian primero en `Atlas Rent Design System/` y después se copian aquí (DESIGN.md §1.7).
 - `design-system/tokens/fonts.css` ya no importa Google Fonts: las fuentes Geist llegan por `@fontsource` desde `main.tsx`.
 - Paquetes fuera de DOC_TECNICA §2: `@eslint/js` y `globals` (los necesita la configuración plana de ESL 10) y `@types/node` (los tests del Node.js Test Runner se tipan en `tsc --noEmit`).
-- Pendiente: `Icon` resuelve el nombre del icono en el mapa completo de `lucide-react`, así que el chunk principal pesa 931 kB (261 kB gzip). Cuando exista la primera pantalla real conviene un mapa de imports explícitos.
+- Pendiente: el chunk de textos centralizados (`textos-*.js`, ~634 kB / 173 kB gzip) y el entry (`index-*.js`, ~331 kB / 110 kB gzip) superan el umbral de aviso de 500 kB de Vite. Cuando exista la primera pantalla real conviene un mapa de imports explícitos en `Icon` y revisar si los textos deben ir en chunks por módulo.
 - No se ha revisado la UI en un navegador: en esta tarea solo se verificaron lint, typecheck, tests y build.

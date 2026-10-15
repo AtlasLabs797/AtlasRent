@@ -284,7 +284,9 @@ public sealed class ServicioBackup(
             : $"fallo inesperado ({e.GetType().Name}); el detalle está en el log";
         var mensaje = $"La copia de seguridad del {fecha:yyyy-MM-dd} falló: {motivo}";
 
-        Log.Fatal(mensaje);
+        // Se pasa como plantilla con sus propiedades y no el mensaje ya compuesto: Serilog trata
+        // las llaves del texto como marcadores, y el motivo viene de una excepción.
+        Log.Fatal("La copia de seguridad del {Fecha} falló: {Motivo}", fecha, motivo);
 
         if (alertas is not null)
         {

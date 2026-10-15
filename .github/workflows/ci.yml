@@ -29,6 +29,15 @@ jobs:
         run: |
           dotnet list package --vulnerable --include-transitive | tee vuln.txt
           ! grep -E "High|Critical" vuln.txt
+      # El paquete de despliegue tiene que llevar la interfaz (DOC_TECNICA §1 y §9.3). Sin esta
+      # comprobación, el fallo que ya ocurrió —publicar sin frontend en wwwroot— volvería a
+      # colarse sin que nadie se entere, y se instalaría un servicio sin interfaz.
+      - name: El paquete incluye el frontend compilado
+        run: |
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+          dotnet publish backend/AtlasRent.Api -c Release --no-build -o /tmp/paquete
+          test -f /tmp/paquete/wwwroot/index.html
   frontend:
     runs-on: ubuntu-latest
     if: ${{ hashFiles('frontend/package.json') != '' }}
