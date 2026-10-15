@@ -175,6 +175,10 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
     /// <summary>
     /// <c>ServicioCobros</c> (F3-06) con la fuente de tipos de cambio que ya se ha construido: aquí
     /// solo se usa para resolver el estado de cobro de una factura, no para mover dinero.
+    /// <para>
+    /// F3-07: recibe el mismo <c>ServicioConfiguracion</c> que en producción, de donde sale la
+    /// tolerancia del ajuste por diferencia de cambio. Esta prueba no ajusta nada, así que no le afecta.
+    /// </para>
     /// </summary>
     private static ServicioCobros ConstruirCobros(
         AtlasRent.Api.Data.AtlasRentDbContext contexto,
@@ -182,7 +186,14 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
         ServicioIdempotencia idempotencia,
         ServicioTiposCambio tiposCambio,
         TimeProvider reloj) =>
-        new(contexto, auditoria, idempotencia, tiposCambio, new PoliticaSinEmitir(), reloj);
+        new(
+            contexto,
+            auditoria,
+            idempotencia,
+            tiposCambio,
+            new ServicioConfiguracion(contexto, auditoria, idempotencia, reloj),
+            new PoliticaSinEmitir(),
+            reloj);
 
     private sealed class FuenteQueNoSeUsa : IFuenteTipoCambio
     {

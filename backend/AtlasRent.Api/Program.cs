@@ -287,6 +287,9 @@ builder.Services.AddScoped<ServicioFacturas>();
 // F3-06: cobros, asignaciones FIFO y saldo a favor. Va después de ServicioFacturas porque el
 // registro de un cobro comprueba las facturas del contrato, y el servicio de facturas lo usa para
 // resolver cobrado, pendiente y estado de cobro sin una consulta por fila (§3.13).
+// F3-07: además del pago en otra moneda (§3.10.2), el ajuste por diferencia de cambio. Su
+// tolerancia NO es configuración de despliegue: sale de ajuste_general, que escribe el
+// administrador en Configuración → Ajustes generales (F1-04), y sin ella no hay ajuste.
 builder.Services.AddScoped<ServicioCobros>();
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).

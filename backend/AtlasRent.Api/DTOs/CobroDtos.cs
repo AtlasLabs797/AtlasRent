@@ -77,7 +77,90 @@ public sealed class CobroPeticion
     /// </para>
     /// </summary>
     public IReadOnlyList<CobroAsignacionPeticion>? Asignaciones { get; init; }
+
+    /// <summary>
+    /// Tipo de cambio <b>realmente aplicado</b> en este cobro (F3-07, §3.10.2, D8).
+    /// <para>
+    /// Si no viene, se usa el cambio del día de la moneda recibida, que es lo que guarda
+    /// <c>ServiceTiposCambio</c> y lo que además queda congelado en el cobro. Si viene, es porque el
+    /// gerente cobró a un cambio distinto del de la casa —el del banco, el delanton, el que puso el
+    /// cliente— y quiere dejar constancia de ese, que es el único que explica el importe recibido.
+    /// </para>
+    /// <para>
+    /// <b>El cambio aplicado va en cada asignación, y el del día sigue en el cobro.</b> No se
+    /// pisa uno con el otro: el del día es el dato de referencia que congela D9 y con él se
+    /// justifican los informes; el aplicado es el dato del cobro. Los dos conviven.
+    /// </para>
+    /// <para>
+    /// Tiene que ser mayor que cero: un cambio de cero no convierte nada y uno negativo cambiaría el
+    /// signo de la deuda. <b>Lo comprueba el servicio y sale en 400</b>, no con un atributo
+    /// <c>[Range]</c>: ese atributo parsea sus límites con la cultura del proceso, que aquí escribe
+    /// <c>59,50</c>, así que un rango escrito con punto no se lee nunca y dejaría todas las peticiones
+    /// de cobro en 400.
+    /// </para>
+    /// </summary>
+    public decimal? TipoCambioAplicado { get; init; }
 }
+
+/// <summary>
+/// Alta de un ajuste por diferencia de cambio (F3-07, docs/ESPECIFICACION.md §3.10.2).
+/// <para>
+/// <b>El importe no se pide</b>: es el pendiente real de la factura en el momento del ajuste, y que
+/// quien lo firma elija de cuánto es la diferencia convertiría el ajuste en la manera cómoda de tapar
+/// un saldo del tamaño que quiera. El servicio lo calcula y solo lo acepta si cabe en la tolerancia
+/// configurada.
+/// </para>
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class AjusteDiferenciaCambioPeticion
+{
+    /// <summary>Factura cuyo pendiente se cierra. Obligatoria.</summary>
+    [Required]
+    public required Guid FacturaId { get; init; }
+
+    /// <summary>
+    /// Tipo de cambio que dejó la diferencia, <c>numeric(18,6)</c>. Obligatorio y mayor que cero:
+    /// sin él, la fila no dice por qué el pendiente es el que es y no se puede reconstruir nada. Lo
+    /// comprueba el servicio (400), por el mismo motivo que en <see cref="CobroPeticion.TipoCambioAplicado"/>.
+    /// </summary>
+    public decimal TipoCambioValor { get; init; }
+
+    /// <summary>
+    /// Por qué se ajusta. Obligatorio y no vacío (400 sin él): sin motivo, un euro de diferencia no
+    /// se distingue de un error de captura.
+    /// </summary>
+    [Required]
+    [StringLength(500, MinimumLength = 1)]
+    public required string Motivo { get; init; }
+}
+
+/// <summary>Anulación de un ajuste por diferencia de cambio (F3-07).</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class AjusteDiferenciaCambioAnulacionPeticion
+{
+    /// <summary>
+    /// Por qué se anula. Obligatorio por la misma razón que en el alta: el ajuste equivocado se
+    /// corrige, no se borra (AGENTS.md §6), y corregido significa explicado.
+    /// </summary>
+    [Required]
+    [StringLength(500, MinimumLength = 1)]
+    public required string Motivo { get; init; }
+}
+
+/// <summary>Ajuste por diferencia de cambio tal y como queda guardado.</summary>
+public sealed record AjusteDiferenciaCambioRespuesta(
+    Guid Id,
+    Guid FacturaId,
+    decimal Importe,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda Moneda,
+    decimal TipoCambioValor,
+    string Motivo,
+    string? Ip,
+    bool Vigente,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? AnuladoAt,
+    Guid? AnuladoPor,
+    string? MotivoAnulacion);
 
 /// <summary>Aplicación de un cobro a una factura concreta.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -163,13 +246,23 @@ public sealed record CobroRespuesta(
     DateTimeOffset CreatedAt,
     IReadOnlyList<CobroAsignacionRespuesta> Asignaciones);
 
-/// <summary>Asignación tal y como queda guardada, vigente o no.</summary>
+/// <summary>
+/// Asignación tal y como queda guardada, vigente o no.
+/// <para>
+/// <b><paramref name="ImporteRecibido"/> y <paramref name="TipoCambioValor"/> vienen a null cuando el
+/// cobro y la factura comparten moneda</b>, porque ahí no se aplicó ninguna conversión. Cuando la
+/// factura es de otra moneda, el importe es su equivalente: <c>ImporteRecibido / TipoCambioValor</c>.
+/// </para>
+/// </summary>
 public sealed record CobroAsignacionRespuesta(
     Guid Id,
     Guid FacturaId,
     int? FacturaNumero,
     DateOnly? FacturaVencimiento,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda FacturaMoneda,
     decimal Importe,
+    decimal? ImporteRecibido,
+    decimal? TipoCambioValor,
     bool Vigente,
     DateTimeOffset CreatedAt);
 
@@ -195,19 +288,33 @@ public sealed record CobroSimulacionRespuesta(
     IReadOnlyList<CobroAsignacionSimulada> Asignaciones,
     IReadOnlyList<CobroDeudaOtraMoneda> DeudaEnOtraMoneda);
 
-/// <summary>Una factura sugerida por la FIFO, con lo que se le aplicaría y lo que le quedaría.</summary>
+/// <summary>
+/// Una factura sugerida por la FIFO, con lo que se le aplicaría y lo que le quedaría.
+/// <para>
+/// Desde F3-07 la FIFO también propone facturas de <b>otra moneda</b> que la del pago, con su
+/// equivalente en la moneda recibida; por eso la línea lleva <paramref name="ImporteRecibido"/> y
+/// <paramref name="TipoCambioValor"/>, que son null cuando la factura está en la moneda del pago.
+/// </para>
+/// </summary>
 public sealed record CobroAsignacionSimulada(
     Guid FacturaId,
     int? Numero,
     DateOnly FechaVencimiento,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda FacturaMoneda,
     decimal Importe,
+    decimal? ImporteRecibido,
+    decimal? TipoCambioValor,
     decimal PendienteAntes);
 
 /// <summary>
-/// Deuda pendiente del mismo contrato en otra moneda. <b>No se asigna</b> en esta fase (D7, §3.10.1):
-/// pagar en una moneda deuda de otra es el pago en otra moneda de §3.10.2, que es de F3-07. Se
-/// devuelve para que la interfaz pueda decirlo en vez de dejar a alguien creyendo que el cobro paga
-/// toda la deuda del contrato.
+/// Deuda pendiente del mismo contrato en una moneda distinta de la recibida que <b>esta propuesta no
+/// cubre</b> (F3-07, §3.10.2).
+/// <para>
+/// Desde F3-07 la FIFO sí propone facturas de otra moneda, así que esto ya no es «la deuda que
+/// ignora»: es «la deuda que queda después de aplicar este cobro». Se sigue devolviendo, y con el
+/// mismo sentido, porque es lo que permite que la interfaz diga «este pago no cubre todo» en vez de
+/// dejar a alguien creyendo que sí.
+/// </para>
 /// </summary>
 public sealed record CobroDeudaOtraMoneda(
     [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda Moneda,

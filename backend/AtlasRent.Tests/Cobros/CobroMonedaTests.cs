@@ -14,9 +14,14 @@ using Xunit;
 namespace AtlasRent.Tests.Cobros;
 
 /// <summary>
-/// F3-06: la moneda del cobro. El tipo de cambio del día es obligatorio para toda moneda que no sea el
-/// dólar (D9), y un cobro solo asigna a facturas de la moneda recibida porque pagar deuda en una moneda
-/// con dinero de otra es el pago en otra moneda de §3.10.2, que es de F3-07 (D7).
+    /// F3-06: la moneda del cobro. El tipo de cambio del día es obligatorio para toda moneda que no sea el
+    /// dólar (D9).
+    /// <para>
+    /// La conversión entre monedas es de F3-07 (§3.10.2, D8) y se prueba en
+    /// <see cref="CobroCambioMonedaTests"/>; aquí solo queda el otro sentido, que sigue sin poder
+    /// hacerse: pagar una factura en pesos con un cobro en dólares necesita el cambio del peso y el
+    /// cobro solo trae el de la moneda en que entra el dinero.
+    /// </para>
 /// </summary>
 [Collection(nameof(ColeccionBd))]
 public sealed class CobroMonedaTests(ContenedorBdFixture bd, ApiTestFactory api)
@@ -96,12 +101,22 @@ public sealed class CobroMonedaTests(ContenedorBdFixture bd, ApiTestFactory api)
     }
 
     /// <summary>
-    /// Un cobro en pesos no puede saldar deuda en dólares en esta fase, y el 409 lo dice nombrando
-    /// §3.10.2 en vez de convertir en silencio (D7: una factura nunca se convierte). La simulación, por
-    /// su parte, devuelve esa deuda aparte para que la interfaz pueda explicarlo.
+    /// Un cobro en dólares no puede saldar deuda en pesos, porque para eso haría falta el cambio del
+    /// peso y el cobro solo trae el cambio de la moneda en que entra el dinero. El 409 lo dice con esa
+    /// razón, y no con un «no se puede» sin explicación.
+    /// <para>
+    /// Este caso cambió con F3-07: antes el rechazo era para cualquier moneda distinta, y el mensaje
+    /// señalaba §3.10.2 como algo pendiente. Ahora §3.10.2 está hecho y lo que no se puede es
+    /// <b>convertir al revés</b>; el otro sentido (pagar una factura en dólares con pesos) sí funciona y
+    /// lo comprueba <see cref="CobroCambioMonedaTests"/>.
+    /// </para>
+    /// <para>
+    /// Y la simulación, que valida igual que el registro, deja la deuda en pesos sin tocar y la dice:
+    /// el cobro no la cubre y quien lo ve tiene que poder decirlo.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task AsignarAUnaFacturaDeOtraMonedaFallaYLaSimulacionLoExplica()
+    public async Task PagarConDolaresUnaFacturaEnPesosFallaYLaSimulacionLoExplica()
     {
         var ct = TestContext.Current.CancellationToken;
         using var sesion = await AyudaCobros.SesionAsync(bd, api, Roles.Admin, ct);
@@ -129,13 +144,14 @@ public sealed class CobroMonedaTests(ContenedorBdFixture bd, ApiTestFactory api)
         rechazado.StatusCode.Should().Be(HttpStatusCode.Conflict, await rechazado.Cuerpo());
 
         var detalle = await rechazado.Content.ReadAsStringAsync(ct);
-        detalle.Should().Contain("3.10.2", "el conflicto dice dónde está esa regla, no solo que hay un conflicto");
+        detalle.Should().Contain("cambio de DOP", "el conflicto dice qué falta, no solo que hay un conflicto");
 
         // La simulación valida igual que el registro: no puede proponer algo que luego se rechaza.
         var simulada = await sesion.PostAsync("/api/v1/cobros/simular", cuerpo, ct);
         simulada.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
-        // Sin asignaciones explícitas sí sale, y dice qué deuda del contrato no va a cubrir.
+        // Sin asignaciones explícitas sí sale, no propone esa factura y dice qué deuda del contrato no
+        // va a cubrir: saltarse una factura no conversible no es motivo para dejar de cobrar la otra.
         var sinAsignar = AyudaCobros.Peticion(clienteId, contratoId, hoy, Moneda.USD, 500m, formaPagoId, cuentaDolar);
         var propuesta = await sesion.PostAsync("/api/v1/cobros/simular", sinAsignar, ct);
         propuesta.StatusCode.Should().Be(HttpStatusCode.OK, await propuesta.Cuerpo());

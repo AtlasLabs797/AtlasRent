@@ -10,8 +10,14 @@ namespace AtlasRent.Api.Data;
 /// </para>
 /// <para>
 /// <b>El importe recibido y su tipo de cambio son los del cobro, no los de la factura.</b> Un cobro en
-/// DOP puede pagar facturas en USD (D8, §3.10.2, que es de F3-07): por eso el cambio se congela aquí
-/// al registrar (D9) y las asignaciones guardan el importe en la moneda de su factura.
+/// DOP puede pagar facturas en USD (D8, §3.10.2): por eso el cambio se congela aquí al registrar (D9) y
+/// las asignaciones guardan el importe en la moneda de su factura.
+/// <para>
+/// <b>Este cambio es siempre el del día</b>, aunque la asignación guarde el que el gerente fijó por
+/// petición (§3.10.2, F3-07): el del día es el dato de referencia con el que se justifican los
+/// informes, y pisarlo con el aplicado haría que un informe justificara un cobro con un cambio que no
+/// fue el que se usó.
+/// </para>
 /// </para>
 /// <para>
 /// El <see cref="ContratoId"/> es nulo a propósito: un cobro sin contrato es legal (§3.10.1 no

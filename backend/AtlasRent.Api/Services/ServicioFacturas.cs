@@ -124,13 +124,20 @@ public sealed class ServicioFacturas(
 
         // Cobrado, pendiente y estado de cobro (F3-06, §3.8) se resuelven en una sola consulta
         // agregada sobre la página, no con una consulta por factura: son datos de otra tabla
-        // (cobro) y una vista de cuentas de 25 filas no puede costar 26 viajes.
+        // (cobro) y una vista de cuentas de 25 filas no puede costar 26 viajes. El ajuste por
+        // diferencia de cambio (F3-07, §3.10.2) va en su propia consulta porque va en su propia tabla
+        // y porque no se suma dentro de «cobrado»: es dinero que no entró en caja.
         var cobrados = await cobros.CobradoPorFacturaAsync(
+            [.. pagina.Data.Select(f => f.Id)], ct);
+        var ajustados = await cobros.AjustadoPorFacturaAsync(
             [.. pagina.Data.Select(f => f.Id)], ct);
 
         return pagina with
         {
-            Data = [.. pagina.Data.Select(f => ConCobro(f, cobrados.GetValueOrDefault(f.Id)))],
+            Data = [.. pagina.Data.Select(f => ConCobro(
+                f,
+                cobrados.GetValueOrDefault(f.Id),
+                ajustados.GetValueOrDefault(f.Id)))],
         };
     }
 
@@ -139,8 +146,9 @@ public sealed class ServicioFacturas(
         var factura = await CargarAsync(id, ct);
 
         var cobrados = await cobros.CobradoPorFacturaAsync([factura.Id], ct);
+        var ajustados = await cobros.AjustadoPorFacturaAsync([factura.Id], ct);
 
-        return ConCobro(ARespuesta(factura), cobrados.GetValueOrDefault(factura.Id));
+        return ConCobro(ARespuesta(factura), cobrados.GetValueOrDefault(factura.Id), ajustados.GetValueOrDefault(factura.Id));
     }
 
     // ---------------------------------------------------------------- escritura de borrador
@@ -653,35 +661,37 @@ public sealed class ServicioFacturas(
     // ---------------------------------------------------------------- proyecciones
 
     /// <summary>
-    /// Rellena los cuatro campos derivados de §3.8 con lo que hay cobrado hoy. El cálculo está en
+    /// Rellena los campos derivados de §3.8 con lo que hay cobrado hoy. El cálculo está en
     /// <see cref="CalculoCobro"/> y lo pide <c>ServicioCobros</c>, que es quien sabe qué
-    /// asignaciones cuentan: un cobro anulado no cuenta, y eso no lo puede saber un lector de
-    /// facturas por su cuenta.
+    /// asignaciones y qué ajustes cuentan: un cobro anulado no cuenta, y eso no lo puede saber un
+    /// lector de facturas por su cuenta.
     /// <para>
     /// La retención va a cero porque la columna es de F3-04; el cálculo ya la tiene en cuenta.
     /// </para>
     /// </summary>
-    private FacturaResumen ConCobro(FacturaResumen f, decimal cobrado)
+    private FacturaResumen ConCobro(FacturaResumen f, decimal cobrado, decimal ajustado)
     {
-        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, f.FechaVencimiento);
+        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, ajustado, f.FechaVencimiento);
 
         return f with
         {
             Cobrado = situacion.Cobrado,
+            Ajustado = situacion.Ajustado,
             Pendiente = situacion.Pendiente,
             EstadoCobro = situacion.Estado,
             Vencida = situacion.Vencida,
         };
     }
 
-    /// <summary>Igual que <see cref="ConCobro"/>, para el detalle.</summary>
-    private FacturaRespuesta ConCobro(FacturaRespuesta f, decimal cobrado)
+    /// <summary>Igual que <see cref="ConCobro(FacturaResumen, decimal, decimal)"/>, para el detalle.</summary>
+    private FacturaRespuesta ConCobro(FacturaRespuesta f, decimal cobrado, decimal ajustado)
     {
-        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, f.FechaVencimiento);
+        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, ajustado, f.FechaVencimiento);
 
         return f with
         {
             Cobrado = situacion.Cobrado,
+            Ajustado = situacion.Ajustado,
             Pendiente = situacion.Pendiente,
             EstadoCobro = situacion.Estado,
             Vencida = situacion.Vencida,

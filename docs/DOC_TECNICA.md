@@ -1,4 +1,4 @@
-# Documentación técnica — Atlas Rent
+﻿# Documentación técnica — Atlas Rent
 
 > Estado inicial: diseño previsto. Cada sección se actualiza al implementar (al cerrar cada tarea, `docs/PROCEDIMIENTOS.md` §2). Lo funcional está en `ESPECIFICACION.md`; aquí solo el cómo. Atlas Rent es un proyecto independiente: todo se construye y se prueba en este repositorio.
 
@@ -121,6 +121,8 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - Económicos: estado anulado, nunca borrado. Resto: `deleted_at`, `deleted_by`.
 - **Facturas (F3-02):** una sola tabla `factura` para facturas y proformas — lo que las distingue es `serie.tipo`, no el sitio donde viven; con dos tablas habría que duplicar líneas, totales y cobros sin ganar nada. `factura_linea` cuelga de ella con cascada al borrado, que solo se da en borrador. Dos `CHECK`: `(estado = 1) = (numero IS NULL)` (un borrador no tiene número y una emitida lo tiene) y `tipo_cambio_fecha IS NULL OR fecha_emision IS NOT NULL` (el cambio congelado solo existe si el documento salió). El ITBIS se congela **en la línea** (`porcentaje_itbis`, `tipo_itbis_id`), no solo en la cabecera: la factura dice "este importe lleva este impuesto" y cambiar el tipo de ITBIS mañana no puede cambiar lo que una factura ya emitida dice.
 - **Cobros (F3-06):** `cobro` (dinero que entró, con su cambio congelado y su estado), `cobro_asignacion` (a qué factura se aplica) y `saldo_a_favor` (**una fila por contrato y moneda**, no una por cobro: el crédito es un saldo del contrato y se actualiza al cobrar y al consumir). **Ninguna de las tres lleva `DELETE` para `rent_app`**: un cobro se anula con motivo y sus asignaciones se quedan con `vigente = false`, que es la diferencia entre anular y borrar (§3.10.1, AGENTS.md §6). `CHECK` en `cobro`: `importe_recibido > 0`, `saldo_favor_usado >= 0 AND excedente >= 0` y `(estado = 2) = (anulado_at IS NOT NULL AND motivo_anulacion IS NOT NULL)` —anular con motivo y con fecha, o no está anulado. La cascada de `cobro_asignacion` sobre `cobro` no cambia eso: sin `DELETE` concedido, solo un `DROP` de tabla o un script de migración la usaría.
+- **Pago en otra moneda (F3-07):** `cobro_asignacion` gana `importe_recibido numeric(18,2)` y `tipo_cambio_valor numeric(18,6)`, **las dos nulas o las dos puestas** (`CHECK (importe_recibido IS NULL) = (tipo_cambio_valor IS NULL)`). Nulas cuando el cobro y la factura comparten moneda: ahí no se aplicó conversión y un cambio de 1 afirmaría que la hubo (es el mismo motivo por el que el dólar no tiene fila en `tipo_cambio`, F3-01). El `cobro` **no cambia**: su `tipo_cambio_valor` sigue siendo el del día aunque la asignación guarde el que el gerente fijó, porque son dos datos distintos —el del día justifica los informes (D9) y el aplicado explica el cobro—. La tabla nueva `ajuste_diferencia_cambio` (`factura_id`, `importe`, `moneda`, `tipo_cambio_valor`, `motivo`, `ip`, `anulado_at/por`, `motivo_anulacion`, `created_at/by`) **tampoco lleva `DELETE`**: corrige un saldo de factura, se anula con motivo. Sus `CHECK`: `importe > 0`, `tipo_cambio_valor > 0`, `length(trim(motivo)) > 0` y `(anulado_at IS NULL) = (anulado_por IS NULL AND motivo_anulacion IS NULL)`.
+- **Tolerancia de la diferencia de cambio: vive en `ajuste_general`, no en la configuración de despliegue.** Las columnas `tolerancia_cambio_usd` y `tolerancia_cambio_dop` son de `20261015042341_Configuracion` (F1-04) y **nacen a `NULL`**: la fila semilla se inserta sin ellas a propósito, porque §3.10.2 marca esos importes como [Supuesto] y nadie los ha aprobado. **Quién la escribe: el administrador**, desde *Configuración → Ajustes generales* (`PUT /api/v1/config/ajustes`, permiso `configuracion.editar`); el servicio de cobros la lee con `ServicioConfiguracion.LeerAjustesAsync`, el mismo camino que la pantalla. Una moneda sin valor, o con valor cero, significa **ajuste desactivado** y el intento sale en 409 diciendo dónde configurarlo. No hay segunda fuente (ni variable de entorno ni constante): dos sitios donde escribir una cifra que no sabes cuál manda es una trampa silenciosa (BUG-007).
 
 ### 4.3 Piezas críticas en SQL
 - **Exclusión de rangos:** `EXCLUDE USING gist (unidad_id WITH =, daterange(fecha_inicio, fecha_fin, '[)') WITH &&) WHERE (bloquea)` sobre `ocupacion_rango` (`btree_gist`).
@@ -153,11 +155,14 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **ITBIS de la factura (F3-02):** es **por línea** (§3.8), no sobre el total. `CalculoImpuestosLinea.Calcular(cantidad, precio, porcentaje)` redondea una vez el importe (`cantidad × precio`) y una vez su impuesto (`importe × porcentaje / 100`), y los totales de la cabecera son `Subtotal = Σ Importe`, `Itbis = Σ ItbisImporte` y `Total = Subtotal + Itbis`. No es lo mismo que redondear el subtotal entero: dos líneas al 18 % de 100,01 y 0,30 dan 18,00 + 0,05 = **18,05**, mientras que 100,31 × 18 % redondeado da **18,06**. El céntimo se pierde si el impuesto se calcula sobre el total. `CalculoImpuestos.Calcular` (de factura completa, con retenciones) sigue existiendo para lo que venga después; hoy no lo usa nadie. El 100 es un divisor de porcentaje y no una cifra fiscal: el porcentaje sale de `tipo_itbis` (D14).
 - **Signo de las líneas (F3-02):** el tipo lo decide. Una línea `Descuento` con importe positivo se rechaza con 409, y cualquier otro tipo con importe negativo también: restar es tener una línea de descuento, no poner un signo raro. El subtotal es por tanto la suma algebraica de las líneas.
 - **Borrador reescribible (F3-02):** una factura en borrador no tiene número, ni comprobante, ni deuda, así que se le cambian la cabecera y las líneas, y sus líneas se borran. Emitida, ninguna línea se toca: lo que hay es anular y emitir otra (F3-08).
-- **Saldo de factura (F3-06):** `Dominio/CalculoCobro.Calcular(total, retencion, cobrado, vencimiento, hoy)` → record con `Cobrado`, `Pendiente`, `Estado`, `Vencida` y `DiasVencida`. **Pendiente = total − retenciones − cobrado, acotado a cero**: un pendiente negativo significaría que se ha cobrado de más, y eso es saldo a favor (§3.10.1), que vive en otra tabla con otras reglas; devolverlo negativo haría que cualquier suma de pendientes de §3.13 descuadrara contra el dinero real. Estado = `Pagada` / `Parcial` / `Pendiente` (§3.8) y `Vencida` es **una bandera aparte** (pendiente > 0 y hoy > vencimiento), porque vencida no sustituye al estado: la vista de cuentas necesita las dos cosas. `cobrado` sale de una **consulta agregada** de las asignaciones vigentes de la página, no de una por factura. La retención entra por parámetro y hoy vale cero porque la columna es de F3-04; la prueba que heredará F3-04 está en `CobroCalculoTests`.
+- **Saldo de factura (F3-07):** `Dominio/CalculoCobro.Calcular(total, retencion, cobrado, ajustado, vencimiento, hoy)` → record con `Cobrado`, `Ajustado`, `Pendiente`, `Estado`, `Vencida` y `DiasVencida`. **Pendiente = total − retenciones − cobrado − ajustado, acotado a cero**: un pendiente negativo significaría que se ha cobrado de más, y eso es saldo a favor (§3.10.1), que vive en otra tabla con otras reglas; devolverlo negativo haría que cualquier suma de pendientes de §3.13 descuadrara contra el dinero real. Estado = `Pagada` / `Parcial` / `Pendiente` (§3.8) y `Vencida` es **una bandera aparte** (pendiente > 0 y hoy > vencimiento), porque vencida no sustituye al estado: la vista de cuentas necesita las dos cosas. `cobrado` y `ajustado` salen de **dos consultas agregadas** sobre la página, no de una por factura, y **no se suman entre sí en la respuesta**: `cobrado` es dinero que entró en la caja y `ajustado` no lo es (§3.10.2); mezclarlos haría que un informe de caja dijera que entraron más dólares de los que entraron. Los dos juntos son los que cierran la factura. La retención entra por parámetro y hoy vale cero porque la columna es de F3-04; la prueba que heredará F3-04 está en `CobroCalculoTests`.
+  - **Nota para F3-10 (vista de cuentas y panel de cobro): para saber si una factura está cerrada hay que sumar `cobrado + retenciones + ajustado`.** `cobrado` a secas **no dice si la factura está saldada**, y usar `cobrado == total` como criterio daría por pagada una factura cerrada con retención o con un ajuste, y por no pagada una factura cuyo total baja por retención. Y al revés: un informe de caja **solo** puede sumar `cobrado`, porque `ajustado` no es dinero que entró. Son dos sumas distintas con dos propósitos distintos, y confundirlas es como se infla un informe de caja.
 - **Cobro (F3-06):** `cobro (moneda_recibida, importe_recibido, tipo_cambio_valor/tipo_cambio_fecha congelados)`; `cobro_asignacion (factura_id, importe en la moneda de la factura, vigente)`; `saldo_a_favor (contrato_id, moneda, importe)`. **FIFO dentro del contrato y de la moneda recibida**, por `FechaVencimiento`, luego `FechaEmision` y luego `Id` (desempate estable: sin él dos facturas del mismo día darían un orden que cambia entre dos llamadas). Un cobro parcial deja la siguiente a medias y no la salta. **Editable**: si quien cobra manda asignaciones, el servicio no propone nada; si no, propone la FIFO. `POST /simular` devuelve esa propuesta **sin escribir nada**. Excedente = `importe_recibido + saldo_favor_usado − Σ asignaciones`, y sin contrato se queda en la columna `excedente` del cobro sin generar crédito. **El crédito se gasta solo cuando quien cobra lo pide** (`usarSaldoAFavor`): §3.10.1 no dice a qué factura se descuenta, y aplicarlo por las reglas al emitir sería inventar la regla.
 - **Anular un cobro (F3-06):** una transacción — el cobro pasa a `Anulado` con motivo y fecha, sus asignaciones quedan con `vigente = false` **sin borrarse**, y el saldo a favor vuelve a como estaba antes (sale el excedente, vuelve el crédito consumido). Las facturas recupuran su pendiente porque sus asignaciones ya no cuentan.
-- **Límite conocido y temporal (F3-06 → F3-07):** un cobro **solo asigna a facturas de la moneda recibida**. Pagar deuda en una moneda con dinero de otra es el pago en otra moneda de §3.10.2, que añade `importe_recibido` y `tipo_cambio_valor` a `cobro_asignacion`; aquí se rechaza con 409 nombrando §3.10.2 en vez de convertir (D7). La deuda del contrato en otra moneda no se asigna pero **sí se devuelve** en la simulación (`deudaEnOtraMoneda`), para que la interfaz pueda decir que el cobro no la cubre.
-- **Pago en otra moneda:** equivalente = importe recibido convertido con el cambio aplicado, redondeado a 2; tolerancia configurable por moneda; `ajuste_diferencia_cambio` auditado.
+- **Pago en otra moneda (F3-07, §3.10.2, D8):** la FIFO **ya no filtra por moneda**: propone las facturas del contrato en cualquier moneda, con su equivalente en la moneda recibida. El reparto va **en la moneda recibida** —el dinero está en pesos y hay que decidir a qué facturas llega—: se convierte el pendiente a la moneda del cobro (`pendiente × cambio`), se toma `min(disponible, eso)` y se vuelve a la moneda de la factura con `ImporteRecibido / TipoCambioValor`, redondeado half-up a dos decimales (`Redondeo.Importe`). El importe **nunca pasa del pendiente**: sobrar es saldo a favor (§3.10.1), no sobrepago. **La factura conserva su moneda, su importe, su número y su comprobante**; pagar en pesos una factura de dólares no emite otra factura ni gasta un número de serie.
+  - **Qué cambio se aplica:** por defecto el del día de la moneda recibida (`ServicioTiposCambio`), y el gerente puede mandar `tipoCambioAplicado` con el que se usó de verdad. El que va a cada asignación es el aplicado; **`cobro.tipo_cambio_valor` conserva el del día** aunque no coincidan (D9). No hay conversión al revés: convertir una factura en pesos con un cobro en dólares necesitaría el cambio del peso, y el cobro solo trae el de la moneda en que entra el dinero. En la FIFO esa factura se **salta** y sale en `deudaEnOtraMoneda`; en una asignación explícita es un 409 que lo explica.
+  - **`deudaEnOtraMoneda` cambió de sentido:** ya no es «la deuda que el cobro ignora» sino **la que queda viva después de aplicarlo**. El nombre y el formato se conservan para no romper al front de F3-10.
+- **Ajuste por diferencia de cambio (F3-07, §3.10.2):** cierra el pendiente que dejó un cambio que no dividía exacto. **El importe lo calcula el servicio** (es el pendiente real) y solo lo acepta si cabe en la tolerancia; **no se pide** porque, si quien firma eligiera el importe, el mismo botón serviría para tapar un saldo de cualquier tamaño. **Sin tolerancia configurada el ajuste está desactivado** y sale en 409 diciendo que la fije el administrador en *Configuración → Ajustes generales* (§4.2): §3.10.2 marca esos importes como [Supuesto], y un ajuste que se permite sin que nadie haya escrito una cifra es una pérdida de dinero silenciosa. Con `pendiente > tolerancia` el 409 dice el importe, la tolerancia y las dos salidas de §3.10.2: que el cliente pague la diferencia en un cobro nuevo, o que se corrija el cambio del cobro anterior. Va con `cobro.registrar` —mueve el mismo saldo que el cobro— y **no** con un permiso nuevo.
 - **Anular factura (una transacción):** factura y comprobante anulados; sus `cobro_asignacion` anuladas; cobros sin asignaciones vigentes → anulados; auditoría con la lista de afectados.
 - **Anticipo:** campos de nota en `reserva`; ninguna consulta económica los lee.
 
@@ -220,34 +225,48 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Series 9 y 3**: la histórica (9) queda desactivada por la migración de F3-02 —no emite, la usan las
   importaciones de Factusol conservando su número— y la fiscal (3) es la que genera comprobante (F3-03).
 
-### 6.3 Cobros (F3-06)
+### 6.3 Cobros (F3-06, F3-07)
 
 | Endpoint | Acción | Notas |
 |---|---|---|
 | `GET /api/v1/cobros` | `factura.ver` | Listado paginado; filtros `clienteId`, `contratoId`, `moneda`, `estado` (`Registrado`/`Anulado`), `desde`/`hasta` (fechas efectivas) y orden `?sortBy=fechaEfectiva\|createdAt\|importe\|estado`. **Sin totales agregados**: son de §3.15 (F3-10). |
 | `GET /api/v1/cobros/{id}` | `factura.ver` | Cobro con sus asignaciones. Las de un cobro anulado **salen igual**, con `vigente = false`: lo que deja de contar no se esconde. |
 | `POST /api/v1/cobros` | `cobro.registrar` | Registro. Cuerpo = el de `simular`. Acepta `Idempotency-Key`: un reintento devuelve el cobro ya registrado y no mete dos veces el mismo dinero. |
-| `POST /api/v1/cobros/simular` | `cobro.registrar` | **Misma entrada, no muta nada.** Devuelve la propuesta FIFO (factura, importe aplicado, pendiente previo), `totalAsignado`, `excedente`, el crédito disponible y `deudaEnOtraMoneda`. |
+| `POST /api/v1/cobros/simular` | `cobro.registrar` | **Misma entrada, no muta nada.** Devuelve la propuesta FIFO (factura, moneda, importe aplicado, importe recibido, tipo de cambio aplicado y pendiente previo), `totalAsignado`, `excedente`, el crédito disponible y `deudaEnOtraMoneda`. |
 | `POST /api/v1/cobros/{id}/anular` | `cobro.registrar` | Anulación **con motivo obligatorio** (400 sin él). No borra: anula el cobro y desactiva sus asignaciones. Acepta `Idempotency-Key`. |
+| `POST /api/v1/cobros/ajustes-diferencia-cambio` | `cobro.registrar` | **F3-07.** Cierra por ajuste el pendiente de una diferencia de cambio. Cuerpo `{ facturaId, tipoCambioValor, motivo }`; **el importe no se pide**. Acepta `Idempotency-Key`. |
+| `POST /api/v1/cobros/ajustes-diferencia-cambio/{id}/anular` | `cobro.registrar` | **F3-07.** Anulación **con motivo obligatorio**. No borra: la fila queda anulada y la factura recupera su pendiente. Acepta `Idempotency-Key`. |
 
 - **Ninguna acción nueva.** Ver un cobro es `factura.ver` (la fila 7 de §2) y mover dinero es
-  `cobro.registrar`, que D15 deja desactivado al empleado. Registrar, simular y anular llevan la misma
-  acción: **simular es parte de registrar**, y quien no puede registrar tampoco va a ver una propuesta
-  de reparto.
+  `cobro.registrar`, que D15 deja desactivado al empleado. Registrar, simular, anular y **ajustar** llevan
+  la misma acción: el ajuste mueve el mismo saldo que la factura tiene pendiente, y ponerlo detrás de
+  otro permiso habría sido tocar la matriz de permisos por dos endpoints.
 - **Cuerpo del registro:** `clienteId`, `contratoId` (nulo = cobro suelto), `fechaEfectiva`,
   `monedaRecibida`, `importeRecibido`, `formaPagoId`, `cuentaReceptoraId`, `referencia`,
-  `usarSaldoAFavor` y `asignaciones` (opcional; `{ facturaId, importe }`, importe **en la moneda de la
-  factura**). Si `asignaciones` no viene, se propone la FIFO.
+  `usarSaldoAFavor`, `asignaciones` (opcional; `{ facturaId, importe }`, importe **en la moneda de la
+  factura**, también cuando la factura está en otra moneda) y `tipoCambioAplicado` (opcional, F3-07).
+  Si `asignaciones` no viene, se propone la FIFO.
+- **`tipoCambioAplicado` (F3-07):** el cambio que el gerente dice que se usó de verdad. Ausente, se usa el
+  del día de la moneda recibida. Si viene, **la asignación guarda ese y el cobro conserva el del día** (§5).
+- **`deudaEnOtraMoneda` (F3-07):** desde F3-07 es la deuda en otra moneda que **queda viva después de
+  aplicar este cobro**, no la que el cobro ignora. El nombre y el formato no cambian para no romper al
+  front de F3-10; lo que cambia es lo que dice.
 - **El 409 es el conflicto de negocio**: asignar más del pendiente, asignar a una factura de otro
-  contrato, a una de otra moneda (§3.10.2, F3-07), a una que no genera deuda (borrador, anulada o serie
-  sin `suma_a_saldos`), usar más crédito del que hay, cuenta receptora de otra moneda, cobro ya
-  anulado, o **falta el tipo de cambio del día** en una moneda que no sea el dólar (D9; la salida es la
-  carga manual de §3.12 y el mensaje la dice).
+  contrato, a una cuya moneda no se puede convertir con este cobro (§5), a una que no genera deuda
+  (borrador, anulada o serie sin `suma_a_saldos`), usar más crédito del que hay, cuenta receptora de otra
+  moneda, cobro ya anulado, **ajustar una diferencia mayor que la tolerancia** (el mensaje lleva el
+  importe, la tolerancia y las dos salidas de §3.10.2), o **falta el tipo de cambio del día** en una
+  moneda que no sea el dólar (D9; la salida es la carga manual de §3.12 y el mensaje la dice).
+- **`ajustado` en la factura (F3-07):** la factura expone `cobrado` y `ajustado` **por separado** y no
+  los suma en ningún campo. `ajustado` no es dinero que entró en la caja; junto con `cobrado` es lo que
+  cierra la factura, y eso ya lo dicen `pendiente` y `estadoCobro`.
 - **El servicio también comprueba el permiso**, con `IPolicyService.PuedeAsync`, y no solo el atributo
   del endpoint: los trabajos de Hangfire entran por el servicio, sin sesión HTTP ni filtro. El intento
   denegado se audita antes de lanzar.
 - **Una transacción, un commit:** el cobro, sus asignaciones y el movimiento del saldo a favor entran
   juntos, y la auditoría (`cobro.registrado` y, si hubo crédito, `cobro.saldo_a_favor_usado`) va dentro.
+  El ajuste es su propia transacción (`ajuste_diferencia_cambio.registrado`) con la IP en la fila **y** en
+  la auditoría.
 - **TODO(F4-01): el recibo en PDF no está aquí.** Es de la fase 4, con QuestPDF y las plantillas por
   serie. **No hay endpoint que devuelva un PDF provisional**: un recibo de dinero provisional es un
   documento que alguien puede imprimir y archivar.
@@ -437,6 +456,19 @@ permiso `configuracion.editar`), y hay que comprobarlo en la instalación:
   base de informes, así que es la moneda con la que se prueba el sistema.
 - Lo mismo con los **tipos de ITBIS** (F1-08): sin ninguno, las facturas se pueden emitir pero ninguna
   lleva impuesto.
+
+**Ajuste por diferencia de cambio: hay que configurarlo antes de que sirva de algo (F3-07).** No es una
+cifra de despliegue sino un dato de negocio, y sale de `ajuste_general` (`tolerancia_cambio_usd`,
+`tolerancia_cambio_dop`), que escribe el **administrador** en *Configuración → Ajustes generales*
+(`PUT /api/v1/config/ajustes`, permiso `configuracion.editar`). Las columnas **nacen a `NULL`**: la fila
+sembrada por `20261015042341_Configuracion` se inserta sin ellas a propósito, porque §3.10.2 marca los
+importes (USD 1,00 / DOP 50,00) como **[Supuesto]** y nadie los ha aprobado. **Mientras no se escriban, el
+ajuste por diferencia de cambio está desactivado**: el intento sale en 409 diciendo que hay que configurar
+la tolerancia. Es deliberado —un pendiente que se cierra sin que nadie haya dicho que se puede cerrar es
+una pérdida de dinero silenciosa— y **no hay ninguna otra fuente** (ni variable de entorno ni constante
+en el código): dos sitios donde escribir una cifra sin saber cuál manda es la trampa que BUG-007
+documenta. Un cero también desactiva el ajuste: es una decisión activa de no cerrar diferencias, y no lo
+mismo que no haber configurado nada. `TODO(A#)` sigue pendiente de confirmar con la gerencia.
 
 **Actualizaciones:** paquetes publicados en GitHub Releases (, validación de integridad y firma, copia previa, recuperación ante error) mediante `scripts/update.ps1` y Watchdog.
 

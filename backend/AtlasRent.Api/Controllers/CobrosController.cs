@@ -10,17 +10,17 @@ using Npgsql;
 namespace AtlasRent.Api.Controllers;
 
 /// <summary>
-/// Cobros (F3-06, docs/ESPECIFICACION.md §3.10.1).
+/// Cobros (F3-06, docs/ESPECIFICACION.md §3.10.1) y ajuste por diferencia de cambio (F3-07, §3.10.2).
 /// <para>
 /// Los permisos son los que ya existen, sin crear ninguno: los GET usan <c>factura.ver</c> —ver un
-/// cobro es ver el documento que salda una factura— y todo lo que mueve dinero usa
-/// <c>cobro.registrar</c>, que D15 deja desactivado al empleado. El servicio repite la comprobación
-/// porque las tareas de Hangfire entran por el servicio y no por HTTP.
+/// cobro es ver el documento que salda una factura— y todo lo que mueve dinero, incluido el ajuste,
+/// usa <c>cobro.registrar</c>, que D15 deja desactivado al empleado. El servicio repite la
+/// comprobación porque las tareas de Hangfire entran por el servicio y no por HTTP.
 /// </para>
 /// <para>
 /// El 409 es el conflicto de negocio, igual que en <see cref="FacturasController"/>: asignar más de lo
-/// pendiente, asignar a una factura de otro contrato, cobrar en una moneda sin tipo de cambio del día
-/// o anular un cobro ya anulado.
+/// pendiente, asignar a una factura de otro contrato, cobrar en una moneda sin tipo de cambio del día,
+/// anular un cobro ya anulado o intentar ajustar una diferencia mayor que la tolerancia.
 /// </para>
 /// </summary>
 [ApiController]
@@ -117,6 +117,60 @@ public sealed class CobrosController(
         }
 
         return await GuardarAsync(() => cobros.AnularAsync(
+            id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    // ---------------------------------------------------------------- ajuste por diferencia de cambio
+
+    /// <summary>
+    /// Cierra por ajuste el pendiente que dejó una diferencia de cambio (F3-07, §3.10.2).
+    /// <para>
+    /// <b>No se pide importe</b>: es el pendiente real de la factura, y solo se acepta si cabe en la
+    /// tolerancia configurada. Con una diferencia mayor el 409 dice las dos salidas que da §3.10.2 —
+    /// que el cliente pague la diferencia, o que se corrija el cambio del cobro anterior.
+    /// </para>
+    /// <para>
+    /// El permiso es <c>cobro.registrar</c>, el mismo que registrar y anular un cobro: los tres
+    /// mueven el saldo que la factura tiene pendiente. No se crea un permiso nuevo porque tocar la
+    /// matriz de permisos por un solo endpoint es más riesgo del que aporta.
+    /// </para>
+    /// </summary>
+    [HttpPost("ajustes-diferencia-cambio")]
+    [Accion(Acciones.CobroRegistrar)]
+    public async Task<IActionResult> RegistrarAjuste(
+        AjusteDiferenciaCambioPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, "/api/v1/cobros/ajustes-diferencia-cambio");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => cobros.RegistrarAjusteAsync(
+            peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Anulación con motivo. <b>No borra</b>: la fila queda anulada con su motivo y su fecha y deja de
+    /// contar, y la factura recupera el pendiente que tenía (AGENTS.md §6).
+    /// </summary>
+    [HttpPost("ajustes-diferencia-cambio/{id:guid}/anular")]
+    [Accion(Acciones.CobroRegistrar)]
+    public async Task<IActionResult> AnularAjuste(
+        Guid id,
+        AjusteDiferenciaCambioAnulacionPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/cobros/ajustes-diferencia-cambio/{id:D}/anular");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => cobros.AnularAjusteAsync(
             id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
     }
 

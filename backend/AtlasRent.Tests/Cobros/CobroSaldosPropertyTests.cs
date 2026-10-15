@@ -1,4 +1,4 @@
-using AtlasRent.Api.Authorization;
+﻿using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.DTOs;
@@ -79,6 +79,10 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
                 new ServicioAlertas(contexto, api.Reloj),
                 new FuenteSinConsultar(),
                 api.Reloj),
+            // F3-07: la tolerancia del ajuste sale de ajuste_general. Esta prueba solo genera cobros en la
+            // moneda de la factura y nunca ajusta, así que el valor no le afecta; se pasa el mismo
+            // servicio de configuración que en producción para que se construya igual.
+            new ServicioConfiguracion(contexto, new AuditoriaService(contexto), new ServicioIdempotencia(contexto, api.Reloj), api.Reloj),
             new PoliticaQuePermiteTodo(),
             api.Reloj);
 
@@ -214,7 +218,7 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
         [
             .. facturas.Select(f => new SituacionFactura(
                 f.Total,
-                CalculoCobro.Calcular(f.Total, 0m, cobrados.GetValueOrDefault(f.Id), f.FechaVencimiento, hoy))),
+                CalculoCobro.Calcular(f.Total, 0m, cobrados.GetValueOrDefault(f.Id), 0m, f.FechaVencimiento, hoy))),
         ];
     }
 
@@ -232,7 +236,7 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
 
         return facturas.ToDictionary(
             f => f.Id,
-            f => CalculoCobro.Calcular(f.Total, 0m, cobrados.GetValueOrDefault(f.Id), f.FechaVencimiento, hoy).Pendiente);
+            f => CalculoCobro.Calcular(f.Total, 0m, cobrados.GetValueOrDefault(f.Id), 0m, f.FechaVencimiento, hoy).Pendiente);
     }
 
     /// <summary>

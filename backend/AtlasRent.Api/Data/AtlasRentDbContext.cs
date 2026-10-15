@@ -157,6 +157,11 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<SaldoAFavor> SaldoAFavor => Set<SaldoAFavor>();
 
+    // F3-07: el ajuste por diferencia de cambio (§3.10.2, D8). Tabla aparte de las asignaciones
+    // porque no es dinero recibido: es el movimiento que cierra el céntimo que dejó el cambio, y
+    // por eso nunca se suma dentro de «cobrado».
+    public DbSet<AjusteDiferenciaCambio> AjusteDiferenciaCambio => Set<AjusteDiferenciaCambio>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -1203,9 +1208,21 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             {
                 // Una asignación de cero no asigna nada y haría creer que esa factura se pagó.
                 tabla.HasCheckConstraint("ck_cobro_asignacion_importe_positivo", "importe > 0");
+                // F3-07 (§3.10.2): lo recibido y el cambio van juntos o no van. Una línea con
+                // importe recibido y sin cambio no se puede convertir a la moneda de la factura, y
+                // una con cambio y sin importe recibido guardaría un cambio que no produjo nada.
+                tabla.HasCheckConstraint(
+                    "ck_cobro_asignacion_conversion_completa",
+                    "(importe_recibido IS NULL) = (tipo_cambio_valor IS NULL)");
+                tabla.HasCheckConstraint(
+                    "ck_cobro_asignacion_conversion_positiva",
+                    "(importe_recibido IS NULL OR importe_recibido > 0) AND (tipo_cambio_valor IS NULL OR tipo_cambio_valor > 0)");
             });
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.CreatedAt).IsRequired();
+            // El único decimal que no es dinero: el cambio realmente aplicado en esta línea
+            // (numeric(18,6)), con el mismo tipo que el congelado en el cobro.
+            entidad.Property(e => e.TipoCambioValor).HasColumnType("numeric(18,6)");
             // El índice por factura es el que resuelve la suma de lo cobrado de una página de
             // facturas en una sola consulta, sin N+1 (§3.13).
             entidad.HasIndex(e => e.FacturaId);
@@ -1238,6 +1255,40 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Contrato)
                 .WithMany()
                 .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F3-07: el ajuste por diferencia de cambio (docs/ESPECIFICACION.md §3.10.2, D8). No es
+        // dinero recibido —eso vive en cobro_asignacion— sino el movimiento con el que se cierra un
+        // pendiente que solo salió porque el cambio no dividía exacto. Por eso es una tabla propia y
+        // no una asignación más: un informe que sume «cobrado» no debe estar metiendo aquí un euro
+        // que nunca llegó a la caja.
+        modelBuilder.Entity<AjusteDiferenciaCambio>(entidad =>
+        {
+            entidad.ToTable("ajuste_diferencia_cambio", tabla =>
+            {
+                // Cierra un pendiente: nunca es cero ni negativo, y nunca es una devolución.
+                tabla.HasCheckConstraint("ck_ajuste_diferencia_cambio_positivo", "importe > 0");
+                // Sin cambio no se puede reconstruir la diferencia, y un cambio de cero no convierte.
+                tabla.HasCheckConstraint("ck_ajuste_diferencia_cambio_tipo_cambio", "tipo_cambio_valor > 0");
+                // El motivo es lo que separa una diferencia de cambio real de un error de captura.
+                tabla.HasCheckConstraint("ck_ajuste_diferencia_cambio_motivo", "length(trim(motivo)) > 0");
+                // Igual que en cobro: anulado significa anulado con motivo, usuario y fecha, y no al
+                // revés. Así de una fila se sabe si el ajuste cuenta sin mirar tres columnas.
+                tabla.HasCheckConstraint(
+                    "ck_ajuste_diferencia_cambio_anulacion_completa",
+                    "(anulado_at IS NULL) = (anulado_por IS NULL AND motivo_anulacion IS NULL)");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Motivo).HasMaxLength(500).IsRequired();
+            entidad.Property(e => e.MotivoAnulacion).HasMaxLength(500);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.TipoCambioValor).HasColumnType("numeric(18,6)");
+            // La suma de lo ajustado de una página de facturas sale de este índice, sin N+1.
+            entidad.HasIndex(e => e.FacturaId);
+            entidad.HasOne(e => e.Factura)
+                .WithMany()
+                .HasForeignKey(e => e.FacturaId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

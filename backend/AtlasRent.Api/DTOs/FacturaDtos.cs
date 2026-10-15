@@ -121,6 +121,15 @@ public sealed record FacturaResumen(
     /// <summary>Lo cobrado de esta factura, en su moneda, por asignaciones vigentes (F3-06).</summary>
     public decimal Cobrado { get; init; }
 
+    /// <summary>
+    /// Cerrado por ajustes por diferencia de cambio vigentes (F3-07, §3.10.2). <b>No se suma dentro
+    /// de <see cref="Cobrado"/> a propósito</b>: el ajuste no es dinero que entró en la caja, es el
+    /// céntimo que dejó el cambio. Mezclarlos haría que un informe de caja dijera que se recibieron
+    /// más dólares de los que entraron. Los dos juntos cierran la factura, y eso lo dicen
+    /// <see cref="Pendiente"/> y <see cref="EstadoCobro"/>.
+    /// </summary>
+    public decimal Ajustado { get; init; }
+
     /// <summary>Neto a cobrar menos lo cobrado. Nunca negativo: cobrar de más es saldo a favor (§3.10.1).</summary>
     public decimal Pendiente { get; init; }
 
@@ -168,6 +177,15 @@ public sealed record FacturaRespuesta(
 {
     /// <summary>Lo cobrado de esta factura, en su moneda, por asignaciones vigentes (F3-06).</summary>
     public decimal Cobrado { get; init; }
+
+    /// <summary>
+    /// Cerrado por ajustes por diferencia de cambio vigentes (F3-07, §3.10.2). <b>No se suma dentro
+    /// de <see cref="Cobrado"/> a propósito</b>: el ajuste no es dinero que entró en la caja, es el
+    /// céntimo que dejó el cambio. Mezclarlos haría que un informe de caja dijera que se recibieron
+    /// más dólares de los que entraron. Los dos juntos cierran la factura, y eso lo dicen
+    /// <see cref="Pendiente"/> y <see cref="EstadoCobro"/>.
+    /// </summary>
+    public decimal Ajustado { get; init; }
 
     /// <summary>Neto a cobrar menos lo cobrado. Nunca negativo: cobrar de más es saldo a favor (§3.10.1).</summary>
     public decimal Pendiente { get; init; }

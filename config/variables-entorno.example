@@ -51,6 +51,11 @@ Smtp__Remitente=<email>
 TipoCambio__Url=https://open.er-api.com/v6/latest/USD
 TipoCambio__ApiKey=<secreto>
 
+# F3-07: la tolerancia de la diferencia de cambio NO es una variable de entorno. Vive en la tabla
+# ajuste_general (tolerancia_cambio_usd / tolerancia_cambio_dop) y la escribe el administrador desde
+# Configuración → Ajustes generales (PUT /api/v1/config/ajustes). Nacen a NULL y mientras no se
+# escriban no se permite ningún ajuste por diferencia de cambio.
+
 WhatsApp__Proveedor=<pendiente A1>
 WhatsApp__Token=<secreto>
 WhatsApp__AppSecret=<secreto>

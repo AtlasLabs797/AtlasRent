@@ -93,6 +93,92 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("acceso_emergencia", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.AjusteDiferenciaCambio", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AnuladoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anulado_at");
+
+                    b.Property<Guid?>("AnuladoPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("anulado_por");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("FacturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("factura_id");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe");
+
+                    b.Property<string>("Ip")
+                        .HasColumnType("text")
+                        .HasColumnName("ip");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<string>("Motivo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo");
+
+                    b.Property<string>("MotivoAnulacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo_anulacion");
+
+                    b.Property<decimal>("TipoCambioValor")
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("tipo_cambio_valor");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ajuste_diferencia_cambio");
+
+                    b.HasIndex("FacturaId")
+                        .HasDatabaseName("ix_ajuste_diferencia_cambio_factura_id");
+
+                    b.ToTable("ajuste_diferencia_cambio", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_ajuste_diferencia_cambio_anulacion_completa", "(anulado_at IS NULL) = (anulado_por IS NULL AND motivo_anulacion IS NULL)");
+
+                            t.HasCheckConstraint("ck_ajuste_diferencia_cambio_motivo", "length(trim(motivo)) > 0");
+
+                            t.HasCheckConstraint("ck_ajuste_diferencia_cambio_positivo", "importe > 0");
+
+                            t.HasCheckConstraint("ck_ajuste_diferencia_cambio_tipo_cambio", "tipo_cambio_valor > 0");
+                        });
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.AjusteGeneral", b =>
                 {
                     b.Property<Guid>("Id")
@@ -578,6 +664,14 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("importe");
 
+                    b.Property<decimal?>("ImporteRecibido")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe_recibido");
+
+                    b.Property<decimal?>("TipoCambioValor")
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("tipo_cambio_valor");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -607,6 +701,10 @@ namespace AtlasRent.Api.Migrations
 
                     b.ToTable("cobro_asignacion", null, t =>
                         {
+                            t.HasCheckConstraint("ck_cobro_asignacion_conversion_completa", "(importe_recibido IS NULL) = (tipo_cambio_valor IS NULL)");
+
+                            t.HasCheckConstraint("ck_cobro_asignacion_conversion_positiva", "(importe_recibido IS NULL OR importe_recibido > 0) AND (tipo_cambio_valor IS NULL OR tipo_cambio_valor > 0)");
+
                             t.HasCheckConstraint("ck_cobro_asignacion_importe_positivo", "importe > 0");
                         });
                 });
@@ -4006,6 +4104,18 @@ namespace AtlasRent.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_acceso_emergencia_usuario_usuario_id");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.AjusteDiferenciaCambio", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Factura", "Factura")
+                        .WithMany()
+                        .HasForeignKey("FacturaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ajuste_diferencia_cambio_factura_factura_id");
+
+                    b.Navigation("Factura");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Cobro", b =>

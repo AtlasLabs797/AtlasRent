@@ -183,6 +183,10 @@ internal static class AyudaCobros
     }
 
     /// <summary>Cuerpo de un cobro, con los campos que no dependen del test ya puestos.</summary>
+    /// <param name="tipoCambioAplicado">
+    /// F3-07 (§3.10.2): el cambio que el gerente dice que se usó de verdad. Nulo es lo normal y lo que
+    /// quiere la mayoría de las pruebas: entonces se usa el del día.
+    /// </param>
     public static object Peticion(
         Guid clienteId,
         Guid? contratoId,
@@ -193,7 +197,8 @@ internal static class AyudaCobros
         Guid cuentaReceptoraId,
         decimal usarSaldoAFavor = 0m,
         string? referencia = null,
-        object? asignaciones = null) =>
+        object? asignaciones = null,
+        decimal? tipoCambioAplicado = null) =>
         new
         {
             clienteId,
@@ -206,6 +211,7 @@ internal static class AyudaCobros
             cuentaReceptoraId,
             usarSaldoAFavor,
             asignaciones,
+            tipoCambioAplicado,
         };
 
     /// <summary>
@@ -249,7 +255,97 @@ internal static class AyudaCobros
             $"DELETE FROM tipo_cambio WHERE fecha = {fecha} AND moneda = {(int)moneda}", ct);
     }
 
-    /// <summary>Saldo a favor del contrato leído de la base, que es donde se comprueba.</summary>
+    /// <summary>
+    /// Cambios del día que usan las pruebas de pago en otra moneda (F3-07).
+    /// <para>
+    /// <b>Valores que sí dividen y valores que no.</b> 59,50 con 59.500 da exactamente 1.000 dólares,
+    /// que es el ejemplo de §3.10.2; 59,51 deja 17 centavos de diferencia, que es el caso para el que
+    /// existe el ajuste por diferencia de cambio. Los dos tienen que caber en <c>numeric(18,6)</c> y
+    /// ninguno puede ser el de F3-02 (<see cref="CambioDelDia"/>), porque el día es único por moneda:
+    /// si esta prueba escribiera 59,50 en el cambio del día, la prueba de F3-02 leería 59,50 y
+    /// fallaría.
+    /// </para>
+    /// </summary>
+    public const decimal CambioExacto = 59.50m;
+
+    public const decimal CambioConRedondeo = 59.51m;
+
+    /// <summary>
+    /// Fija (o borra) la tolerancia de diferencia de cambio por la misma API que usa la pantalla de
+    /// ajustes generales, y devuelve lo que había antes para devolverlo al final.
+    /// <para>
+    /// <b>La base es compartida</b> (una sola fila de <c>ajuste_general</c> para toda la instalación),
+    /// así que una prueba que deje la tolerancia puesta cambia el resultado de las demás. Por eso la
+    /// ayuda devuelve lo anterior y las pruebas lo restauran con <c>using</c>.
+    /// </para>
+    /// <para>
+    /// El modo de recordatorios se lee y se devuelve tal cual: el endpoint exige el campo entero, y
+    /// esta ayuda no tiene por qué saber nada de él.
+    /// </para>
+    /// </summary>
+    public static async Task<(decimal? Usd, decimal? Dop)> FijarToleranciaAsync(
+        SesionCliente sesion,
+        decimal? toleranciaUsd,
+        decimal? toleranciaDop,
+        CancellationToken ct)
+    {
+        var leidos = await sesion.GetAsync("/api/v1/config/ajustes", ct);
+        leidos.StatusCode.Should().Be(HttpStatusCode.OK, await leidos.Cuerpo());
+
+        var actuales = await leidos.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var modo = actuales.GetProperty("modoRecordatorios").GetString();
+
+        var guardado = await sesion.PutAsync(
+            "/api/v1/config/ajustes",
+            new { toleranciaCambioUsd = toleranciaUsd, toleranciaCambioDop = toleranciaDop, modoRecordatorios = modo },
+            ct);
+        guardado.StatusCode.Should().Be(HttpStatusCode.OK, await guardado.Cuerpo());
+
+        return (actuales.GetProperty("toleranciaCambioUsd").ValueKind == System.Text.Json.JsonValueKind.Null
+            ? null
+            : actuales.GetProperty("toleranciaCambioUsd").GetDecimal(),
+            actuales.GetProperty("toleranciaCambioDop").ValueKind == System.Text.Json.JsonValueKind.Null
+                ? null
+                : actuales.GetProperty("toleranciaCambioDop").GetDecimal());
+    }
+
+    /// <summary>
+    /// Tolerancia que se puede tocar durante una prueba y devuelve a su valor anterior al terminar, con
+    /// <c>await using var tolerancia = await AyudaCobros.ToleranciaTemporal(...)</c>.
+    /// </summary>
+    public static async Task<IAsyncDisposable> ToleranciaTemporal(
+        SesionCliente sesion,
+        decimal? toleranciaUsd,
+        decimal? toleranciaDop,
+        CancellationToken ct)
+    {
+        var anterior = await FijarToleranciaAsync(sesion, toleranciaUsd, toleranciaDop, ct);
+        return new RestaurarTolerancia(sesion, anterior);
+    }
+
+    private sealed class RestaurarTolerancia(SesionCliente sesion, (decimal? Usd, decimal? Dop) anterior)
+        : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+            => await FijarToleranciaAsync(sesion, anterior.Usd, anterior.Dop, CancellationToken.None);
+    }
+
+    /// <summary>Ajuste por diferencia de cambio tal y como queda guardado, para comprobarlo fila a fila.</summary>
+    public static async Task<List<AjusteDiferenciaCambio>> AjustesAsync(
+        ContenedorBdFixture bd,
+        Guid facturaId,
+        CancellationToken ct)
+    {
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+
+        return await contexto.AjusteDiferenciaCambio.AsNoTracking()
+            .Where(a => a.FacturaId == facturaId)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Saldo a favor del contrato leído de la base, que es donde se comprueba.
+    /// </summary>
     public static async Task<decimal?> SaldoAsync(
         ContenedorBdFixture bd,
         Guid contratoId,

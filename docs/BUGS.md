@@ -1,4 +1,4 @@
-# BUGS.md — Registro de bugs
+﻿# BUGS.md — Registro de bugs
 
 Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se borran entradas.
 
@@ -21,6 +21,18 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 ```
 
 ## Registro
+
+### BUG-007 · La tolerancia de diferencia de cambio tenía dos sitios donde se configurar y el servicio solo leía uno
+- Fecha detectado: 16/10/2026 · Fecha corregido: 16/10/2026
+- Gravedad: **Alta** · Estado: CORREGIDO · Módulo: cobros / F3-07 (y configuración, de F1-04)
+- Detectado por: agente de F3-07, leyendo `DTOs/ConfiguracionDtos.cs` al implementar §3.10.2.
+- Síntoma: el administrador ajustaba la tolerancia en *Configuración → Ajustes generales* y el cambio **no tenía ningún efecto**: el servicio `ServicioCobros` usaba `OpcionesCobros` (sección `Cobros` de configuración / variables de entorno). Y al revés, se cambiaba `Cobros__ToleranciaUsd` y la pantalla seguía mostrando otra cosa.
+- Cómo reproducir: `PUT /api/v1/config/ajustes` con `toleranciaCambioUsd = 0.25` y a continuación intentar un ajuste por diferencia de cambio de 0,30 USD: se aceptaba cuando debería rechazarse.
+- Causa raíz: **dos fuentes para la misma cifra de negocio.** La tabla `ajuste_general` ya traía `tolerancia_cambio_usd` y `tolerancia_cambio_dop` desde `20261015042341_Configuracion`, nullable, con su DTO `AjusteGeneralPeticion` y su endpoint (F1-04). F3-07 creó una segunda porque su tarea pedía opciones de configuración, sin mirar que la primera ya existía. Con dos fuentes y ambas vacías, el mismo dato tenía tres respuestas posibles según quién mirara: la pantalla, el entorno o el valor por defecto del código.
+- Solución: **manda `ajuste_general`.** `ServicioCobros` recibe `ServicioConfiguracion` y lee la tolerancia con `LeerAjustesAsync`, el mismo camino que usa la pantalla, así que hay una sola fuente y la que el administrador ve es la que aplica. Se borra `OpcionesCobros`, su registro en `Program.cs` y sus líneas en `config/variables-entorno.example`. Además, **sin tolerancia configurada el ajuste queda desactivado** con un 409 que dice dónde configurarlo: las columnas nacen a `NULL` a propósito (los importes de §3.10.2 son [Supuesto], no decisión) y un ajuste permitido sin que nadie haya escrito una cifra es una pérdida de dinero silenciosa.
+- Test que lo cubre: `backend/AtlasRent.Tests/Cobros/CobroAjusteDiferenciaCambioTests.cs` → `SinToleranciaConfiguradaElAjusteEstaDesactivado` (409 sin tolerancia y sin fila creada, y el mismo ajuste entra al configurar la tolerancia por la API de configuración).
+- Commit/PR: pendiente del orquestador.
+- Datos afectados: ninguno. Las columnas están vacías en la base de desarrollo porque nadie había escrito esos ajustes, así que no hay tolerancias que corregir ni que migrar.
 
 ### BUG-004 · Una línea de factura con identificador ya puesto se guardaba como modificación y devolvía 409
 - Fecha detectado: 16/10/2026 · Fecha corregido: 16/10/2026
