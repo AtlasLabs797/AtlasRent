@@ -66,22 +66,31 @@ public sealed class AlertaDeFalloTests(ContenedorBdFixture bd)
     }
 
     /// <summary>
-    /// La aplicación escribe alertas pero no las borra: el registro de un fallo de seguridad tiene
-    /// que sobrevivir. Se comprueba con el rol real de la API, que es quien escribe.
+    /// El job de backup corre desde Hangfire <b>sin rol de sesión</b>: no hay usuario, no hay
+    /// <c>app.rol</c>. Si la escritura dependiera de un rol, la alerta se perdería exactamente en el
+    /// caso para el que existe —el respaldo diario— y el fallo volvería a ser solo una línea de log.
+    /// Se escribe con el rol real de la aplicación y con la sesión vacía.
     /// </summary>
     [Fact]
-    public async Task LaAplicacionPuedeEscribirLaAlertaConSuPropioRol()
+    public async Task LaAlertaSeEscribeSinRolDeSesionPorqueElJobNoTiene()
     {
         var ct = TestContext.Current.CancellationToken;
-        var sesion = new ContextoSesion { Rol = Roles.Admin };
-        await using var contexto = bd.CrearContexto(bd.CadenaApp, sesion);
 
-        // Si rent_app no tuviera el INSERT, la escritura lanzaría y ServicioAlertas se la tragaría
-        // dejando solo el log: por eso se mira la fila, no que la llamada no Rompa.
+        // Sin rol: es como lo ejecuta Hangfire.
+        await using var contexto = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
         await new ServicioAlertas(contexto, new RelojPrueba())
-            .RegistrarAsync("backup", $"{Clave}-permisos", "escrita con rent_app", ct);
+            .RegistrarAsync("backup", $"{Clave}-sin-rol", "escrita sin app.rol", ct);
 
-        (await contexto.Alerta.AnyAsync(a => a.Clave == $"{Clave}-permisos", ct)).Should().BeTrue(
+        // Con el rol de la API, por si algún día la alerta se escribe desde una petición.
+        var sesion = new ContextoSesion { Rol = Roles.Admin };
+        await using var contextoConRol = bd.CrearContexto(bd.CadenaApp, sesion);
+        await new ServicioAlertas(contextoConRol, new RelojPrueba())
+            .RegistrarAsync("backup", $"{Clave}-con-rol", "escrita con app.rol", ct);
+
+        // Si rent_app no tuviera el INSERT, ServicioAlertas se tragaría la excepción y estas filas no
+        // existirían: por eso se mira la fila y no que la llamada no rompiera.
+        (await contexto.Alerta.CountAsync(a => a.Clave.StartsWith($"{Clave}-sin-rol")
+            || a.Clave.StartsWith($"{Clave}-con-rol"), ct)).Should().Be(2,
             "el INSERT lo concede la migración; sin ese GRANT la alerta se perdía en silencio");
     }
 }
