@@ -184,6 +184,16 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - Identificadores de acción: `configuracion.editar`, `cliente.ver`, `cliente.editar`, `inmueble.documento`, `contrato.borrador`, `contrato.estado`, `factura.ver`, `factura.borrador`, `factura.emitir`, `factura.anular`, `cobro.registrar`, `fianza.mover`, `documento.enviar`, `cotizacion.enviar`, `mensajeria.masivo`, `plantilla.editar`, `informe.ver`, `auditoria.ver`, `ip.desbloquear`, `cuenta.desbloquear`. Técnicas: `sesion.ver`, `sesion.cerrar`, `mfa.obligatorio`, `seguridad.acceso_emergencia`.
   - `usuario.es_admin` (provisional de F1-06) desaparece: la migración lo vuelca a `usuario_rol`. `ServicioMfa.NecesitaMfa` y `ServicioEmergencia.EsAdmin` usan ya `IPolicyService`.
   - `app.rol` de RLS lleva el rol real del usuario, no un valor por defecto.
+- **Implementado en F1-09** (cifrado y clientes):
+  - `Services/Cifrado.cs`: `ServicioCifrado` (AES-256-GCM), `DocumentoIdentidad.Normalizar`, `IndiceCiegoDocumento` (HMAC-SHA256 con clave propia).
+  - Formato almacenado: `v{version}:{nonceBase64}:{textoCifrado||etiquetaBase64}`. **Nonce de 12 bytes aleatorio por cifrado** (reutilizarlo con la misma clave rompe el cifrado de forma catastrófica), etiqueta de 16 bytes al final, y la versión de clave viaja dentro para poder rotarla.
+  - **Normalización del documento**: mayúsculas invariantes, eliminados espacios, guiones (incluidos U+2010/2013/2014) y puntos; se conservan letras y dígitos. Motivo: un documento es una identidad, no un texto, y el índice único solo sirve si "001-1234567-8", "001 12-34567.8" y "00112345678" son el mismo cliente.
+  - Clientes, contactos y prospectos con `[Accion]`, paginación de §6, `Idempotency-Key` y auditoría en la misma transacción. Número de cliente por `SEQUENCE` iniciada en `max+1`.
+  - **`idempotencia` guarda el cuerpo completo de la respuesta sin cifrar** (SEC-006). Hoy no se devuelve el documento de identidad en las respuestas de alta y edición para evitarlo, pero es un rodeo.
+  - `Cliente` va con la etiqueta `IEntidadTrazada` (la base de `IEntidadConfiguracion` pasa a heredarla), que es lo que permite que `GuardadoAuditado` sirva tanto a configuración como a clientes.
+  - En .NET 10, `AesGcm.Decrypt` ordena los parámetros distinto que `Encrypt`: usar **argumentos con nombre** o se cruzan nonce y etiqueta en silencio.
+  - **Rotación de clave no implementada:** subir `Seguridad__CifradoVersion` sin recifrar deja los datos antiguos ilegibles. `TODO(A#)`, y no subir la versión a ciegas.
+  - `SEGURIDAD.md` SEC-005 cerrado: `usuario.mfa_secreto` cifrado en reposo.
 - **Logs:** Serilog con redacción de propiedades sensibles.
 - **Implementado en F1-08** (configuración):
   - CRUD bajo `/api/v1/config` con `[Accion(Acciones.ConfiguracionEditar)]` (solo admin), auditoría en la misma transacción, `Idempotency-Key` en las mutaciones y el formato de lista paginada de §6.

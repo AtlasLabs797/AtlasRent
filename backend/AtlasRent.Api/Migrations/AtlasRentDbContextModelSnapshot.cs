@@ -260,6 +260,111 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("bloqueo_ip", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Cliente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<bool>("AgenteRetencion")
+                        .HasColumnType("boolean")
+                        .HasColumnName("agente_retencion");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Direccion")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("direccion");
+
+                    b.Property<string>("Documento")
+                        .HasColumnType("text")
+                        .HasColumnName("documento");
+
+                    b.Property<string>("DocumentoHmac")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("documento_hmac");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("email");
+
+                    b.Property<bool>("EnGestionCobro")
+                        .HasColumnType("boolean")
+                        .HasColumnName("en_gestion_cobro");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notas");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero");
+
+                    b.Property<bool>("RecordatoriosPausados")
+                        .HasColumnType("boolean")
+                        .HasColumnName("recordatorios_pausados");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("telefono");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cliente");
+
+                    b.HasIndex("DocumentoHmac")
+                        .IsUnique()
+                        .HasDatabaseName("ix_cliente_documento_hmac");
+
+                    b.HasIndex("Nombre")
+                        .HasDatabaseName("ix_cliente_nombre");
+
+                    b.HasIndex("Numero")
+                        .IsUnique()
+                        .HasDatabaseName("ix_cliente_numero");
+
+                    b.ToTable("cliente", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.CodigoRecuperacion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -298,6 +403,75 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_codigo_recuperacion_usuario_id_codigo_hash");
 
                     b.ToTable("codigo_recuperacion", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.ContactoCliente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("email");
+
+                    b.Property<bool>("EsPrincipal")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_principal");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Relacion")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("relacion");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("telefono");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contacto_cliente");
+
+                    b.HasIndex("ClienteId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contacto_cliente_principal")
+                        .HasFilter("(es_principal = true)");
+
+                    b.ToTable("contacto_cliente", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.CuentaReceptora", b =>
@@ -889,6 +1063,86 @@ namespace AtlasRent.Api.Migrations
                             RolClave = "empleado",
                             Accion = "sesion.cerrar"
                         });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Prospecto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Documento")
+                        .HasColumnType("text")
+                        .HasColumnName("documento");
+
+                    b.Property<string>("DocumentoHmac")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("documento_hmac");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notas");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("telefono");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_prospecto");
+
+                    b.HasIndex("DocumentoHmac")
+                        .IsUnique()
+                        .HasDatabaseName("ix_prospecto_documento_hmac");
+
+                    b.HasIndex("Nombre")
+                        .HasDatabaseName("ix_prospecto_nombre");
+
+                    b.ToTable("prospecto", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Rol", b =>
@@ -1491,6 +1745,18 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ContactoCliente", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Cliente", "Cliente")
+                        .WithMany("Contactos")
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contacto_cliente_cliente_cliente_id");
+
+                    b.Navigation("Cliente");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.IntentoLogin", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
@@ -1555,6 +1821,11 @@ namespace AtlasRent.Api.Migrations
                         .HasConstraintName("fk_usuario_rol_usuario_usuario_id");
 
                     b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Cliente", b =>
+                {
+                    b.Navigation("Contactos");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Usuario", b =>

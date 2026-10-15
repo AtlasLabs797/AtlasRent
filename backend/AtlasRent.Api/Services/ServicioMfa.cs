@@ -38,6 +38,12 @@ public sealed record DesafioMfa(
 /// muestra, y nunca van a un log ni a la auditoría: el log solo recibe el código de referencia del
 /// error (AGENTS.md §6).
 /// </para>
+/// <para>
+/// <strong>F1-09 (SEC-005 cerrado):</strong> <c>usuario.mfa_secreto</c> se guarda cifrado en reposo con
+/// AES-256-GCM, con el mismo <see cref="ServicioCifrado"/> que el documento de identidad. F1-06 lo
+/// dejó en claro y aquí ya no está. Un secreto TOTP en claro sirve para suplantar a alguien hasta
+/// que se roba el teléfono.
+/// </para>
 /// </summary>
 public sealed class ServicioMfa(
     AtlasRentDbContext contexto,
@@ -45,6 +51,7 @@ public sealed class ServicioMfa(
     ServicioBloqueos bloqueos,
     IPolicyService politica,
     AuditoriaService auditoria,
+    ServicioCifrado cifrado,
     TimeProvider reloj)
 {
     /// <summary>Issuer de la URI <c>otpauth://</c>: el nombre que ve el usuario en su aplicación.</summary>
@@ -158,7 +165,8 @@ public sealed class ServicioMfa(
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
-        usuario.MfaSecreto = secreto;
+        // F1-09: cifrado en reposo, nunca en claro (docs/SEGURIDAD.md SEC-005).
+        usuario.MfaSecreto = cifrado.Cifrar(secreto);
         await contexto.SaveChangesAsync(ct);
 
         await auditoria.RegistrarAsync(new RegistroAuditoria
@@ -187,10 +195,13 @@ public sealed class ServicioMfa(
     /// </summary>
     public async Task<ConfirmacionMfa?> ConfirmarAsync(Usuario usuario, string codigo, string ip, CancellationToken ct)
     {
-        if (usuario.MfaActivado || usuario.MfaSecreto is not { } secreto)
+        if (usuario.MfaActivado || usuario.MfaSecreto is not { } secretoCifrado)
         {
             return null;
         }
+
+        // F1-09: el secreto está cifrado en reposo; hay que descifrarlo para comprobar el código.
+        var secreto = cifrado.Descifrar(secretoCifrado);
 
         if (!CodigoValido(secreto, codigo))
         {
@@ -265,8 +276,8 @@ await contexto.CodigoRecuperacion
         var usuario = await UsuarioDelDesafioAsync(desafio, ct);
         if (usuario is null
             || !usuario.MfaActivado
-            || usuario.MfaSecreto is not { } secreto
-            || !CodigoValido(secreto, codigo))
+            || usuario.MfaSecreto is not { } secretoCifrado
+            || !CodigoValido(cifrado.Descifrar(secretoCifrado), codigo))
         {
             await RegistrarFalloAsync(desafio.UsuarioId, usuario?.NombreAcceso, ip, ct);
             return null;

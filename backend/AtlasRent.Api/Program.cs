@@ -150,6 +150,13 @@ builder.Services.AddScoped<ServicioUsuarios>();
 builder.Services.AddScoped<ServicioIdempotencia>();
 builder.Services.AddScoped<ServicioConfiguracion>();
 builder.Services.AddScoped<ServicioSeries>();
+// F1-09: cifrado en reposo (AES-256-GCM) e índice ciego del documento. Sin estado y con las
+// claves ya validadas al arrancar, por eso van como singleton.
+builder.Services.AddSingleton<ServicioCifrado>();
+builder.Services.AddSingleton<IndiceCiegoDocumento>();
+builder.Services.AddScoped<ServicioClientes>();
+builder.Services.AddScoped<ServicioContactos>();
+builder.Services.AddScoped<ServicioProspectos>();
 builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).

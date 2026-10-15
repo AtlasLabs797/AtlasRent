@@ -46,6 +46,15 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
 
     private readonly string _claveJwt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
 
+    /// <summary>
+    /// Clave de cifrado en reposo que usa esta instancia. La aplicación la exige al arrancar; la
+    /// prueba la necesita para descifrar y comprobar que lo guardado es un cifrado válido.
+    /// </summary>
+    public byte[] ClaveCifrado { get; } = RandomNumberGenerator.GetBytes(32);
+
+    /// <summary>Clave del índice ciego del documento, propia y distinta de la de cifrado.</summary>
+    public byte[] ClaveHmacDocumento { get; } = RandomNumberGenerator.GetBytes(32);
+
     /// <summary>Cliente con cookies (flujo real de navegador: base https para que guarde cookies Secure).</summary>
     public HttpClient CrearCliente() => CreateClient(new WebApplicationFactoryClientOptions
     {
@@ -75,6 +84,11 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
         {
             ["ConnectionStrings:Default"] = bd.CadenaApp,
             ["Seguridad:JwtClave"] = _claveJwt,
+            // F1-09: claves de cifrado en reposo e índice ciego. Aleatorias y de 32 bytes, como
+            // las de producción; la aplicación no arranca si no están.
+            ["Seguridad:CifradoClave"] = Convert.ToBase64String(ClaveCifrado),
+            ["Seguridad:CifradoVersion"] = "1",
+            ["Seguridad:HmacDocumentoClave"] = Convert.ToBase64String(ClaveHmacDocumento),
         };
         ConfigurarAjustes(ajustes);
 
@@ -101,6 +115,9 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
             servicios.AddSingleton<IResolutorIpPeticion>(Resolutor);
         });
     }
+
+    /// <summary>Clave de cifrado de prueba: exactamente 32 bytes en base64, como AES-256 exige.</summary>
+    public static string ClaveDe32Bytes() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 }
 
 /// <summary>Resolutor de pruebas: la IP que le pone a esta instancia.</summary>
@@ -163,12 +180,17 @@ public sealed class RelojPrueba : TimeProvider
 
 /// <summary>
 /// API sin base de datos, solo para arrancar. Comparte con <see cref="ApiTestFactory"/> la
-/// clave del JWT, que la aplicación exige para arrancar.
+/// clave del JWT y las de cifrado, que la aplicación exige para arrancar.
 /// </summary>
 public sealed class ApiTestFactorySinBd : WebApplicationFactory<Program>
 {
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         builder.UseSetting(
             "Seguridad:JwtClave",
             Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)));
+        builder.UseSetting("Seguridad:CifradoClave", ApiTestFactory.ClaveDe32Bytes());
+        builder.UseSetting("Seguridad:CifradoVersion", "1");
+        builder.UseSetting("Seguridad:HmacDocumentoClave", ApiTestFactory.ClaveDe32Bytes());
+    }
 }

@@ -16,6 +16,28 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 08:40] FEAT · F1-09 · Clientes con AES-256-GCM, índice ciego y cierre de SEC-005
+- Qué:
+  - `Services/Cifrado.cs`: `ServicioCifrado` (AES-256-GCM con versión de clave y **nonce aleatorio por cifrado**), `DocumentoIdentidad.Normalizar` e `IndiceCiegoDocumento` (HMAC-SHA256 con clave propia).
+  - Clientes, contactos y prospectos bajo `/api/v1/clientes` y `/api/v1/prospectos`, con `[Accion]`, paginación de §6, `Idempotency-Key` y auditoría en la misma transacción.
+  - Número de cliente por `SEQUENCE` iniciada en `max+1`, sin duplicados bajo concurrencia.
+  - **SEC-005 cerrado**: `usuario.mfa_secreto` queda cifrado en reposo con el mismo servicio.
+  - Migración `20261015050454_ClientesYProspectos` con `CREATE SEQUENCE cliente_numero_seq` y `USAGE, SELECT, UPDATE` sobre la secuencia (`setval` la exige).
+  - 26 tests nuevos en `backend/AtlasRent.Tests/Clientes/`.
+- Por qué: F1-09 del plan. D16 exige el documento de identidad visible completo pero cifrado en la base de datos, y la app está en internet.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **232/232 en verde**. Revisé que los tests **leen la fila cruda** y comprueban que el documento en claro no aparece; el del secreto MFA va más lejos: **descifra** el valor guardado con la clave real de la aplicación para demostrar que es un cifrado válido y no un texto cualquiera.
+- NO verificado: `dotnet ef database update` contra la base de desarrollo (requiere secretos de `.env.dev`); la migración sí aplica desde cero en cada ejecución de la suite.
+- Migraciones: sí. `Migrations/20261015050454_ClientesYProspectos`.
+- Riesgo / pendiente:
+  - **⚠️ SEC-006, nuevo y abierto: `idempotencia` guarda el cuerpo completo de la respuesta de una mutación en JSON sin cifrar.** Cualquier dato personal que una mutación devuelva queda en claro en esa tabla, aunque el dato principal esté cifrado. Para F1-09 se esquivó **no devolviendo el documento en las respuestas de alta y edición** (solo en `GET /clientes/{id}`), pero el problema es de fondo y volverá con cualquier campo personal nuevo. **Decisión pendiente: cifrar el cuerpo de `idempotencia`, o guardar una versión redactada.** Anotado en SEGURIDAD.md.
+  - **Normalización del documento**: mayúsculas invariantes, se eliminan espacios, guiones (incluidos U+2010/2013/2014) y puntos; se conservan letras y dígitos. Motivo: un documento es una identidad, no un texto, y el índice único solo sirve si "001-1234567-8", "001 12-34567.8" y "00112345678" son el mismo cliente. Las letras se conservan porque un pasaporte las tiene.
+  - Formato almacenado: `v{version}:{nonceBase64}:{textoCifrado||etiquetaBase64}`. Nonce de 12 bytes aleatorio por cifrado, etiqueta de 16 bytes al final. La versión viaja dentro para poder rotar la clave.
+  - **No verificado: rotación real de clave.** `ServicioCifrado` sube de versión sin recifrar, así que subir `Seguridad__CifradoVersion` deja los datos antiguos ilegibles. Es un `TODO(A#)` dangerous: cambiar la versión a ciegas inutiliza los documentos existentes.
+  - Las tablas nuevas **no llevan RLS**, igual que las de F1-04 a F1-08; el aislamiento lo da `[Accion]`. RLS por tabla sería un paso más en la migración.
+  - Dos bugs reales cazados por los tests y corregidos: las altas no fijaban `Activo` (ningún cliente aparecía en la lista) y en .NET 10 `AesGcm.Decrypt` ordena los parámetros distinto que `Encrypt`, lo que cruzaba nonce y etiqueta en silencio. Corregido y con argumentos con nombre.
+  - `TODO(A#)`: nacionalidad, idioma y canal preferido (§3.2); conversión de prospecto a cliente (necesita cotizaciones); importación de Factusol.
+- Commit/PR: `feat(clientes): cifrado AES-256-GCM, indice ciego, contactos y prospectos`.
+
 ## [15/10/2026 07:55] FEAT · F1-08 · Configuración: series, ITBIS, retenciones y ajustes, sin cifras fiscales en código
 - Qué:
   - Migración `20261015042341_Configuracion`: `serie`, `numero_serie`, `tipo_itbis`, `tipo_retencion`, `forma_pago`, `cuenta_receptora`, `subempresa`, `ajuste_general` e `idempotencia`, con `GRANT` a `rent_app` y sin columnas `xmin`.

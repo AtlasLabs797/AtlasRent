@@ -1,4 +1,5 @@
 using AtlasRent.Api.Authorization;
+using AtlasRent.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -57,6 +58,12 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
     public DbSet<AjusteGeneral> AjusteGeneral => Set<AjusteGeneral>();
 
     public DbSet<Idempotencia> Idempotencia => Set<Idempotencia>();
+
+    public DbSet<Cliente> Cliente => Set<Cliente>();
+
+    public DbSet<Prospecto> Prospecto => Set<Prospecto>();
+
+    public DbSet<ContactoCliente> ContactoCliente => Set<ContactoCliente>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
@@ -357,6 +364,60 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.Property(e => e.CreatedAt).IsRequired();
             // La clave es del usuario: dos personas distintas pueden usar la misma cadena.
             entidad.HasIndex(e => new { e.UsuarioId, e.Clave }).IsUnique();
+        });
+
+        modelBuilder.Entity<Cliente>(entidad =>
+        {
+            entidad.ToTable("cliente");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(200).IsRequired();
+            entidad.Property(e => e.Email).HasMaxLength(200);
+            entidad.Property(e => e.Telefono).HasMaxLength(40);
+            entidad.Property(e => e.Direccion).HasMaxLength(300);
+            entidad.Property(e => e.Notas).HasMaxLength(1000);
+            entidad.Property(e => e.DocumentoHmac).HasMaxLength(IndiceCiegoDocumento.LongitudHuella);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El número lo asigna la secuencia cliente_numero_seq. El único cubre la importación
+            // de números que ya venían de Factusol: nunca puede haber dos clientes con el mismo.
+            entidad.HasIndex(e => e.Numero).IsUnique();
+            // Índice ciego: único y sin descifrar nada, dos clientes con el mismo documento
+            // escrito de forma distinta ("001-1234567-8" y "00112345678") chocan aquí.
+            entidad.HasIndex(e => e.DocumentoHmac).IsUnique();
+            entidad.HasIndex(e => e.Nombre);
+        });
+
+        modelBuilder.Entity<Prospecto>(entidad =>
+        {
+            entidad.ToTable("prospecto");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(200).IsRequired();
+            entidad.Property(e => e.Email).HasMaxLength(200);
+            entidad.Property(e => e.Telefono).HasMaxLength(40);
+            entidad.Property(e => e.Notas).HasMaxLength(1000);
+            entidad.Property(e => e.DocumentoHmac).HasMaxLength(IndiceCiegoDocumento.LongitudHuella);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.DocumentoHmac).IsUnique();
+            entidad.HasIndex(e => e.Nombre);
+        });
+
+        modelBuilder.Entity<ContactoCliente>(entidad =>
+        {
+            entidad.ToTable("contacto_cliente");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(200).IsRequired();
+            entidad.Property(e => e.Relacion).HasMaxLength(120);
+            entidad.Property(e => e.Email).HasMaxLength(200);
+            entidad.Property(e => e.Telefono).HasMaxLength(40);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // Un solo contacto principal por cliente. El índice es parcial porque solo afecta a
+            // los marcados como principales, y PostgreSQL no filtra índices únicos por código.
+            entidad.HasIndex(e => e.ClienteId)
+                .IsUnique()
+                .HasFilter("(es_principal = true)")
+                .HasDatabaseName("ix_contacto_cliente_principal");
+            entidad.HasOne(e => e.Cliente)
+                .WithMany(c => c.Contactos)
+                .HasForeignKey(e => e.ClienteId);
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

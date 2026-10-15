@@ -143,11 +143,18 @@
 - Verificado en F1-04: la validación ocurre en `ValidacionSesionMiddleware` con caché de 30 s; hay test de que un usuario desactivado recibe 401 en la siguiente petición.
 
 ### SEC-005 · Secreto TOTP en claro
-- Fecha detectado: 15/10/2026 · Gravedad: **Alta** · Estado: **ABIERTO (cierre en F1-09)** · Componente: autenticación
-- Descripción: `usuario.mfa_secreto` guarda el secreto TOTP en claro. Es imprescindible para validar el código, pero mientras no se cifre, cualquiera que lea la tabla `usuario` —una SQL injection, una copia de la base, un backup sin cifrar— puede **generar códigos TOTP válidos de cualquier usuario con MFA**, que es exactamente lo que el segundo factor debe impedir.
-- Por qué está abierto: el cifrado AES-256-GCM con clave fuera de la base (`Seguridad__CifradoClave`) se implementa en F1-09, para los documentos de identidad. El secreto TOTP shares ese mismo requisito y no podía resolverse antes sin adelantar el cifrador.
-- **Mitigación inmediata: no desplegar MFA en producción antes de que F1-09 cierre este punto.** Mientras tanto el sistema no sale de desarrollo.
-- Solución: cifrar `mfa_secreto` en reposo con AES-256-GCM y la misma clave versionada (`Seguridad__CifradoVersion`) que los documentos de identidad.
+- Fecha detectado: 15/10/2026 · Gravedad: **Alta** · Estado: **CERRADO en F1-09** · Componente: autenticación
+- Descripción: `usuario.mfa_secreto` guardaba el secreto TOTP en claro. Es imprescindible para validar el código, pero mientras no se cifre, cualquiera que lea la tabla `usuario` —una SQL injection, una copia de la base, un backup sin cifrar— puede **generar códigos TOTP válidos de cualquier usuario con MFA**, que es exactamente lo que el segundo factor debe impedir.
+- Por qué estaba abierto: el cifrado AES-256-GCM con clave fuera de la base (`Seguridad__CifradoClave`) se implementaba en F1-09, para los documentos de identidad. El secreto TOTP comparte ese requisito.
+- Solución: cifrar `mfa_secreto` en reposo con AES-256-GCM y la misma clave versionada. Implementado en F1-09 y probado de extremo a extremo: activar el MFA, leer la fila cruda y entrar después con el código.
+- Verificado: test `ElSecretoMfaQuedaCifradoEnLaBaseDeDatosYElSegundoFactorSigueFuncionando`.
+
+### SEC-006 · Cuerpo de idempotencia sin cifrar
+- Fecha detectado: 15/10/2026 · Gravedad: **Media** · Estado: **ABIERTO (decisión del responsable)** · Componente: API
+- Descripción: `ServicioIdempotencia` guarda el **cuerpo completo de la respuesta** de una mutación en la tabla `idempotencia`, como JSON y **sin cifrar**. Aunque el dato principal esté cifrado en su tabla (caso del documento de identidad, SEC-004), cualquier dato personal que una mutación devuelva queda en claro en `idempotencia`.
+- Por qué no se resolvió aquí: en F1-09 se esquivó **no devolviendo el documento de identidad en las respuestas de alta y edición** (solo en `GET /clientes/{id}`). Eso protege hoy, pero es un rodeo: el problema es de fondo y volverá con el primer campo personal nuevo que se añada a una respuesta de mutación.
+- **Decisión pendiente:** (a) cifrar el cuerpo guardado con `ServicioCifrado`, o (b) guardar una versión redactada sin los campos sensibles. La opción (a) es más simple de usar y evita que cada_endpoint tenga que acordarse de qué puede devolver.
+- Riesgo residual actual: contenido en claro en `idempotencia` hasta que se decida.
 
 ### SEC-002 · Auditoría borrable
 - Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: CORREGIDO e IMPLEMENTADO en F1-03

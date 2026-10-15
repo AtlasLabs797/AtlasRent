@@ -56,6 +56,28 @@ public sealed class OpcionesSeguridad
     private int _rondasBcrypt = RondasBcryptMinimas;
 
     /// <summary>
+    /// Clave de AES-256-GCM en reposo, en bytes, de <c>Seguridad__CifradoClave</c>. Cifra el
+    /// documento de identidad del cliente y el secreto TOTP del usuario. Sin valor por defecto.
+    /// </summary>
+    public byte[] ClaveCifrado { get; init; } = [];
+
+    /// <summary>
+    /// Versión de la clave de cifrado (<c>Seguridad__CifradoVersion</c>). Va dentro del texto
+    /// guardado para poder rotar la clave sin reescribir la tabla: subirlo obliga a reiniciar con
+    /// la clave nueva y deja el texto antiguo con su versión declarada.
+    /// </summary>
+    public int VersionCifrado { get; init; } = VersionCifradoInicial;
+
+    /// <summary>Primera versión de la clave. La actual sigue siendo la 1 (F1-09).</summary>
+    public const int VersionCifradoInicial = 1;
+
+    /// <summary>
+    /// Clave del índice ciego <c>documento_hmac</c>, en bytes, de <c>Seguridad__HmacDocumentoClave</c>.
+    /// Distinta de la de cifrado a propósito: permite buscar sin poder descifrar.
+    /// </summary>
+    public byte[] ClaveHmacDocumento { get; init; } = [];
+
+    /// <summary>
     /// Lee y valida las opciones. Lanza una excepción con el nombre de la variable que falta, para
     /// que un despliegue sin secreto falle al arrancar en vez de llevar una clave por defecto.
     /// </summary>
@@ -88,12 +110,55 @@ public sealed class OpcionesSeguridad
 
         var rondas = configuracion.GetValue($"{Seccion}:BcryptRondas", RondasBcryptMinimas);
 
+        var versionCifrado = configuracion.GetValue($"{Seccion}:CifradoVersion", VersionCifradoInicial);
+        if (versionCifrado < VersionCifradoInicial)
+        {
+            throw new InvalidOperationException(
+                $"Seguridad__CifradoVersion tiene que ser {VersionCifradoInicial} o mayor; se pidió {versionCifrado}.");
+        }
+
         return new OpcionesSeguridad
         {
             ClaveJwt = bytes,
             RondasBcrypt = rondas,
             IpListaBlanca = LeerListaBlanca(configuracion[$"{Seccion}:IpListaBlanca"]),
+            ClaveCifrado = LeerClaveDeCifrado(configuracion, "CifradoClave", ServicioCifrado.BytesClave),
+            VersionCifrado = versionCifrado,
+            ClaveHmacDocumento = LeerClaveDeCifrado(configuracion, "HmacDocumentoClave", ServicioCifrado.BytesClave),
         };
+    }
+
+    /// <summary>
+    /// Lee una clave de cifrado y exige una longitud exacta: arrancar con una clave débil es peor
+    /// que no arrancar, y por eso aquí no hay ningún valor por defecto.
+    /// </summary>
+    private static byte[] LeerClaveDeCifrado(IConfiguration configuracion, string nombre, int bytes)
+    {
+        var valor = configuracion[$"{Seccion}:{nombre}"];
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            throw new InvalidOperationException(
+                $"Falta la clave de cifrado. Definir Seguridad__{nombre} ({bytes} bytes exactos en "
+                + "base64, en user-secrets en desarrollo y en el servicio en producción).");
+        }
+
+        byte[] clave;
+        try
+        {
+            clave = Convert.FromBase64String(valor);
+        }
+        catch (FormatException)
+        {
+            throw new InvalidOperationException($"Seguridad__{nombre} no es base64 válido.");
+        }
+
+        if (clave.Length != bytes)
+        {
+            throw new InvalidOperationException(
+                $"Seguridad__{nombre} necesita exactamente {bytes} bytes; tiene {clave.Length}.");
+        }
+
+        return clave;
     }
 
     private static IReadOnlySet<string> LeerListaBlanca(string? valor)
