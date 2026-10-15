@@ -94,6 +94,13 @@ Dominios: `Auth`, `Usuarios`, `Configuracion`, `Clientes`, `Inmuebles`, `Cotizac
 - Implementado en F1-13: la clave de la preferencia en `localStorage` es `atlas-rent.tema` con valores `claro` / `oscuro` / `sistema`, y el script en línea y el store deben mantener la misma clave (lo comprueba `frontend/tests/tema.test.ts`). El DS solo define `[data-theme="dark"]`: los tokens claros viven en `:root`, así que un contenedor anidado con `data-theme="light"` **no** restaura el tema claro con la app en oscuro.
 - La cookie de CSRF que lee el cliente HTTP es `atlas-rent-csrf`; el backend debe fijarla con ese nombre en F1-04.
 
+### 3.2 Navegación y permisos en la interfaz
+- `GET /api/v1/auth/yo` devuelve `permisosEfectivos`: el techo del rol recortado por los permisos por usuario, resuelto por `IPolicyService`. En ese endpoint se leen de la política ya cargada por el filtro de autorización, así que **no añade consultas**; en `MfaController` y `EmergenciaController` sí hay una, porque al ir `[AllowAnonymous]` el filtro no corre.
+- `frontend/src/permisos.ts` copia literal `Acciones.cs`. Es una copia a propósito: si el backend renombra una acción, el menú deja de mostrar el módulo en vez de dejar de protegerlo.
+- El menú se filtra por esos permisos, y los módulos sin pantalla quedan declarados **sin ruta enlazada** (`TODO(A#)`): un enlace que da 404 es peor que una entrada ausente.
+- El backend sigue siendo el que autoriza (ESPECIFICACION §2: "Todo se valida en backend. Ocultar un botón no es protección"). Filtrar la interfaz es para no ofrecer acciones que siempre van a recibir un 403.
+- `vite.config.ts` tiene un proxy de desarrollo `/api` → `127.0.0.1:5100`, necesario para ver los estados de sesión con Vite.
+
 ## 4. Base de datos
 ### 4.1 Roles (credenciales separadas por función)
 | Rol | Uso | Permisos |

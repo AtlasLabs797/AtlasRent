@@ -1,4 +1,8 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using AtlasRent.Api.Authorization;
+using AtlasRent.Api.Data;
 using AtlasRent.Api.Services;
 using AtlasRent.Tests.Infra;
 using AwesomeAssertions;
@@ -204,4 +208,68 @@ public sealed class AuthEndpointsTests(ContenedorBdFixture bd, ApiTestFactory ap
         respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain(Problemas.CsrfInvalido);
     }
+
+    /// <summary>
+    /// F1-11: <c>/auth/yo</c> lleva los permisos efectivos para que el frontend construya el menú.
+    /// Reflejan el techo del rol, y los permisos por usuario los recortan dentro de ese techo.
+    /// </summary>
+    [Fact]
+    public async Task LaIdentidadTraeLosPermisosEfectivosDelUsuario()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var usuario = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Empleado, ct: ct);
+
+        // Recorte por usuario: el empleado pierde "ver clientes", que su rol sí trae.
+        await using (var contexto = bd.CrearContexto(bd.CadenaApp))
+        {
+            contexto.UsuarioPermiso.Add(new UsuarioPermiso
+            {
+                Id = Guid.NewGuid(),
+                UsuarioId = usuario.Id,
+                Accion = Acciones.ClienteVer,
+                Permitido = false,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+            await contexto.SaveChangesAsync(ct);
+        }
+
+        using var conSesion = await AyudaPermisos.SesionAsync(api, usuario, Contrasena, ct);
+
+        var respuesta = await conSesion.GetAsync("/api/v1/auth/yo", ct);
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var permisos = PermisosDe(await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct));
+
+        // El techo del rol sigue entrando…
+        permisos.Should().Contain(Acciones.ClienteEditar);
+        permisos.Should().Contain(Acciones.FacturaBorrador);
+        permisos.Should().Contain(Acciones.SesionVer);
+
+        // …y el recorte por usuario se respeta.
+        permisos.Should().NotContain(Acciones.ClienteVer, "el permiso por usuario puede quitar lo del techo");
+
+        // Lo que el techo del rol no trae nunca aparece: el empleado no ve informes ni configuración.
+        permisos.Should().NotContain(Acciones.InformeVer);
+        permisos.Should().NotContain(Acciones.ConfiguracionEditar);
+        permisos.Should().NotContain(Acciones.AuditoriaVer);
+        permisos.Should().NotContain(Acciones.IpDesbloquear);
+    }
+
+    /// <summary>El administrador recibe el techo completo, para que su menú muestre todos los módulos.</summary>
+    [Fact]
+    public async Task LaIdentidadDelAdministradorTraeElTechoDelRolCompleto()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var usuario = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+
+        using var conSesion = await AyudaPermisos.SesionAsync(api, usuario, Contrasena, ct);
+
+        var permisos = PermisosDe(
+            await (await conSesion.GetAsync("/api/v1/auth/yo", ct)).Content.ReadFromJsonAsync<JsonElement>(ct));
+
+        permisos.Should().Contain([.. MatrizPermisos.PorRol[Roles.Admin]]);
+    }
+
+    private static string[] PermisosDe(JsonElement identidad) =>
+        [.. identidad.GetProperty("permisosEfectivos").EnumerateArray().Select(p => p.GetString()!)];
 }

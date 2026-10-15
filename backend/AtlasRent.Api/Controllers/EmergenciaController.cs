@@ -25,6 +25,7 @@ public sealed class EmergenciaController(
     AtlasRentDbContext contexto,
     ServicioEmergencia emergencia,
     CookiesSesion cookies,
+    IPolicyService politica,
     IResolutorIpPeticion resolutorIp) : ControllerBase
 {
     /// <summary>Primer paso: un administrador pide el acceso para otro que está bloqueado.</summary>
@@ -121,7 +122,9 @@ public sealed class EmergenciaController(
 
         cookies.BorrarDesafioMfa(Response);
         cookies.FijarSesion(Response, sesion);
-        return Ok(IdentidadRespuesta.Desde(sesion));
+        return Ok(IdentidadRespuesta.Desde(
+            sesion,
+            await politica.PermisosDeAsync(sesion.UsuarioId, HttpContext.RequestAborted)));
     }
 
     private async Task<Usuario?> UsuarioDeLaPeticionAsync() =>

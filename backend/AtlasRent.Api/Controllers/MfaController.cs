@@ -1,3 +1,4 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.DTOs;
 using AtlasRent.Api.Middleware;
@@ -30,6 +31,7 @@ public sealed class MfaController(
     AtlasRentDbContext contexto,
     ServicioMfa mfa,
     CookiesSesion cookies,
+    IPolicyService politica,
     IResolutorIpPeticion resolutorIp) : ControllerBase
 {
     /// <summary>
@@ -107,7 +109,7 @@ public sealed class MfaController(
             Agente(),
             HttpContext.RequestAborted);
 
-        return ResponderSesion(sesion);
+        return await ResponderSesion(sesion);
     }
 
     /// <summary>
@@ -127,7 +129,7 @@ public sealed class MfaController(
             Agente(),
             HttpContext.RequestAborted);
 
-        return ResponderSesion(sesion);
+        return await ResponderSesion(sesion);
     }
 
     /// <summary>
@@ -148,7 +150,7 @@ public sealed class MfaController(
             : null;
     }
 
-    private IActionResult ResponderSesion(ResultadoSesion? sesion)
+    private async Task<IActionResult> ResponderSesion(ResultadoSesion? sesion)
     {
         if (sesion is null)
         {
@@ -162,7 +164,9 @@ public sealed class MfaController(
 
         cookies.BorrarDesafioMfa(Response);
         cookies.FijarSesion(Response, sesion);
-        return Ok(IdentidadRespuesta.Desde(sesion));
+        return Ok(IdentidadRespuesta.Desde(
+            sesion,
+            await politica.PermisosDeAsync(sesion.UsuarioId, HttpContext.RequestAborted)));
     }
 
     private IActionResult SinCredencial() =>

@@ -1,5 +1,6 @@
+// Extensión explícita: este módulo lo carga también el runner de Node en tests/temaStore.test.ts.
 import { create } from 'zustand';
-import { CLAVE_TEMA, leerPreferencia, resolverTema, type PreferenciaTema, type Tema } from './resolver';
+import { CLAVE_TEMA, leerPreferencia, resolverTema, type PreferenciaTema, type Tema } from './resolver.ts';
 
 interface EstadoTema {
   preferencia: PreferenciaTema;

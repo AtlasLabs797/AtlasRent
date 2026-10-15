@@ -6,21 +6,63 @@ export const textos = {
   app: {
     nombre: 'Atlas Rent',
     cargando: 'Cargando…',
+    cargandoSesion: 'Comprobando la sesión…',
     noEncontradaTitulo: 'Página no encontrada',
     noEncontradaCuerpo: 'La dirección no corresponde a ninguna pantalla de Atlas Rent.',
     irAlInicio: 'Volver al inicio',
   },
+  acceso: {
+    titulo: 'Entrar',
+    descripcion: 'Atlas Rent, facturación y alquileres.',
+    nombreAcceso: 'Usuario',
+    contrasena: 'Contraseña',
+    entrar: 'Entrar',
+    cambiando: 'Entrando…',
+    credencialesInvalidas: 'Usuario o contraseña incorrectos.',
+    segundoFactor: 'Esta cuenta tiene un segundo factor pendiente y todavía no hay pantalla para introducirlo.',
+    error: 'No se ha podido entrar. Inténtalo de nuevo.',
+  },
+  sesion: {
+    cerrar: 'Cerrar sesión',
+    usuario: 'Usuario',
+  },
+  sinPermiso: {
+    titulo: 'Sin permiso',
+    descripcion: 'Tu usuario no tiene permiso para esta pantalla. Si debería tenerlo, pídeselo a quien administre Atlas Rent.',
+    volver: 'Volver al panel',
+  },
   navegacion: {
-    grupos: [
-      {
-        etiqueta: 'Operación',
-        items: [
-          { clave: 'panel', icono: 'layout-dashboard', etiqueta: 'Panel' },
-          { clave: 'componentes', icono: 'swatch-book', etiqueta: 'Design system' },
-        ],
-      },
-    ],
-    usuario: { name: 'Andi Batista', role: 'Administrador' },
+    grupos: {
+      operacion: 'Operación',
+      finanzas: 'Finanzas',
+      control: 'Control',
+      herramientas: 'Herramientas',
+    },
+    /**
+     * Módulos del menú. La etiqueta y el icono viven aquí; qué acción del backend habilita cada uno
+     * y si tiene pantalla, en `src/navegacion/menu.ts`.
+     */
+    modulos: {
+      panel: { etiqueta: 'Panel', icono: 'layout-dashboard' },
+      clientes: { etiqueta: 'Clientes', icono: 'users' },
+      unidades: { etiqueta: 'Unidades e inmuebles', icono: 'building-2' },
+      contratos: { etiqueta: 'Contratos', icono: 'file-signature' },
+      facturas: { etiqueta: 'Facturas', icono: 'receipt' },
+      cobros: { etiqueta: 'Cobros', icono: 'banknote' },
+      fianzas: { etiqueta: 'Fianzas', icono: 'landmark' },
+      informes: { etiqueta: 'Informes', icono: 'chart-column' },
+      auditoria: { etiqueta: 'Auditoría', icono: 'scroll-text' },
+      bloqueos: { etiqueta: 'Bloqueos', icono: 'lock' },
+      usuarios: { etiqueta: 'Usuarios', icono: 'user-cog' },
+      configuracion: { etiqueta: 'Configuración', icono: 'settings' },
+      componentes: { etiqueta: 'Design system', icono: 'swatch-book' },
+    },
+    /** Nombres de los roles de `usuario_rol` para la `SideNav`. */
+    roles: {
+      admin: 'Administrador',
+      gerente: 'Gerente',
+      empleado: 'Empleado',
+    },
   },
   barraSuperior: {
     buscar: 'Buscar cliente, unidad, factura o contrato',

@@ -23,6 +23,7 @@ public sealed class AuthController(
     ServicioMfa mfa,
     CookiesSesion cookies,
     ContextoSesion contextoSesion,
+    IPolicyService politica,
     IResolutorIpPeticion resolutorIp) : ControllerBase
 {
     /// <summary>Solo se mandan los datos que el frontend necesita tras entrar.</summary>
@@ -65,7 +66,7 @@ public sealed class AuthController(
         }
 
         FijarCookies(resultado.Sesion!);
-        return Ok(IdentidadRespuesta.Desde(resultado.Sesion!));
+        return Ok(await IdentidadDe(resultado.Sesion!));
     }
 
     /// <summary>
@@ -102,7 +103,7 @@ public sealed class AuthController(
         }
 
         FijarCookies(resultado);
-        return Ok(IdentidadRespuesta.Desde(resultado));
+        return Ok(await IdentidadDe(resultado));
     }
 
     [HttpPost("logout")]
@@ -137,8 +138,17 @@ public sealed class AuthController(
         var emergencia = await autenticacion.AccesoEmergenciaDeLaSesionAsync(
             SesionIdDeLaPeticion(), HttpContext.RequestAborted);
 
-        return Ok(IdentidadRespuesta.Desde(usuario, emergencia, contextoSesion.Rol));
+        // Los permisos no se vuelven a pedir: el filtro global ya los cargó para exigir [Accion], así
+        // que leerlos aquí no cuesta una ida más a la base.
+        return Ok(IdentidadRespuesta.Desde(usuario, emergencia, contextoSesion.Rol, politica.Permisos));
     }
+
+    /// <summary>
+    /// Identidad de una sesión recién emitida, con sus permisos efectivos. En el login y el refresco
+    /// el filtro global no ha cargado nada (son <c>[AllowAnonymous]</c>), así que se resuelven aquí.
+    /// </summary>
+    private async Task<IdentidadRespuesta> IdentidadDe(ResultadoSesion sesion) =>
+        IdentidadRespuesta.Desde(sesion, await politica.PermisosDeAsync(sesion.UsuarioId, HttpContext.RequestAborted));
 
     private Guid SesionIdDeLaPeticion() => Guid.Parse(User.FindFirst("sid")!.Value);
 

@@ -16,6 +16,28 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 10:20] FEAT · F1-11 · Layout, navegación por permisos y pantalla de acceso
+- Qué:
+  - Backend: `IdentidadRespuesta` incluye **`permisosEfectivos`** (techo del rol recortado por los permisos por usuario). En `/auth/yo` se lee de `IPolicyService`, ya cargado por el filtro de autorización: **cero consultas extra**. En `MfaController` y `EmergenciaController` (marcados `[AllowAnonymous]`) sí hay una consulta, porque el filtro no corre.
+  - Frontend: `src/permisos.ts` (copia literal de `Acciones.cs`), `src/navegacion/menu.ts`, `src/sesion/store.ts`, páginas `Acceso.tsx` y `SinPermiso.tsx`, y `App.tsx` con los tres estados (cargando / sin sesión / con sesión) y enrutador protegido.
+  - `vite.config.ts` gana un **proxy de desarrollo** `/api` → `127.0.0.1:5100`, necesario para ver los estados de sesión.
+  - 18 tests de Node (menú filtrado por permisos, rutas sin destino, preferencia de tema).
+- Por qué: F1-11 del plan. El criterio de aceptación es visual, así que se comprobó abriendo la app de verdad.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` y `dotnet test -c Release` → **251/251**; `npm run lint`, `typecheck` (0 y 0), `test` **18/18** y `build` correcto. Revisé las capturas y **encontré un bug que el subagente no mencionó**: el Panel ofrecía el botón **"Registrar cobro" a un empleado**, que es una acción de gerente y admin (`cobro.registrar`). El menú se filtraba por permisos pero el botón del Panel estaba fijo. **Corregido** condicionándolo al permiso real; el subagente ni lo mencionó en su informe.
+- NO verificado:
+  - **El menú de dos roles no se ve distinto en pantalla**: con un solo módulo implementado (Panel), empleado y gerente muestran ambos "Panel". La diferencia está probada en los tests del menú y en la respuesta real de la API (empleado: 8 permisos; gerente: 18). El criterio de aceptación (claro/oscuro, preferencia recordada, sin parpadeo) **sí** está comprobado.
+  - La captura `01-acceso-sin-sesion` es byte a byte idéntica a `07-acceso-oscuro-tras-cierre`: **la variante clara de la pantalla de acceso nunca se capturó**, ambas son oscuras. La revisión en claro y oscuro del Panel sí es real.
+  - No se pudo crear una sesión de admin real porque el MFA es obligatorio y no hay pantalla de segundo factor, así que el menú completo del admin no se vio en navegador.
+  - `dotnet ef database update` contra la base de desarrollo (requiere secretos de `.env.dev`).
+- Migraciones: no.
+- Riesgo / pendiente:
+  - **No hay pantalla de segundo factor** (F1-06 dejó el backend). El login solo cubre usuario y contraseña y la app **lo dice explícitamente** en vez de fingir. Es lo que bloquea ver el menú completo del admin.
+  - Los 11 módulos sin pantalla (clientes, inmuebles, contratos, facturas, cobros, fianzas, informes, auditoría, bloqueos, usuarios, configuración) quedan declarados en `menu.ts` con `TODO(A#)` y **sin ruta enlazada**: un enlace de menú que da 404 es peor que una entrada ausente.
+  - Decisiones que conviene revisar: Cobros se filtra por `cobro.registrar` y Fianzas por `fianza.mover` porque la matriz no tiene acción de lectura para esos módulos; `/componentes` queda tras `configuracion.editar`; el selector de tema vive en la `TopBar`, así que **no se puede cambiar de tema sin sesión**.
+  - El proxy de desarrollo de `vite.config.ts` apunta a `127.0.0.1:5100`.
+  - Las capturas de la revisión visual quedaron en `.capturas-f1-11/`, **fuera del repositorio**: no se versionan.
+- Commit/PR: `feat(frontend): layout, navegacion por permisos, pantalla de acceso y permisos efectivos`.
+
 ## [15/10/2026 09:30] FEAT · F1-10 · Inmuebles, unidades, tarifas y documentos de propiedad
 - Qué:
   - Migración `20261015053702_InmueblesUnidadesYDocumentos`: `inmueble`, `unidad`, `modalidad_unidad`, `tarifa_unidad` y `documento_inmueble`, con `GRANT` a `rent_app` y **RLS sobre `documento_inmueble`** (solo admin y gerente).
