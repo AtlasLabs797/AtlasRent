@@ -279,6 +279,11 @@ builder.Services.AddHttpClient<IFuenteTipoCambio, ClienteTipoCambio>(
 builder.Services.AddScoped<ServicioTiposCambio>();
 builder.Services.AddScoped<TrabajoTipoCambio>();
 
+// F3-02: facturas y proformas. Depende de ServicioSeries (el número sale del contador transaccional)
+// y de ServicioTiposCambio (el cambio del día se congela al emitir, D9), y comprueba permisos por
+// su cuenta porque F3-05 emite desde un trabajo sin sesión HTTP.
+builder.Services.AddScoped<ServicioFacturas>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

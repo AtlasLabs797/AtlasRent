@@ -22,6 +22,30 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-004 · Una línea de factura con identificador ya puesto se guardaba como modificación y devolvía 409
+- Fecha detectado: 16/10/2026 · Fecha corregido: 16/10/2026
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: facturas / F3-02
+- Detectado por: pruebas de F3-02 (`FacturaCalculoYLineasTests`)
+- Síntoma: dar de alta la primera línea de una factura recién creada devolvía 409 con «El cambio choca con otra modificación» (un `DbUpdateConcurrencyException`), cuando la factura se acababa de insertar y nadie la había tocado.
+- Cómo reproducir: `POST /api/v1/facturas` y acto seguido `POST /api/v1/facturas/{id}/lineas` con una línea nueva.
+- Causa raíz: EF no deduce bien el estado de una entidad con clave ya asignada si entra por la colección de navegación de una entidad que ya está seguida: la marca **Modified** en lugar de **Added**, y el `UPDATE` que genera no encuentra la fila. `ServicioCotizaciones` no sufre esto porque añade sus líneas con `contexto.CotizacionLinea.AddRange(...)`, que marca Added explícitamente.
+- Solución: la línea se da de alta con `contexto.FacturaLinea.Add(linea)` (el mismo camino que las cotizaciones) y el motivo queda escrito en el servicio, que es donde volvería a pasar si alguien construye una línea a mano.
+- Test que lo cubre: `backend/AtlasRent.Tests/Facturas/FacturaCalculoYLineasTests.cs` (las tres pruebas dan de alta líneas).
+- Commit/PR: pendiente del orquestador.
+- Datos afectados: ninguno; la migración no había salido del entorno de pruebas.
+
+### BUG-005 · La serie histórica 9 quedó sembrada activa, aunque no debe emitir
+- Fecha detectado: 16/10/2026 · Fecha corregido: 16/10/2026
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: configuración / F1-08 → F3-02
+- Detectado por: revisión de F3-02 al leer la siembra de series de §3.7
+- Síntoma: la serie 9 (histórica, de importación de Factusol) salía de la migración de F1-08 con `activa = true`, así que una factura podía emitir contra ella y gastar un número de un contador que no significa nada para una importación que conserva el número que ya tenía.
+- Cómo reproducir: tras migrar, `SELECT numero, activa FROM serie`; la 9 aparece activa.
+- Causa raíz: se sembró cuando todavía no había facturas que emitir, y el valor era provisional.
+- Solución: la migración de F3-02 la desactiva con un `UPDATE` y su `Down()` la devuelve al estado anterior. **No se ha tocado** `suma_a_facturado`/`suma_a_saldos` de la 9: F1-08 la sembró en `false` con un `TODO(A#)` que sigue sin responder y es una pregunta de negocio para el responsable, no una decisión de esta tarea.
+- Test que lo cubre: ninguno (es una fila de datos sembrada; el comportamiento de una serie inactiva lo cubre `SeriesContadorTests` de F1-08).
+- Commit/PR: pendiente del orquestador.
+- Datos afectados: en bases ya migradas, la 9 pasa a inactiva al aplicar la migración de F3-02.
+
 ### BUG-001 · El paquete de despliegue salía sin la interfaz del frontend
 - Fecha detectado: 15/10/2026 · Fecha corregido: 15/10/2026
 - Gravedad: **Alta** · Estado: CORREGIDO · Módulo: despliegue / F1-13

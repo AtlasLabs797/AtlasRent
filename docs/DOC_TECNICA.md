@@ -119,12 +119,14 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - Dinero `numeric(18,2)`, cambio `numeric(18,6)`, fechas de negocio `date`, marcas `timestamptz`.
 - Comunes: `origen`, `created_at/by`, `updated_at/by`; concurrencia optimista con la columna de sistema `xmin` (`UseXminAsConcurrencyToken` / `IsRowVersion` en Npgsql); conflicto → 409 con el estado actual.
 - Económicos: estado anulado, nunca borrado. Resto: `deleted_at`, `deleted_by`.
+- **Facturas (F3-02):** una sola tabla `factura` para facturas y proformas — lo que las distingue es `serie.tipo`, no el sitio donde viven; con dos tablas habría que duplicar líneas, totales y cobros sin ganar nada. `factura_linea` cuelga de ella con cascada al borrado, que solo se da en borrador. Dos `CHECK`: `(estado = 1) = (numero IS NULL)` (un borrador no tiene número y una emitida lo tiene) y `tipo_cambio_fecha IS NULL OR fecha_emision IS NOT NULL` (el cambio congelado solo existe si el documento salió). El ITBIS se congela **en la línea** (`porcentaje_itbis`, `tipo_itbis_id`), no solo en la cabecera: la factura dice "este importe lleva este impuesto" y cambiar el tipo de ITBIS mañana no puede cambiar lo que una factura ya emitida dice.
 
 ### 4.3 Piezas críticas en SQL
 - **Exclusión de rangos:** `EXCLUDE USING gist (unidad_id WITH =, daterange(fecha_inicio, fecha_fin, '[)') WITH &&) WHERE (bloquea)` sobre `ocupacion_rango` (`btree_gist`).
 - **Medio día:** `ocupacion_dia (unidad_id, fecha, tipo int)` con `tipo` 1 = `medio_dia`, 2 = `dia_completo`; trigger que serializa por unidad con `SELECT ... FROM unidad WHERE id = NEW.unidad_id FOR UPDATE`, rechaza si hay un rango bloqueando esa fecha y aplica la capacidad de 2 medios días o 1 día completo.
 - **Capas de bloqueo (decidido en F2-01):** la disponibilidad no se guarda en `contrato` ni en `reserva`, sino en dos tablas que los escriben esos servicios en su propia transacción. Motivo: una restricción de exclusión no puede abarcar dos tablas, así que con una por tabla un contrato y una reserva mensual del mismo rango se solaparían sin que nada lo detecte, y la especificación (§3.4) exige comprobar la disponibilidad en la base sin carreras. `ocupacion_rango` es el bloqueo por rango (contrato, reserva mensual) y `ocupacion_dia` el bloqueo por día suelto (reserva corta, mantenimiento); un trigger en cada tabla comprueba el otro lado, para que un rango no tape días reservados ni al revés. Liberar es `bloquea = false`, nunca borrar.
 - **Contador de serie:** `UPDATE serie SET siguiente = siguiente + 1 WHERE id = @id RETURNING siguiente - 1`; `UNIQUE (serie_id, numero)`.
+- **Contador de serie en la factura (F3-02):** la emisión llama a `ServicioSeries.ReservarNumeroAsync` **dentro de la transacción de la factura**, y esa llamada reutiliza la transacción abierta si la hay. Por eso un fallo posterior (un choque de índice, un cliente que ya no está) deshace el número junto con la factura: no hay número consumido sin factura detrás (D28). La red que lo hace inevitable si dos emisiones se colaran es doble: `UNIQUE (serie_id, numero)` en `factura` (índice parcial `WHERE numero IS NOT NULL`, porque un borrador no tiene número) y `UNIQUE (serie_id, numero)` en `numero_serie`.
 - **Comprobante:** `UPDATE secuencia_comprobante SET siguiente = siguiente + 1 WHERE serie_id = @id AND siguiente <= rango_hasta AND vence >= current_date RETURNING siguiente - 1`; sin fila → excepción "Comprobantes agotados o vencidos" y rollback completo.
 - **Periódica:** índice único parcial `(contrato_id, periodo, concepto) WHERE estado <> 'anulada'`.
 - **Auditoría:** append-only (`db/scripts/03_auditoria_append_only.sql`) + **firma de registros** (hash encadenado SHA-256 por fila) y job diario de verificación de integridad.
@@ -147,6 +149,9 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Saldo de factura** = total − Σ retenciones − Σ asignaciones vigentes (moneda de la factura) − Σ ajustes de diferencia de cambio. Pagada / Parcial / Pendiente derivados. Vencida = saldo > 0 y hoy (Santo Domingo) > vencimiento.
 - **Prorrateo:** `Math.Round(renta / díasDelMes × díasFacturables, 2, MidpointRounding.AwayFromZero)`, días inclusivos.
 - **Emisión (una transacción):** validar → número de serie → comprobante (si fiscal) → congelar `cambio_informe` → Emitida → auditoría → outbox.
+- **ITBIS de la factura (F3-02):** es **por línea** (§3.8), no sobre el total. `CalculoImpuestosLinea.Calcular(cantidad, precio, porcentaje)` redondea una vez el importe (`cantidad × precio`) y una vez su impuesto (`importe × porcentaje / 100`), y los totales de la cabecera son `Subtotal = Σ Importe`, `Itbis = Σ ItbisImporte` y `Total = Subtotal + Itbis`. No es lo mismo que redondear el subtotal entero: dos líneas al 18 % de 100,01 y 0,30 dan 18,00 + 0,05 = **18,05**, mientras que 100,31 × 18 % redondeado da **18,06**. El céntimo se pierde si el impuesto se calcula sobre el total. `CalculoImpuestos.Calcular` (de factura completa, con retenciones) sigue existiendo para lo que venga después; hoy no lo usa nadie. El 100 es un divisor de porcentaje y no una cifra fiscal: el porcentaje sale de `tipo_itbis` (D14).
+- **Signo de las líneas (F3-02):** el tipo lo decide. Una línea `Descuento` con importe positivo se rechaza con 409, y cualquier otro tipo con importe negativo también: restar es tener una línea de descuento, no poner un signo raro. El subtotal es por tanto la suma algebraica de las líneas.
+- **Borrador reescribible (F3-02):** una factura en borrador no tiene número, ni comprobante, ni deuda, así que se le cambian la cabecera y las líneas, y sus líneas se borran. Emitida, ninguna línea se toca: lo que hay es anular y emitir otra (F3-08).
 - **Cobro:** `cobro (moneda_recibida, importe_recibido, cambio_aplicado)`; `cobro_asignacion (destino, importe_moneda_destino, importe_moneda_recibida, estado)`. Propuesta FIFO por vencimiento dentro del contrato. Excedente → `saldo_favor`.
 - **Pago en otra moneda:** equivalente = importe recibido convertido con el cambio aplicado, redondeado a 2; tolerancia configurable por moneda; `ajuste_diferencia_cambio` auditado.
 - **Anular factura (una transacción):** factura y comprobante anulados; sus `cobro_asignacion` anuladas; cobros sin asignaciones vigentes → anulados; auditoría con la lista de afectados.
@@ -184,6 +189,32 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Origen de la escritura.** `exchange_rate_api` para el trabajo (auditoría con `usuario_id` nulo y
   `origen = "job"`) y `manual` para la API (origen `api`, con la IP de la petición). La fila guarda
   el origen, y con él el `created_by` y el `created_at` de quien la escribió.
+
+### 6.2 Facturas (F3-02)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/facturas` | `factura.ver` | Listado paginado; filtros `estado`, `serieId`, `clienteId`, `unidadId`, `moneda`, `desde`/`hasta` (fechas de emisión) y orden `?sortBy=createdAt\|fechaEmision\|vencimiento\|total\|numero`. **Sin totales agregados**: son de §3.15 y solo gerente/admin los ven (F3-10). |
+| `GET /api/v1/facturas/{id}` | `factura.ver` | Factura con sus líneas. No expone `cobrado`, `pendiente` ni `estado_cobro` (dependen de `cobro`, F3-06) ni retención (F3-04). |
+| `POST /api/v1/facturas` | `factura.borrador` | Alta en borrador. Sin número y sin cambio: los dos los pone la emisión. Acepta `Idempotency-Key`. |
+| `PUT /api/v1/facturas/{id}` | `factura.borrador` | Edita la cabecera. 409 si ya no está en borrador. Acepta `Idempotency-Key`. |
+| `POST /api/v1/facturas/{id}/lineas` | `factura.borrador` | Alta de línea; recalcula los totales. `cantidad` × `precioUnitario` y el ITBIS los calcula la aplicación. Acepta `Idempotency-Key`. |
+| `PUT /api/v1/facturas/{id}/lineas/{lineaId}` | `factura.borrador` | Edición de línea. 409 si la factura ya salió. Acepta `Idempotency-Key`. |
+| `DELETE /api/v1/facturas/{id}/lineas/{lineaId}` | `factura.borrador` | Baja de línea, **solo en borrador**. Acepta `Idempotency-Key`. |
+| `POST /api/v1/facturas/{id}/emitir` | `factura.emitir` | Emisión: número, fecha y cambio congelado, todo en una transacción. Acepta `Idempotency-Key`. |
+
+- **El servicio también comprueba el permiso**, con `IPolicyService.PuedeAsync`, y no solo el atributo
+  del endpoint: F3-05 emite facturas desde un trabajo de Hangfire, sin sesión HTTP ni filtro, y con la
+  comprobación solo en el controlador ese camino emitiría sin mirar quién lo hace. Es el mismo patrón
+  que `ExigirEstadoAsync` de los contratos (F2-05).
+- **El 409 de la emisión** es el conflicto de negocio: la factura no está en borrador, la serie está
+  desactivada, la serie tiene moneda fija y no es la de la factura, no hay líneas, o **no hay tipo de
+  cambio del día** (D9: emitir sin cambio congelado deja un documento que los informes no pueden
+  consolidar; la salida es la carga manual de §3.12 y el mensaje la dice).
+- **Líneas: van por su propio endpoint** y no dentro de la cabecera, porque un descuento mal puesto se
+  corrige borrando una línea y replace-all obligaría a reenviar todas las demás.
+- **Series 9 y 3**: la histórica (9) queda desactivada por la migración de F3-02 —no emite, la usan las
+  importaciones de Factusol conservando su número— y la fiscal (3) es la que genera comprobante (F3-03).
 
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.

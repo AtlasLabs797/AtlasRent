@@ -141,6 +141,13 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
     // leer el de un día pasado, que es justo lo que una fila de configuración no da.
     public DbSet<TipoCambio> TipoCambio => Set<TipoCambio>();
 
+    // F3-02: facturas (y proformas, que son facturas de serie proforma) con sus líneas
+    // (docs/ESPECIFICACION.md §3.8). Una sola tabla para las dos: lo que las distingue es el tipo
+    // de la serie, no el sitio donde viven.
+    public DbSet<Factura> Factura => Set<Factura>();
+
+    public DbSet<FacturaLinea> FacturaLinea => Set<FacturaLinea>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -1035,6 +1042,91 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             // Un valor por día y por moneda: es la regla del dominio puesta en la base, no en el
             // servicio. También es lo que hace que el trabajo se pueda correr dos veces el mismo día.
             entidad.HasIndex(e => new { e.Fecha, e.Moneda }).IsUnique();
+        });
+
+        // F3-02: facturas y sus líneas (docs/ESPECIFICACION.md §3.8).
+        modelBuilder.Entity<Factura>(entidad =>
+        {
+            entidad.ToTable("factura", tabla =>
+            {
+                // Una factura emitida tiene número y una anulada también: el número no vuelve a
+                // liberarse nunca (D28). Lo que la base impide es que una factura en borrador
+                // tenga número ya, que es lo que haría que consumiera uno sin pasar por el
+                // contador transaccional.
+                tabla.HasCheckConstraint(
+                    "ck_factura_numero_estado",
+                    "(estado = 1) = (numero IS NULL)");
+                // La fecha de emisión la pone la emisión, no quien la escribe: un borrador no
+                // tiene día de salida. El tipo de cambio congelado va con ella por la misma razón.
+                tabla.HasCheckConstraint(
+                    "ck_factura_cambio_con_emision",
+                    "tipo_cambio_fecha IS NULL OR fecha_emision IS NOT NULL");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Concepto).HasMaxLength(300).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El tipo de cambio congelado es el único decimal de la tabla que no es dinero:
+            // numeric(18,6), como en la fila de F3-01 de la que salió.
+            entidad.Property(e => e.TipoCambioValor).HasColumnType("numeric(18,6)");
+            // La lista filtra por estado y ordena por fecha de emisión, y las de un cliente o una
+            // unidad son la consulta de la vista de cuentas (§3.13) y del expediente.
+            entidad.HasIndex(e => new { e.Estado, e.FechaEmision });
+            entidad.HasIndex(e => e.ClienteId);
+            entidad.HasIndex(e => e.UnidadId);
+            entidad.HasIndex(e => e.ContratoId);
+            // Un número por serie, y único: es la red de seguridad del contador de §3.7. Sin ella,
+            // dos emisiones simultáneas que salieran con el mismo número commitearían dos facturas
+            // con el mismo número, que es justo lo que no puede pasar.
+            entidad.HasIndex(e => new { e.SerieId, e.Numero })
+                .IsUnique()
+                .HasFilter("numero IS NOT NULL");
+            entidad.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Unidad)
+                .WithMany()
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Contrato)
+                .WithMany()
+                .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Serie)
+                .WithMany()
+                .HasForeignKey(e => e.SerieId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.TipoCambio)
+                .WithMany()
+                .HasForeignKey(e => e.TipoCambioId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Las líneas se reescriben enteras mientras la factura está en borrador, así que el borrado
+        // en cascada es el mismo patrón que las modalidades de una unidad: se borra lo que ya no
+        // está, nunca el documento. Emitida, la factura ya no se toca y sus líneas quedan
+        // congeladas; lo que se hace con una factura emitida es anularla (F3-08).
+        modelBuilder.Entity<FacturaLinea>(entidad =>
+        {
+            entidad.ToTable("factura_linea");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Concepto).HasMaxLength(300).IsRequired();
+            entidad.Property(e => e.Cantidad).HasColumnType("numeric(18,4)");
+            // El porcentaje de ITBIS es un porcentaje, no dinero: cuatro decimales, que es lo que
+            // redondea Redondeo.Porcentaje.
+            entidad.Property(e => e.PorcentajeItbis).HasColumnType("numeric(18,4)");
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El orden del documento sale de aquí, no del orden en que PostgreSQL devuelva las
+            // filas: el PDF y la vista de cuentas leen este número.
+            entidad.HasIndex(e => new { e.FacturaId, e.Posicion }).IsUnique();
+            entidad.HasOne(e => e.Factura)
+                .WithMany(f => f.Lineas)
+                .HasForeignKey(e => e.FacturaId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entidad.HasOne(e => e.TipoItbis)
+                .WithMany()
+                .HasForeignKey(e => e.TipoItbisId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // RLS sobre documento_inmueble (docs/SEGURIDAD.md A.4 y DOC_TECNICA.md §4.3): solo gerente y

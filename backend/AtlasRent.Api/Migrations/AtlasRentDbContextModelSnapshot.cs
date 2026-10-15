@@ -815,7 +815,7 @@ namespace AtlasRent.Api.Migrations
 
                     b.ToTable("contrato_incremento", null, t =>
                         {
-                            t.HasCheckConstraint("ck_contrato_incremento_tipo_valor", "(tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)\r\nOR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)");
+                            t.HasCheckConstraint("ck_contrato_incremento_tipo_valor", "(tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)\nOR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)");
                         });
                 });
 
@@ -1353,6 +1353,216 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_documento_inmueble_inmueble_id_categoria_version");
 
                     b.ToTable("documento_inmueble", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Factura", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<string>("Concepto")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("concepto");
+
+                    b.Property<Guid?>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<DateOnly?>("FechaEmision")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_emision");
+
+                    b.Property<DateOnly>("FechaVencimiento")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_vencimiento");
+
+                    b.Property<decimal>("Itbis")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("itbis");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<int?>("Numero")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero");
+
+                    b.Property<Guid>("SerieId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("serie_id");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("subtotal");
+
+                    b.Property<DateOnly?>("TipoCambioFecha")
+                        .HasColumnType("date")
+                        .HasColumnName("tipo_cambio_fecha");
+
+                    b.Property<Guid?>("TipoCambioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tipo_cambio_id");
+
+                    b.Property<decimal?>("TipoCambioValor")
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("tipo_cambio_valor");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total");
+
+                    b.Property<Guid?>("UnidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidad_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_factura");
+
+                    b.HasIndex("ClienteId")
+                        .HasDatabaseName("ix_factura_cliente_id");
+
+                    b.HasIndex("ContratoId")
+                        .HasDatabaseName("ix_factura_contrato_id");
+
+                    b.HasIndex("TipoCambioId")
+                        .HasDatabaseName("ix_factura_tipo_cambio_id");
+
+                    b.HasIndex("UnidadId")
+                        .HasDatabaseName("ix_factura_unidad_id");
+
+                    b.HasIndex("Estado", "FechaEmision")
+                        .HasDatabaseName("ix_factura_estado_fecha_emision");
+
+                    b.HasIndex("SerieId", "Numero")
+                        .IsUnique()
+                        .HasDatabaseName("ix_factura_serie_id_numero")
+                        .HasFilter("numero IS NOT NULL");
+
+                    b.ToTable("factura", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_factura_cambio_con_emision", "tipo_cambio_fecha IS NULL OR fecha_emision IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_factura_numero_estado", "(estado = 1) = (numero IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.FacturaLinea", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Cantidad")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("cantidad");
+
+                    b.Property<string>("Concepto")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("concepto");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("FacturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("factura_id");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe");
+
+                    b.Property<decimal>("ItbisImporte")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("itbis_importe");
+
+                    b.Property<decimal?>("PorcentajeItbis")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("porcentaje_itbis");
+
+                    b.Property<int>("Posicion")
+                        .HasColumnType("integer")
+                        .HasColumnName("posicion");
+
+                    b.Property<decimal>("PrecioUnitario")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("precio_unitario");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<Guid?>("TipoItbisId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tipo_itbis_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_factura_linea");
+
+                    b.HasIndex("TipoItbisId")
+                        .HasDatabaseName("ix_factura_linea_tipo_itbis_id");
+
+                    b.HasIndex("FacturaId", "Posicion")
+                        .IsUnique()
+                        .HasDatabaseName("ix_factura_linea_factura_id_posicion");
+
+                    b.ToTable("factura_linea", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.FormaPago", b =>
@@ -3751,6 +3961,71 @@ namespace AtlasRent.Api.Migrations
                         .HasConstraintName("fk_documento_inmueble_inmueble_inmueble_id");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Factura", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_factura_cliente_cliente_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithMany()
+                        .HasForeignKey("ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_factura_contrato_contrato_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Serie", "Serie")
+                        .WithMany()
+                        .HasForeignKey("SerieId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_factura_serie_serie_id");
+
+                    b.HasOne("AtlasRent.Api.Data.TipoCambio", "TipoCambio")
+                        .WithMany()
+                        .HasForeignKey("TipoCambioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_factura_tipo_cambio_tipo_cambio_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Unidad", "Unidad")
+                        .WithMany()
+                        .HasForeignKey("UnidadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_factura_unidad_unidad_id");
+
+                    b.Navigation("Cliente");
+
+                    b.Navigation("Contrato");
+
+                    b.Navigation("Serie");
+
+                    b.Navigation("TipoCambio");
+
+                    b.Navigation("Unidad");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.FacturaLinea", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Factura", "Factura")
+                        .WithMany("Lineas")
+                        .HasForeignKey("FacturaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_factura_linea_factura_factura_id");
+
+                    b.HasOne("AtlasRent.Api.Data.TipoItbis", "TipoItbis")
+                        .WithMany()
+                        .HasForeignKey("TipoItbisId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_factura_linea_tipo_itbis_tipo_itbis_id");
+
+                    b.Navigation("Factura");
+
+                    b.Navigation("TipoItbis");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Inmueble", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Subempresa", null)
@@ -4011,6 +4286,11 @@ namespace AtlasRent.Api.Migrations
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Cotizacion", b =>
+                {
+                    b.Navigation("Lineas");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Factura", b =>
                 {
                     b.Navigation("Lineas");
                 });
