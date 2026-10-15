@@ -208,7 +208,30 @@ app.MapHealthChecks("/health");
 
 app.MapControllers();
 
+// F1-13: el backend sirve el frontend compilado. En desarrollo Vite va en su propio servidor y este
+// wwwroot no existe: por eso los archivos estáticos solo se registran si hay contenido, y en ese
+// caso index.js debe existir. Si no, la API arranca igual (los tests de integración, por ejemplo).
+if (WebRootConIndice())
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+    // Rutas de la SPA: cualquier ruta que no sea /api ni /health devuelve index.js y deja que el
+    // enrutador del cliente resuelva.
+    app.MapFallbackToFile("index.html");
+}
+
 app.Run();
+
+/// <summary>
+/// Si hay un frontend compilado en <c>wwwroot</c>. El build del frontend se publica ahí antes de
+/// generar el paquete de despliegue; en desarrollo y en pruebas no está, y la API no debe fallar
+/// por eso.
+/// </summary>
+static bool WebRootConIndice()
+{
+    var wwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+    return Directory.Exists(wwwroot) && File.Exists(Path.Combine(wwwroot, "index.html"));
+}
 
 /// <summary>Expuesto para <c>WebApplicationFactory</c> en los tests de integración.</summary>
 public partial class Program;

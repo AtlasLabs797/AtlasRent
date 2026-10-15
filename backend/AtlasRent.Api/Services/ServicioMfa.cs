@@ -39,7 +39,7 @@ public sealed record DesafioMfa(
 /// error (AGENTS.md §6).
 /// </para>
 /// <para>
-/// <strong>F1-09 (SEC-005 cerrado):</strong> <c>usuario.mfa_secreto</c> se guarda cifrado en reposo con
+/// <strong>F1-09 (SEC-007 cerrado):</strong> <c>usuario.mfa_secreto</c> se guarda cifrado en reposo con
 /// AES-256-GCM, con el mismo <see cref="ServicioCifrado"/> que el documento de identidad. F1-06 lo
 /// dejó en claro y aquí ya no está. Un secreto TOTP en claro sirve para suplantar a alguien hasta
 /// que se roba el teléfono.
@@ -165,7 +165,7 @@ public sealed class ServicioMfa(
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
-        // F1-09: cifrado en reposo, nunca en claro (docs/SEGURIDAD.md SEC-005).
+        // F1-09: cifrado en reposo, nunca en claro (docs/SEGURIDAD.md SEC-007).
         usuario.MfaSecreto = cifrado.Cifrar(secreto);
         await contexto.SaveChangesAsync(ct);
 
@@ -285,8 +285,15 @@ await contexto.CodigoRecuperacion
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
-        MarcarConsumido(desafio);
-        await contexto.SaveChangesAsync(ct);
+        // Gastar el desafío es una escritura condicional, no una asignación en memoria: dos peticiones
+        // simultáneas con el mismo token leen "no gastado" a la vez, y solo la que consiga marcar la
+        // fila puede emitir sesión. La comprobación del resultado de la actualización es la que
+        // decide; si el UPDATE no toca filas, otro ya lo gastó.
+        if (!await ConsumirDesafioAsync(desafio, ct))
+        {
+            await transaccion.RollbackAsync(ct);
+            return null;
+        }
 
         var sesion = await emision.EmitirAsync(usuario, ip, userAgent, modoEmergencia: false, "auth.login_mfa", ct);
 
@@ -332,9 +339,15 @@ await contexto.CodigoRecuperacion
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
-        fila.UsadoAt = reloj.GetUtcNow();
-        MarcarConsumido(desafio);
-        await contexto.SaveChangesAsync(ct);
+        // Igual que en el segundo factor: gastar el código y el desafío son escrituras
+        // condicionales. Si otro intento los gastó mientras este validaba, no se abre sesión.
+        var codigosUsados = await MarcarCodigoUsadoAsync(fila.Id, ct);
+        var desafioUsado = await ConsumirDesafioAsync(desafio, ct);
+        if (codigosUsados != 1 || !desafioUsado)
+        {
+            await transaccion.RollbackAsync(ct);
+            return null;
+        }
 
         var sesion = await emision.EmitirAsync(usuario, ip, userAgent, modoEmergencia: false, "auth.login_recuperacion", ct);
 
@@ -342,6 +355,19 @@ await contexto.CodigoRecuperacion
 
         return sesion;
     }
+
+    /// <summary>
+    /// Marca un código de recuperación como usado, solo si seguía sin usar. Devuelve las filas
+    /// afectadas: 0 significa que otro intento se adelantó.
+    /// </summary>
+    private async Task<int> MarcarCodigoUsadoAsync(Guid codigoRecuperacionId, CancellationToken ct) =>
+        await contexto.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE codigo_recuperacion
+               SET usado_at = {reloj.GetUtcNow()}
+             WHERE id = {codigoRecuperacionId}
+               AND usado_at IS NULL
+            """, ct);
 
     /// <summary>
     /// Busca el desafío de un token provisional. Devuelve <c>null</c> si no existe, ya se gastó o
@@ -428,5 +454,20 @@ await contexto.CodigoRecuperacion
     private Task RegistrarFalloAsync(Guid usuarioId, string? nombreAcceso, string ip, CancellationToken ct) =>
         bloqueos.RegistrarIntentoFallidoAsync(usuarioId, nombreAcceso, ip, ct);
 
-    private void MarcarConsumido(MfaDesafio desafio) => desafio.ConsumidoAt = reloj.GetUtcNow();
+    /// <summary>
+    /// Gasta el desafío con una escritura condicional. Devuelve <c>false</c> si ya estaba gastado,
+    /// que es lo que impide que dos peticiones simultáneas abran dos sesiones con el mismo token.
+    /// </summary>
+    private async Task<bool> ConsumirDesafioAsync(MfaDesafio desafio, CancellationToken ct)
+    {
+        var afectadas = await contexto.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE mfa_desafio
+               SET consumido_at = {reloj.GetUtcNow()}
+             WHERE id = {desafio.Id}
+               AND consumido_at IS NULL
+            """, ct);
+
+        return afectadas == 1;
+    }
 }

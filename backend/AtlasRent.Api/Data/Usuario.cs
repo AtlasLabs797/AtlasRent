@@ -38,7 +38,7 @@ public sealed class Usuario
     /// que se reinicia la activación y se necesita en claro para validar el código, así que no
     /// se muestra nunca: sale una sola vez, dentro de la URI <c>otpauth://</c>.
     /// <para>
-    /// F1-09 (SEC-005 cerrado): se guarda cifrado en reposo con AES-256-GCM, con el mismo
+    /// F1-09 (SEC-007 cerrado): se guarda cifrado en reposo con AES-256-GCM, con el mismo
     /// <see cref="Services.ServicioCifrado"/> que el documento de identidad de los clientes. El
     /// contenido es <c>v1:nonce:cifrado</c>, no el secreto en base32. Quien lea la tabla no puede
     /// suplantar a nadie con este valor.

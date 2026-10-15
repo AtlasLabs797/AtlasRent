@@ -196,11 +196,11 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - Formato almacenado: `v{version}:{nonceBase64}:{textoCifrado||etiquetaBase64}`. **Nonce de 12 bytes aleatorio por cifrado** (reutilizarlo con la misma clave rompe el cifrado de forma catastrófica), etiqueta de 16 bytes al final, y la versión de clave viaja dentro para poder rotarla.
   - **Normalización del documento**: mayúsculas invariantes, eliminados espacios, guiones (incluidos U+2010/2013/2014) y puntos; se conservan letras y dígitos. Motivo: un documento es una identidad, no un texto, y el índice único solo sirve si "001-1234567-8", "001 12-34567.8" y "00112345678" son el mismo cliente.
   - Clientes, contactos y prospectos con `[Accion]`, paginación de §6, `Idempotency-Key` y auditoría en la misma transacción. Número de cliente por `SEQUENCE` iniciada en `max+1`.
-  - **`idempotencia` guarda el cuerpo completo de la respuesta sin cifrar** (SEC-006). Hoy no se devuelve el documento de identidad en las respuestas de alta y edición para evitarlo, pero es un rodeo.
+  - **`idempotencia` guarda el cuerpo completo de la respuesta sin cifrar** (SEC-008). Hoy no se devuelve el documento de identidad en las respuestas de alta y edición para evitarlo, pero es un rodeo.
   - `Cliente` va con la etiqueta `IEntidadTrazada` (la base de `IEntidadConfiguracion` pasa a heredarla), que es lo que permite que `GuardadoAuditado` sirva tanto a configuración como a clientes.
   - En .NET 10, `AesGcm.Decrypt` ordena los parámetros distinto que `Encrypt`: usar **argumentos con nombre** o se cruzan nonce y etiqueta en silencio.
   - **Rotación de clave no implementada:** subir `Seguridad__CifradoVersion` sin recifrar deja los datos antiguos ilegibles. `TODO(A#)`, y no subir la versión a ciegas.
-  - `SEGURIDAD.md` SEC-005 cerrado: `usuario.mfa_secreto` cifrado en reposo.
+  - `SEGURIDAD.md` SEC-007 cerrado: `usuario.mfa_secreto` cifrado en reposo.
 - **Implementado en F1-10** (inmuebles y documentos):
   - Los documentos de propiedad se guardan **fuera del webroot** (`Almacen__Documentos`) y se sirven **por la API**. Un PDF de propiedad no es un recurso público.
   - El nombre en disco es un **GUID**, no viene de la petición; además `RutaDe()` normaliza con `Path.GetFullPath` y exige que la ruta empiece por la carpeta raíz. El nombre enviado queda solo como metadato.
@@ -212,7 +212,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Logs:** Serilog con redacción de propiedades sensibles.
 - **Implementado en F1-08** (configuración):
   - CRUD bajo `/api/v1/config` con `[Accion(Acciones.ConfiguracionEditar)]` (solo admin), auditoría en la misma transacción, `Idempotency-Key` en las mutaciones y el formato de lista paginada de §6.
-  - **D14 se respeta mecánicamente**: un test (`CifrasFiscalesEnCodigoTests`) recorre el fuente de la API, descarta comentarios y cadenas y falla si aparece una cifra junto a un concepto fiscal. Está verificado que **falla** al plantar una constante. "IVA" no está en la lista de conceptos porque colisiona con "activar"/"desactivar".
+  - **D14 se respeta con un guard mecánico, pero su alcance es limitado**: un test (`CifrasFiscalesEnCodigoTests`) recorre el fuente de la API, descarta comentarios y cadenas y falla si aparece una cifra **en la misma línea** que un concepto fiscal. Verificado que falla ante `ItbisGeneral = 0.18m` o `RetencionPais = 0.10m`. **No** es un análisis del código: una constante con nombre innocuo (`TasaGeneral`, `General`, `ImpIndirecto`) pasa en verde. En `CalculoImpuestos.cs` sí es estricto: no puede aparecer ninguna cifra salvo `100` (divisor). "IVA" no está en la lista porque colisiona con "activar"/"desactivar". Comprobado además por búsqueda que **no hay ninguna cifra fiscal** en el código, en las migraciones ni en el frontend.
   - `CalculoImpuestos` no tiene ningún porcentaje propio: solo reparte los que le llegan de la configuración. El `100` es divisor de porcentaje, no una cifra fiscal.
   - Contador de series: `UPDATE serie SET siguiente = siguiente + 1 … RETURNING` con `UNIQUE (serie_id, numero)`. Un número emitido no se reutiliza y una factura anulada no lo libera.
   - **Las tolerancias de diferencia de cambio nacen en `null`**, no en los valores `[Supuesto]` de la especificación (1,00 USD / 50,00 DOP): una cifra fiscal no debe ser un valor por defecto en el código.
@@ -225,7 +225,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - **10 códigos de recuperación** de un solo uso, alfabeto sin I/O/0/1 (evita confusiones al dictarlos), formato `XXXXX-XXXXX`, SHA-256 hasheados y mostrados una sola vez.
   - Acceso de emergencia: **dos administradores distintos** tienen que aprobarlo, el código vive 10 min y la sesión y la auditoría quedan marcadas como emergencia.
   - `Otp.NET` 1.4.1. RFC 6238 §5.2 (no reutilizar el mismo paso TOTP) no se aplica; queda mitigado por el token de un solo uso. `TODO(A#)`.
-  - **Pendiente crítico:** `usuario.mfa_secreto` está **en claro**. Ver SEC-005 en `docs/SEGURIDAD.md`: no desplegar MFA en producción antes de que F1-09 cierre el cifrado.
+  - **Cerrado en F1-09:** `usuario.mfa_secreto` ya **no** está en claro; se cifra con AES-256-GCM en reposo (ver SEC-007). Antes de F1-09 era un bloqueante de despliegue: no subir MFA a producción sin el cifrado.
   - «Admin» es hoy la columna booleana `usuario.es_admin`. Los ganchos `ServicioMfa.NecesitaMfa` y `ServicioEmergencia.EsAdmin` están aislados para que F1-07 los sustituya por `IPolicyService` sin reescribir controladores ni servicios.
 
 ## 8. Jobs

@@ -10,7 +10,7 @@ using Xunit;
 namespace AtlasRent.Tests.Clientes;
 
 /// <summary>
-/// F1-09 cierra <c>docs/SEGURIDAD.md SEC-005</c>: el secreto TOTP del usuario se guardaba en claro
+/// F1-09 cierra <c>docs/SEGURIDAD.md SEC-007</c>: el secreto TOTP del usuario se guardaba en claro
 /// y a partir de aquí está cifrado en reposo con AES-256-GCM.
 /// <para>
 /// El camino se prueba entero: activar el MFA, leer la fila cruda y entrar después con el código.
@@ -40,7 +40,7 @@ public sealed class MfaSecretoCifradoTests(ContenedorBdFixture bd, ApiTestFactor
         var enLaTabla = await SecretoEnLaFilaAsync(usuario.Id, ct);
         enLaTabla.Should().NotBeNull("F1-06 lo guardaba pendiente de confirmar");
         enLaTabla.Should().StartWith("v1:");
-        enLaTabla.Should().NotContain(secreto, "SEC-005: el secreto TOTP no puede estar en claro");
+        enLaTabla.Should().NotContain(secreto, "SEC-007: el secreto TOTP no puede estar en claro");
 
         await AyudaMfa.ConfirmarAsync(cliente, secreto, api.Reloj, ct);
 

@@ -16,6 +16,22 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 11:05] FIX · Correcciones de la verificación independiente del bloque F1
+- Qué:
+  - **MFA: el token provisional y el código de recuperación se gastan con una escritura condicional** (`UPDATE … WHERE consumido_at IS NULL` / `usado_at IS NULL`) y **comprobando el número de filas afectadas**, dentro de la transacción. Antes se leía fuera de la transacción y luego se asignaba la propiedad en memoria: **dos peticiones simultáneas con el mismo token pasaban las dos y abrían dos sesiones**. Es un TOCTOU real, aunque el test existente solo lo comprobaba en serie.
+  - **El backend sirve el frontend compilado**: `UseDefaultFiles` + `UseStaticFiles` + `MapFallbackToFile("index.html")`, registrados **solo si existe `wwwroot/index.html`**, para que en desarrollo (Vite aparte) y en pruebas la API arranque igual.
+  - `SEGURIDAD.md`: los dos hallazgos nuevos se renumeran a **SEC-007** (secreto TOTP, cerrado) y **SEC-008** (cuerpo de idempotencia, abierto), porque **SEC-005 ya lo ocupaba** la inyección de fórmulas en exportaciones. Actualizadas todas las referencias en `DOC_TECNICA.md`, `CHANGELOG.md` y el código. `SEC-004` pasa a CERRADO (F1-09 y F1-10 hechas).
+  - Se corrige la afirmación sobre el guard de D14: es **por línea**, no un análisis del código.
+- Por qué: una revisión independiente encontró dos problemas reales que el trabajo previo daba por buenos.
+- Verificado: `dotnet build -c Release -warnaserror` sin advertencias. La suite completa se ejecuta tras estos cambios.
+- NO verificado: la carrera del MFA **sigue sin reproducirse con peticiones simultáneas reales**; la corrección es análisis estático del patrón y un test secuencial que ya existía. Candidato a `TODO(A#)` con un test de concurrencia.
+- Migraciones: no.
+- Riesgo / pendiente:
+  - **SEC-008 sigue abierto** (cuerpo de `idempotencia` sin cifrar) y **la rotación de clave** sigue sin implementarse.
+  - `cliente` no tiene RLS mientras `documento_inmueble` sí: es intencionado (la matriz permite a los tres roles ver clientes, y D16 pide el documento visible completo), pero conviene dejarlo escrito.
+  - El bundle de `textos.ts` (≈650 kB) supera el aviso de 500 kB y no está atendido.
+- Commit/PR: `fix(seguridad): gasto atomico de los tokens de MFA y el backend sirve el frontend compilado`.
+
 ## [15/10/2026 10:20] FEAT · F1-11 · Layout, navegación por permisos y pantalla de acceso
 - Qué:
   - Backend: `IdentidadRespuesta` incluye **`permisosEfectivos`** (techo del rol recortado por los permisos por usuario). En `/auth/yo` se lee de `IPolicyService`, ya cargado por el filtro de autorización: **cero consultas extra**. En `MfaController` y `EmergenciaController` (marcados `[AllowAnonymous]`) sí hay una consulta, porque el filtro no corre.
@@ -59,12 +75,12 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
   - No implementado (no pedido): ocupación por fechas, borrado de documentos e `Idempotency-Key` en la subida.
 - Commit/PR: `feat(inmuebles): inmuebles, unidades, tarifas y documentos de propiedad con RLS`.
 
-## [15/10/2026 08:40] FEAT · F1-09 · Clientes con AES-256-GCM, índice ciego y cierre de SEC-005
+## [15/10/2026 08:40] FEAT · F1-09 · Clientes con AES-256-GCM, índice ciego y cierre de SEC-007
 - Qué:
   - `Services/Cifrado.cs`: `ServicioCifrado` (AES-256-GCM con versión de clave y **nonce aleatorio por cifrado**), `DocumentoIdentidad.Normalizar` e `IndiceCiegoDocumento` (HMAC-SHA256 con clave propia).
   - Clientes, contactos y prospectos bajo `/api/v1/clientes` y `/api/v1/prospectos`, con `[Accion]`, paginación de §6, `Idempotency-Key` y auditoría en la misma transacción.
   - Número de cliente por `SEQUENCE` iniciada en `max+1`, sin duplicados bajo concurrencia.
-  - **SEC-005 cerrado**: `usuario.mfa_secreto` queda cifrado en reposo con el mismo servicio.
+  - **SEC-007 cerrado**: `usuario.mfa_secreto` queda cifrado en reposo con el mismo servicio.
   - Migración `20261015050454_ClientesYProspectos` con `CREATE SEQUENCE cliente_numero_seq` y `USAGE, SELECT, UPDATE` sobre la secuencia (`setval` la exige).
   - 26 tests nuevos en `backend/AtlasRent.Tests/Clientes/`.
 - Por qué: F1-09 del plan. D16 exige el documento de identidad visible completo pero cifrado en la base de datos, y la app está en internet.
@@ -72,7 +88,7 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 - NO verificado: `dotnet ef database update` contra la base de desarrollo (requiere secretos de `.env.dev`); la migración sí aplica desde cero en cada ejecución de la suite.
 - Migraciones: sí. `Migrations/20261015050454_ClientesYProspectos`.
 - Riesgo / pendiente:
-  - **⚠️ SEC-006, nuevo y abierto: `idempotencia` guarda el cuerpo completo de la respuesta de una mutación en JSON sin cifrar.** Cualquier dato personal que una mutación devuelva queda en claro en esa tabla, aunque el dato principal esté cifrado. Para F1-09 se esquivó **no devolviendo el documento en las respuestas de alta y edición** (solo en `GET /clientes/{id}`), pero el problema es de fondo y volverá con cualquier campo personal nuevo. **Decisión pendiente: cifrar el cuerpo de `idempotencia`, o guardar una versión redactada.** Anotado en SEGURIDAD.md.
+  - **⚠️ SEC-008, nuevo y abierto: `idempotencia` guarda el cuerpo completo de la respuesta de una mutación en JSON sin cifrar.** Cualquier dato personal que una mutación devuelva queda en claro en esa tabla, aunque el dato principal esté cifrado. Para F1-09 se esquivó **no devolviendo el documento en las respuestas de alta y edición** (solo en `GET /clientes/{id}`), pero el problema es de fondo y volverá con cualquier campo personal nuevo. **Decisión pendiente: cifrar el cuerpo de `idempotencia`, o guardar una versión redactada.** Anotado en SEGURIDAD.md.
   - **Normalización del documento**: mayúsculas invariantes, se eliminan espacios, guiones (incluidos U+2010/2013/2014) y puntos; se conservan letras y dígitos. Motivo: un documento es una identidad, no un texto, y el índice único solo sirve si "001-1234567-8", "001 12-34567.8" y "00112345678" son el mismo cliente. Las letras se conservan porque un pasaporte las tiene.
   - Formato almacenado: `v{version}:{nonceBase64}:{textoCifrado||etiquetaBase64}`. Nonce de 12 bytes aleatorio por cifrado, etiqueta de 16 bytes al final. La versión viaja dentro para poder rotar la clave.
   - **No verificado: rotación real de clave.** `ServicioCifrado` sube de versión sin recifrar, así que subir `Seguridad__CifradoVersion` deja los datos antiguos ilegibles. Es un `TODO(A#)` dangerous: cambiar la versión a ciegas inutiliza los documentos existentes.
