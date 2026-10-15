@@ -136,6 +136,11 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<ContratoLiquidacion> ContratoLiquidacion => Set<ContratoLiquidacion>();
 
+    // F3-01: el tipo de cambio diario (docs/ESPECIFICACION.md §3.12). Tabla nueva de F3 y no una
+    // columna de configuración: el valor se congela al emitir y al cobrar, así que hay que poder
+    // leer el de un día pasado, que es justo lo que una fila de configuración no da.
+    public DbSet<TipoCambio> TipoCambio => Set<TipoCambio>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -1005,6 +1010,31 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             .WithMany()
             .HasForeignKey(e => e.ContratoInventarioItemId)
             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F3-01: tipo de cambio diario (docs/ESPECIFICACION.md §3.12, D9 y D22).
+        modelBuilder.Entity<TipoCambio>(entidad =>
+        {
+            entidad.ToTable("tipo_cambio", tabla =>
+            {
+                // El dólar es la base de informes y vale 1 por definición: la fila se resuelve sin
+                // consultar la base, así que una fila de USD solo podría ser una contradicción
+                // (un tipo de cambio del dólar que no sea 1) y nada más.
+                tabla.HasCheckConstraint("ck_tipo_cambio_no_usd", "moneda <> 1");
+                // Un tipo de cambio cero o negativo rompe toda conversión y además dividiría por
+                // cero al consolidar informes. El servicio lo rechaza con un 409 y la base lo
+                // rechaza igual, para que ningún escritor por fuera de la API pueda colarlo.
+                tabla.HasCheckConstraint("ck_tipo_cambio_valor_positivo", "valor > 0");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Fuente).HasMaxLength(50).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El tipo de cambio es el único decimal que no es dinero ni porcentaje: la convención
+            // global pone numeric(18,2) y aquí lo que manda es docs/DOC_TECNICA.md §4.2.
+            entidad.Property(e => e.Valor).HasColumnType("numeric(18,6)");
+            // Un valor por día y por moneda: es la regla del dominio puesta en la base, no en el
+            // servicio. También es lo que hace que el trabajo se pueda correr dos veces el mismo día.
+            entidad.HasIndex(e => new { e.Fecha, e.Moneda }).IsUnique();
         });
 
         // RLS sobre documento_inmueble (docs/SEGURIDAD.md A.4 y DOC_TECNICA.md §4.3): solo gerente y

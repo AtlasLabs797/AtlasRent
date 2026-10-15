@@ -43,7 +43,12 @@ Smtp__Usuario=<cuenta>
 Smtp__Password=<contraseña de aplicación>
 Smtp__Remitente=<email>
 
-TipoCambio__Url=https://v6.exchangerate-api.com/v6
+# F3-01: fuente del tipo de cambio diario (docs/ESPECIFICACION.md §3.12).
+# Sin TipoCambio__ApiKey se usa el endpoint abierto, que no necesita dar de alta nada.
+# Con clave, la ruta es la del plan de pago (https://v6.exchangerate-api.com/v6/{CLAVE}/latest/USD) y
+# TipoCambio__Url deja de usarse: son dos servicios distintos y el segundo devuelve la tabla en
+# "conversion_rates" en vez de "rates".
+TipoCambio__Url=https://open.er-api.com/v6/latest/USD
 TipoCambio__ApiKey=<secreto>
 
 WhatsApp__Proveedor=<pendiente A1>

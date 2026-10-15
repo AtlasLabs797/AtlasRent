@@ -58,11 +58,13 @@ public static class ProgramacionJobs
     public const string RutaRenovacionContratos = "renovacion-contratos";
     public const string RutaFinContratos = "fin-contratos";
     public const string RutaAvisosOperacion = "avisos-operacion";
+    public const string RutaTipoCambio = "tipo-cambio";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
-    /// existe (tipos de cambio, recordatorios, envíos, outbox y limpieza de sesiones) NO se inventan
-    /// aquí: se añaden cuando exista lo que tienen que hacer.
+    /// existe (recordatorios, envíos, outbox y limpieza de sesiones) NO se inventan
+    /// aquí: se añaden cuando exista lo que tienen que hacer. El tipo de cambio ya entra (F3-01):
+    /// era el primero de esos, y el único cuya hora quedó por delante de un trabajo anterior.
     /// <para>
     /// La vigilancia de la copia sí entra, aunque su nombre sea "alertas", porque no depende de un
     /// dominio pendiente: usa el servicio de copias y la tabla <c>alerta</c>, que ya existen. Lo que
@@ -148,6 +150,18 @@ public static class ProgramacionJobs
             typeof(TrabajoAvisosOperacion),
             nameof(TrabajoAvisosOperacion.EjecutarAsync),
             8),
+        // F3-01: el tipo de cambio del día. Va a las 05:00, y es el único trabajo que no se pone
+        // detrás de todo lo demás: los de F2 escriben en el estado del negocio y quieren la copia de
+        // las 02:00 por delante, pero aquí lo que se guarda es un valor de referencia que la factura
+        // y el cobro congelan al emitirse, así que lo que importa es que esté antes de que empiece
+        // el día y no después. Se solapa con el aviso de reservas de F2-03 a la misma hora: los dos
+        // son cortos, ninguno espera al otro y ninguno escribe en la misma fila.
+        new(
+            RutaTipoCambio,
+            CronDiarioEnUtc(5),
+            typeof(TrabajoTipoCambio),
+            nameof(TrabajoTipoCambio.EjecutarAsync),
+            5),
     ];
 
     /// <summary>

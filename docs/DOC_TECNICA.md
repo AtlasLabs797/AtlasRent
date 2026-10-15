@@ -160,6 +160,31 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - Frontend: TanStack Query para lecturas/caché/invalidación; Axios con `withCredentials`, cabecera `X-CSRF-Token` e interceptor que renueva la sesión una vez ante 401 y, si falla, lleva al login.
 - Tabla de endpoints por módulo: se añade al implementarlos.
 
+### 6.1 Tipos de cambio (F3-01)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/tipos-cambio` | `factura.ver` | Histórico paginado; filtros `moneda`, `desde`, `hasta` y orden `?sortBy=fecha\|moneda\|valor\|createdAt`. |
+| `GET /api/v1/tipos-cambio/actual?moneda=&fecha=` | `factura.ver` | Valor de un día. Sin `fecha`, hoy en Santo Domingo. Es lo que leerán la factura (F3-02) y el cobro para congelar el cambio. |
+| `GET /api/v1/tipos-cambio/{id}` | `factura.ver` | Fila concreta del histórico. |
+| `POST /api/v1/tipos-cambio` | `configuracion.editar` | Carga manual. Sin `fecha`, la de hoy. Acepta `Idempotency-Key`. |
+
+- **Ninguna acción nueva.** Ver es `factura.ver` (la fila 7 de §2, "Ver facturas individuales", que
+  también necesitarán las pantallas de factura y cobro). Cargar a mano es `configuracion.editar`,
+  que de §2 solo tiene el administrador: es la operación que sustituye a la fuente cuando esta falla
+  (§3.12), así que es configuración de la casa y no una tarea del día a día.
+- **Un valor por día y por moneda** (`UNIQUE (fecha, moneda)`): el cambio se congela al emitir y al
+  cobrar (D9), así que a lo largo del día el valor es uno y dos documentos no pueden congelar
+  números distintos.
+- **USD no se guarda.** Se resuelve a 1 sin consultar la base, y un `CHECK (moneda <> 1)` impide que
+  se cuele una fila que solo podría contradecirlo.
+- **La carga manual no la pisa la fuente.** Es el camino de recuperación que fija §3.12: si el
+  trabajo de las 05:00 lo sobrescribiera, la carga manual no habría arreglado nada. Una fila que vino
+  de la fuente sí se actualiza con el valor del día.
+- **Origen de la escritura.** `exchange_rate_api` para el trabajo (auditoría con `usuario_id` nulo y
+  `origen = "job"`) y `manual` para la API (origen `api`, con la IP de la petición). La fila guarda
+  el origen, y con él el `created_by` y el `created_at` de quien la escribió.
+
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
 - **Añadido para Atlas Rent (expuesta a internet):**
@@ -246,7 +271,7 @@ posteriores, que todavía no están escritos:
 | Renovaciones e incrementos de renta | F2-06 | Hangfire | diario 06:00 AST | por (contrato, bloque) **y** fecha de vencimiento |
 | Fin de contrato por fecha efectiva | F2-09 | Hangfire | diario 07:00 AST | condición de fecha **y** 409 por estado |
 | Avisos de operación (§3.16) | F2-10 | Hangfire | diario 08:00 AST | dedupe por (tipo, entidad) |
-| Tipo de cambio | *previsto* | Hangfire | diario 08:00 AST ⚠️ | `UNIQUE (fecha, par)` |
+| Tipo de cambio | F3-01 | Hangfire | diario 05:00 AST ⚠️ | `UNIQUE (fecha, moneda)` |
 | Recordatorios | *previsto* | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha) |
 | Alertas de vencimiento de factura | *previsto* (F3) | Hangfire | cada hora | dedupe por (tipo, entidad) |
 | Envíos | *previsto* (F4) | Hangfire (cola) | continuo | por `envio.id` |
@@ -255,10 +280,15 @@ posteriores, que todavía no están escritos:
 | Comprobación de actualizaciones | *previsto* | Hangfire | diario | — |
 | Restauración y actualización | F1-12 | Watchdog | bajo demanda | copia previa obligatoria |
 
-⚠️ **Colisión de hora pendiente:** el tipo de cambio está previsto a las **08:00** y F2-10 puso ahí los
-avisos de operación. Hoy no choca porque el trabajo de tipo de cambio todavía no existe (es de F3), pero
-**al escribirlo hay que moverlo** o los dos se pisarán. Lo mismo con los trabajos previstos de F3 y F4:
-las horas de `ProgramacionJobs.Todos` son las que manda, no las de esta tabla.
+⚠️ **Colisión de hora pendiente:** el tipo de cambio se escribió en F3-01 a las **05:00**, que es la
+hora del aviso de reserva a 7 días de F2-03, y no a las 08:00 que tenía aquí previsto. Va antes a
+propósito: los trabajos de F2 escriben en el estado del negocio y por eso quieren la copia de las
+02:00 por delante, mientras que el tipo de cambio es un valor de referencia que la factura y el
+cobro congelan al emitirse, así que importa que esté antes de que empiece el día. Los dos trabajos
+que comparten hora son cortos, ninguno espera al otro y ninguno escribe en la misma fila. Si algún
+día hay que mover uno, la decisión no es de gusto sino de qué tiene que existir antes de las
+primeras facturas. Y lo mismo con los trabajos previstos de F3 y F4: las horas de
+`ProgramacionJobs.Todos` son las que manda, no las de esta tabla.
 
 ### 8.0 Reglas que siguen los trabajos de F2
 - **Una transacción por contrato** en la renovación y en el fin: un contrato que falle no deja a medias los
@@ -269,8 +299,30 @@ las horas de `ProgramacionJobs.Todos` son las que manda, no las de esta tabla.
   transacción antes del commit. `auditoria` tiene `INSERT ... WITH CHECK (true)` con RLS, así que la fila
   con autor nulo entra.
 
+### 8.0.1 Reglas del trabajo de tipo de cambio (F3-01)
+- **No lanza si la fuente falla.** La fuente es una dependencia externa y el trabajo no puede ser la
+  razón de que caiga: deja `alerta` con tipo `tipo_cambio` y clave `fallo:{fecha}` (el tipo ya estaba
+  previsto en la tabla) y sigue. La carga manual de `POST /api/v1/tipos-cambio` es el camino de
+  recuperación que fija §3.12.
+- **La clave de la alerta lleva la fecha, al revés que las de F2-10**, porque el problema es «hoy no
+  hay cambio», que mañana deja de ser cierto: sin fecha, la bandeja se llenaría de un aviso por día
+  para siempre. Con fecha, fallar dos veces el mismo día actualiza el mismo aviso (`repeticiones`)
+  y una pasada que sí trae el cambio lo cierra.
+- **El motivo copiado a la alerta es solo el de la excepción propia** (`FalloTipoCambioException`), que
+  está escrito para que alguien lo lea; de cualquier otra excepción va el tipo, porque su mensaje
+  puede traer la URL con la clave de la API. Mismo criterio que el fallo de la copia en F1-12.
+- **La carga manual no la pisa la fuente.** Solo se respeta el valor de la fuente si la fila no es
+  manual. Al revés sí: una fila de la fuente se actualiza con el valor del día, así que correr el
+  trabajo dos veces no crea una segunda fila y no lanza.
+
 ### 8.1 Estado (F1-12)
-Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; y **avisos de operación** (08:00), de F2-10. Sigue esperando el dominio que todavía no existe: tipos de cambio (⚠️ choca con los avisos de operación a las 08:00), alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; y **tipo de cambio** (05:00), de F3-01. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+
+- **Tipo de cambio (F3-01):** ExchangeRate-API, con `TipoCambio__Url` y `TipoCambio__ApiKey`
+  opcionales; sin clave va al endpoint abierto y con clave al plan de pago, que devuelve la tabla en
+  `conversion_rates` en vez de `rates` (el cliente entiende las dos). La columna `valor` es
+  `numeric(18,6)` y se redondea con `Redondeo.TipoCambio`, que es la única razón de que el tipo de
+  cambio no pase por `numeric(18,2)` de la convención global.
 
 - **Dónde:** `AtlasRent.Api/Jobs/`. El servidor de Hangfire arranca con la API; el panel **no** se monta (`SEGURIDAD.md` A.1).
 - **Cadencia:** `ProgramacionJobs` convierte la hora de `TZ_NEGOCIO` al UTC que le corresponde, porque Hangfire 1.8 (edición gratuita) planifica en UTC y no entiende el prefijo `CRON_TZ=` de los crons con zona. Las 02:00 AST son las 06:00 UTC. Si algún día la zona pasa a tener horario de verano, `CronDiarioEnUtc` falla al arrancar en vez de desplazar la copia una hora seis meses al año.

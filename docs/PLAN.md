@@ -63,7 +63,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 ## Fase 3 · Finanzas
 | ID | Tarea | Spec | Aceptación | Depende | Estado |
 |---|---|---|---|---|---|
-| F3-01 | Tipo de cambio (ExchangeRate-API): histórico, fallback manual | 3.12 | Fallo de API → alerta y carga manual | F1-08 | PENDIENTE |
+| F3-01 | Tipo de cambio (ExchangeRate-API): histórico, fallback manual | 3.12 | Fallo de API → alerta y carga manual | F1-08 | HECHA (16/10/2026) |
 | F3-02 | Facturas: borrador, líneas, ITBIS por línea, emisión con número transaccional, cambio congelado | 3.8 | 50 emisiones concurrentes: números únicos y sin huecos por fallo | F1-08, F3-01 | PENDIENTE |
 | F3-03 | Comprobante fiscal: asignación en emisión, alertas, bloqueo por agotado/vencido, referencia e-factura manual | 3.7 | 50 emisiones concurrentes en serie 3: comprobantes únicos; agotado → emisión bloqueada sin consumir número de factura | F3-02, F0-01 | PENDIENTE |
 | F3-04 | Retenciones y comprobante de retención | 3.9 | cobro + retención = total ⇒ Pagada; indicador sin comprobante | F3-02, F0-01 | PENDIENTE |

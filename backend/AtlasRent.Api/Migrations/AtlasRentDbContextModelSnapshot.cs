@@ -3055,6 +3055,68 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("unidad_tarifa", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.TipoCambio", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha");
+
+                    b.Property<string>("Fuente")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("fuente");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<decimal>("Valor")
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("valor");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tipo_cambio");
+
+                    b.HasIndex("Fecha", "Moneda")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tipo_cambio_fecha_moneda");
+
+                    b.ToTable("tipo_cambio", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_tipo_cambio_no_usd", "moneda <> 1");
+
+                            t.HasCheckConstraint("ck_tipo_cambio_valor_positivo", "valor > 0");
+                        });
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.TipoItbis", b =>
                 {
                     b.Property<Guid>("Id")

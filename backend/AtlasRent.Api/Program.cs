@@ -269,6 +269,16 @@ builder.Services.AddScoped<ServicioAprobaciones>();
 builder.Services.AddScoped<ServicioAvisosOperacion>();
 builder.Services.AddScoped<TrabajoAvisosOperacion>();
 
+// F3-01: el tipo de cambio diario (§3.12, D22). La fuente es un HttpClient con nombre detrás de una
+// interfaz, para que las pruebas puedan sustituirla por un doble: el criterio de aceptación de la
+// tarea es qué pasa cuando la API falla, y eso no se puede probar esperando a la API de verdad. El
+// tiempo de espera es holgado porque un fallo aquí solo deja una alerta y la carga manual detrás.
+builder.Services.AddSingleton(OpcionesTipoCambio.Desde(builder.Configuration));
+builder.Services.AddHttpClient<IFuenteTipoCambio, ClienteTipoCambio>(
+    http => http.Timeout = ClienteTipoCambio.TiempoEspera);
+builder.Services.AddScoped<ServicioTiposCambio>();
+builder.Services.AddScoped<TrabajoTipoCambio>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

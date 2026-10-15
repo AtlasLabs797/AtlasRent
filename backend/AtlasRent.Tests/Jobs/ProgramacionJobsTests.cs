@@ -110,10 +110,13 @@ public sealed class ProgramacionJobsTests
     }
 
     /// <summary>
-    /// Los trabajos de §8 que dependen de dominio inexistente (tipos de cambio, recordatorios,
-    /// envíos, outbox, limpieza de sesiones) no se programan: sin lo que tienen que hacer,
-    /// programarlos solo produce errores en el registro cada noche. Las renovaciones (F2-06) ya no
-    /// entran por aquí: su dominio existe y es lo que programa.
+    /// F1-12: la lista de <c>ProgramacionJobs.Todos</c> es exactamente lo que hay escrito.
+    /// <para>
+    /// Los trabajos de §8 que dependen de dominio inexistente (recordatorios, envíos, outbox,
+    /// limpieza de sesiones) no se programan: sin lo que tienen que hacer, programarlos solo produce
+    /// errores en el registro cada noche. El tipo de cambio ya no está en esa lista desde F3-01: su
+    /// dominio existe y es lo que programa.
+    /// </para>
     /// </summary>
     [Fact]
     public void LosTrabajosDeLaSeccion8QueTodaviaNoExisteNoSePrograman()
@@ -127,7 +130,45 @@ public sealed class ProgramacionJobsTests
                 typeof(TrabajoRenovacionContratos),
                 typeof(TrabajoFinContratos),
                 typeof(TrabajoAvisosOperacion),
+                typeof(TrabajoTipoCambio),
             ]);
+    }
+
+    /// <summary>
+    /// F3-01: el tipo de cambio va a las 05:00 de Santo Domingo, y es el único trabajo que se pone
+    /// <b>delante</b> de otro.
+    /// <para>
+    /// Los trabajos de F2 van todos detrás de todo lo demás por el mismo motivo: escriben en el
+    /// estado del negocio, así que si el servidor se apagó la copia de las 02:00 falta y no hay nada
+    /// verificado sobre lo que actuar. El tipo de cambio rompe esa regla a propósito: lo que guarda
+    /// es un valor de referencia que la factura y el cobro congelan al emitirse, así que importa
+    /// que esté antes de que empiece el día, no después. Por eso cae a las 05:00 y no a las 09:00,
+    /// que es lo que le tocaría por el orden de las demás.
+    /// </para>
+    /// <para>
+    /// Comparte hora con el aviso de reservas de F2-03, y eso se comprueba: si alguien mueve una de
+    /// las dos horas sin querer, el solapamiento dejaría de ser un dato conocido del código para
+    /// pasar a ser una sorpresa.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ElTipoCambioVaALas05ParaTenerloAntesDeLaPrimeraFactura()
+    {
+        var tipoCambio = Trabajo(ProgramacionJobs.RutaTipoCambio);
+
+        tipoCambio.HoraLocal.Should().Be(5, "a las 05:00 de Santo Domingo ya ha empezado el día");
+        tipoCambio.Tipo.Should().Be(typeof(TrabajoTipoCambio));
+        tipoCambio.Metodo.Should().Be(nameof(TrabajoTipoCambio.EjecutarAsync));
+
+        // Las 05:00 de Santo Domingo (UTC−4) son las 09:00 UTC.
+        TimeZoneInfo.ConvertTime(PrimerDisparo(tipoCambio.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 5, 0, 0));
+
+        tipoCambio.HoraLocal.Should().Be(Trabajo(ProgramacionJobs.RutaAlertaReserva).HoraLocal,
+            "comparte hora con el aviso de reservas a propósito: ambos son cortos e independientes");
+
+        tipoCambio.HoraLocal.Should().BeLessThan(Trabajo(ProgramacionJobs.RutaRenovacionContratos).HoraLocal,
+            "y va por delante de los trabajos de F2, que esperan a la copia de la madrugada");
     }
 
     /// <summary>
@@ -257,6 +298,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaRenovacionContratos,
                 ProgramacionJobs.RutaFinContratos,
                 ProgramacionJobs.RutaAvisosOperacion,
+                ProgramacionJobs.RutaTipoCambio,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);
