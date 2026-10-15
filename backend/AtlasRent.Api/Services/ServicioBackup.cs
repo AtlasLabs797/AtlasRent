@@ -29,20 +29,28 @@ public sealed record ResultadoCopia(
 /// Una copia que se ha abierto, descifrado y comprobado de principio a fin. Lleva el contenido ya
 /// descifrado en memoria porque toda la comprobación se hace sobre los bytes descifrados, no sobre
 /// los del archivo.
+/// <para>
+/// La <see cref="Fecha"/> es la que dice el **contenido**, no la del nombre del archivo. El nombre
+/// es una etiqueta que alguien puede reescribir; el contenido va firmado por la etiqueta GCM.
+/// </para>
 /// </summary>
 public sealed class CopiaVerificada(string rutaArchivo, DateOnly fecha, byte[] contenido)
 {
     private const string EntradaDump = "bd.sql";
     private const string PrefijoDocumentos = "documentos/";
 
-    private readonly Lazy<IReadOnlyList<(string Nombre, byte[] Datos)>> _entradas =
+    private readonly Lazy<(DateOnly Fecha, IReadOnlyList<(string Nombre, byte[] Datos)> Entradas)> _abierto =
         new(() => ContenedorCopia.Desempaquetar(contenido));
 
     public string RutaArchivo { get; } = rutaArchivo;
 
-    public DateOnly Fecha { get; } = fecha;
+    /// <summary>Fecha según el nombre del archivo. Puede no ser la real.</summary>
+    public DateOnly FechaDelNombre { get; } = fecha;
 
-    public IReadOnlyList<(string Nombre, byte[] Datos)> Entradas => _entradas.Value;
+    /// <summary>Fecha según el contenido descifrado, que es la que vale.</summary>
+    public DateOnly Fecha => _abierto.Value.Fecha;
+
+    public IReadOnlyList<(string Nombre, byte[] Datos)> Entradas => _abierto.Value.Entradas;
 
     /// <summary>El volcado de la base de datos, ya descifrado.</summary>
     public byte[] Dump() => Entrada(EntradaDump)
@@ -60,23 +68,33 @@ public sealed class CopiaVerificada(string rutaArchivo, DateOnly fecha, byte[] c
 }
 
 /// <summary>
-/// Cómo se meten el volcado y los documentos en un solo archivo antes de cifrarlo.
+/// Cómo se meten la fecha, el volcado y los documentos en un solo archivo antes de cifrarlo.
 /// <para>
-/// Es un contenedor de entradas con longitud delante, no un ZIP y no un TAR: son tres líneas de
+/// Es un contenedor de entradas con longitud delante, no un ZIP y no un TAR: son unas pocas líneas de
 /// formato y ninguna dependencia nueva, que es lo que hace falta para poder descifrar una copia en
 /// el Watchdog sin instalar nada.
+/// </para>
+/// <para>
+/// <strong>La fecha va dentro del contenedor, no solo en el nombre del archivo.</strong> Eso no es
+/// decoración: si la fecha viviera únicamente en el nombre, quien tuviera escritura en la carpeta
+/// podría renombrar una copia antigua con la fecha de hoy. La copia "de hoy" verificaría —es un
+/// archivo auténtico y descifrable—, la generación se saltaría y la rotación acabaría borrando las
+/// copias buenas creyendo que son viejas. Como la fecha está en el texto cifrado, la etiqueta GCM la
+/// protege y un nombre que no coincida con ella se rechaza. Es el escenario clásico de subversión de
+/// copias, y atarlo al contenido es lo que lo cierra.
 /// </para>
 /// </summary>
 internal static class ContenedorCopia
 {
-    private const string Marca = "ARBK1";
+    private const string Marca = "ARBK2";
 
-    public static byte[] Empaquetar(IReadOnlyList<(string Nombre, byte[] Datos)> entradas)
+    public static byte[] Empaquetar(DateOnly fecha, IReadOnlyList<(string Nombre, byte[] Datos)> entradas)
     {
         using var flujo = new MemoryStream();
         using var escritor = new BinaryWriter(flujo, Encoding.UTF8, leaveOpen: true);
 
         escritor.Write(Marca);
+        escritor.Write($"{fecha:yyyy-MM-dd}");
         foreach (var (nombre, datos) in entradas)
         {
             var nombreEnBytes = Encoding.UTF8.GetBytes(nombre);
@@ -92,13 +110,26 @@ internal static class ContenedorCopia
         return flujo.ToArray();
     }
 
-    public static IReadOnlyList<(string Nombre, byte[] Datos)> Desempaquetar(byte[] contenido)
+    /// <summary>Abre el contenedor y devuelve la fecha que dice su propio contenido.</summary>
+    public static (DateOnly Fecha, IReadOnlyList<(string Nombre, byte[] Datos)> Entradas) Desempaquetar(
+        byte[] contenido)
     {
         using var lector = new BinaryReader(new MemoryStream(contenido, writable: false), Encoding.UTF8);
 
-        if (lector.ReadString() != Marca)
+        var marca = lector.ReadString();
+        if (marca != Marca)
         {
-            throw new InvalidOperationException("El contenido descifrado no es un contenedor de copia.");
+            throw new InvalidOperationException(
+                $"El contenido descifrado no es un contenedor de copia (marca '{marca}').");
+        }
+
+        // La fecha sale del contenido cifrado, que es lo único que no se puede reescribir sin que la
+        // etiqueta GCM deje de cuadrar.
+        if (!DateOnly.TryParseExact(
+                lector.ReadString(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var fecha))
+        {
+            throw new InvalidOperationException("El contenedor de la copia no lleva una fecha legible.");
         }
 
         var entradas = new List<(string Nombre, byte[] Datos)>();
@@ -107,7 +138,7 @@ internal static class ContenedorCopia
             var longitudNombre = lector.ReadInt32();
             if (longitudNombre == 0)
             {
-                return entradas;
+                return (fecha, entradas);
             }
 
             var nombre = Encoding.UTF8.GetString(lector.ReadBytes(longitudNombre));
@@ -150,7 +181,8 @@ public sealed class ServicioBackup(
     AlmacenDocumentos almacen,
     ServicioCifradoCopia cifrado,
     TimeProvider reloj,
-    IAlmacenRemoto? almacenRemoto = null)
+    IAlmacenRemoto? almacenRemoto = null,
+    IRegistroAlertas? alertas = null)
 {
     private const string EntradaDump = "bd.sql";
     private const string PrefijoDocumentos = "documentos/";
@@ -173,10 +205,29 @@ public sealed class ServicioBackup(
     /// Genera la copia de hoy, o reutiliza la que ya había. Lanza
     /// <see cref="CopiaSeguridadFallidaException"/> si algo sale mal, y en ese caso no se rota nada:
     /// la rotación va al final y solo cuando la copia nueva ya está escrita y comprobada.
+    /// <para>
+    /// Cualquier fallo pasa antes por <see cref="AlentarAsync"/>. Es el "fallo → alerta" del criterio
+    /// de aceptación de F1-12: un respaldo que falla en silencio no es un respaldo, es la ausencia
+    /// de un respaldo con la apariencia de que todo va bien.
+    /// </para>
     /// </summary>
     public async Task<ResultadoCopia> EjecutarAsync(string cadenaConexion, CancellationToken ct)
     {
         var fecha = FechaDeHoy;
+
+        try
+        {
+            return await GenerarAsync(fecha, cadenaConexion, ct);
+        }
+        catch (Exception e)
+        {
+            await AlentarAsync(fecha, e);
+            throw;
+        }
+    }
+
+    private async Task<ResultadoCopia> GenerarAsync(DateOnly fecha, string cadenaConexion, CancellationToken ct)
+    {
         var ruta = Path.Combine(Carpeta, NombreDeCopia(fecha));
         Directory.CreateDirectory(Carpeta);
 
@@ -197,7 +248,7 @@ public sealed class ServicioBackup(
             Log.Warning("La copia del {Fecha} no verifica; se vuelve a generar", fecha);
         }
 
-        var contenido = await ConstruirAsync(cadenaConexion, ct);
+        var contenido = await ConstruirAsync(fecha, cadenaConexion, ct);
         await EscribirAsync(ruta, cifrado.Cifrar(contenido), ct);
 
         // La comprobación se hace sobre el archivo que hay en el disco, no sobre los bytes que
@@ -206,21 +257,39 @@ public sealed class ServicioBackup(
             ?? throw new CopiaSeguridadFallidaException(
                 $"La copia del {fecha} se escribió pero no supera la verificación. No se rota nada.");
 
-        // TODO(A#): aquí está el gancho de aviso. El fallo sale por Serilog (Error/Critical, con el
-        // motivo y sin datos de la base), que es lo único que hay hoy; el envío de correo al
-        // responsable llega con el sistema de alertas, en fases posteriores. Lo que no puede esperar
-        // es que quede en un log que nadie mira: cuando exista, este throw es el punto desde el que
-        // hay que disparar la alerta, y el fallo del remoto de más abajo también.
-
         var rotados = Rotar();
         Log.Information(
             "Copia del {Fecha} correcta: {Entradas} entradas, {Documentos} documentos; {Rotados} copias antiguas borradas",
             fecha, copia.Entradas.Count, copia.Documentos().Count, rotados.Count);
 
-        await SubirAsync(ruta, ct);
+        await SubirAsync(fecha, ruta, ct);
 
         return new ResultadoCopia(
             fecha, ruta, new FileInfo(ruta).Length, copia.Documentos().Count, false, rotados);
+    }
+
+    /// <summary>
+    /// Deja la alerta del fallo del día. La clave lleva la fecha, así que un respaldo que falla cada
+    /// hora deja una alerta con el contador de repeticiones subiendo, no veinticuatro filas.
+    /// <para>
+    /// El motivo solo se traslada si es del propio servicio. Una excepción inesperada puede llevar
+    /// dentro la cadena de conexión o una sentencia de PostgreSQL, y una alerta es texto que se lee
+    /// fuera; ahí solo queda el tipo de excepción y el detalle se queda en el log.
+    /// </para>
+    /// </summary>
+    private async Task AlentarAsync(DateOnly fecha, Exception e)
+    {
+        var motivo = e is CopiaSeguridadFallidaException
+            ? e.Message
+            : $"fallo inesperado ({e.GetType().Name}); el detalle está en el log";
+        var mensaje = $"La copia de seguridad del {fecha:yyyy-MM-dd} falló: {motivo}";
+
+        Log.Fatal(mensaje);
+
+        if (alertas is not null)
+        {
+            await alertas.RegistrarAsync("backup", $"backup:{fecha:yyyy-MM-dd}", mensaje, CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -258,6 +327,32 @@ public sealed class ServicioBackup(
         }
 
         var copia = new CopiaVerificada(rutaArchivo, fecha.Value, descifrado);
+
+        // El nombre dice una fecha y el contenido dice otra. No puede ser una copia legítima: solo
+        // significa que alguien renombró el archivo. Se rechaza en lugar de aceptarlo, porque aceptar
+        // es justo lo que haría daño: una copia vieja pasaría por la de hoy, se saltaría la generación
+        // y la rotación acabaría borrando las buenas.
+        DateOnly fechaDelContenido;
+        try
+        {
+            fechaDelContenido = copia.Fecha;
+        }
+        catch (InvalidOperationException e)
+        {
+            Log.Error(
+                "La copia {Archivo} no se puede abrir como contenedor: {Motivo}",
+                Path.GetFileName(rutaArchivo), e.Message);
+            return null;
+        }
+
+        if (fechaDelContenido != copia.FechaDelNombre)
+        {
+            Log.Error(
+                "La copia {Archivo} dice {FechaEnElNombre} en el nombre y {FechaEnElContenido} en el "
+                + "contenido: no es una copia legítima, se rechaza",
+                Path.GetFileName(rutaArchivo), copia.FechaDelNombre, fechaDelContenido);
+            return null;
+        }
 
         byte[] dump;
         try
@@ -315,7 +410,7 @@ public sealed class ServicioBackup(
         .ThenByDescending(ruta => ruta, StringComparer.Ordinal)
         .ToList();
 
-    private async Task<byte[]> ConstruirAsync(string cadenaConexion, CancellationToken ct)
+    private async Task<byte[]> ConstruirAsync(DateOnly fecha, string cadenaConexion, CancellationToken ct)
     {
         var dump = await volcado.VolcarAsync(cadenaConexion, ct);
 
@@ -334,7 +429,9 @@ public sealed class ServicioBackup(
             "Volcado de {Bytes} bytes con filas y {Documentos} documentos para empaquetar",
             dump.Length, entradas.Count - 1);
 
-        return ContenedorCopia.Empaquetar(entradas);
+        // La fecha entra en el contenedor, no solo en el nombre del archivo: es lo que impide que un
+        // archivo renombrado a una fecha futura se haga pasar por la copia de hoy.
+        return ContenedorCopia.Empaquetar(fecha, entradas);
     }
 
     private async Task<IReadOnlyList<(string Nombre, byte[] Datos)>> DocumentosAsync(CancellationToken ct)
@@ -388,6 +485,12 @@ public sealed class ServicioBackup(
     /// Deja solo las <c>Backup__Conservar</c> más recientes. La más reciente nunca se borra aunque
     /// el número a conservar sea uno, y el borrado va siempre después de que la copia nueva esté
     /// escrita y verificada.
+    /// <para>
+    /// El orden es por nombre, no por la fecha del contenido, para no tener que descifrar todas las
+    /// copias en cada ejecución. Un archivo cuyo nombre no case con su contenido ya ha sido
+    /// rechazado en <see cref="VerificarAsync"/>, así que no se cuela como copia válida en ninguna
+    /// parte; aquí solo puede ocupar un hueco, nunca pasar por una copia buena.
+    /// </para>
     /// </summary>
     private IReadOnlyList<string> Rotar()
     {
@@ -403,13 +506,13 @@ public sealed class ServicioBackup(
         return sobrantes.Select(Path.GetFileName).OfType<string>().ToList();
     }
 
-    private async Task SubirAsync(string ruta, CancellationToken ct)
+    private async Task SubirAsync(DateOnly fecha, string ruta, CancellationToken ct)
     {
         if (almacenRemoto is null)
         {
-            // TODO(A#): la subida a Google Drive espera a F0-04 (crear las carpetas y registrar el
-            // cliente OAuth). Hasta entonces la copia vive solo en local, e IAlmacenRemoto es el
-            // punto donde engancharla.
+            // La subida a Google Drive espera a F0-04 (crear las carpetas y registrar el cliente
+            // OAuth). Hasta entonces la copia vive solo en local, e IAlmacenRemoto es el punto donde
+            // engancharla.
             Log.Information(
                 "Copia guardada solo en local: no hay almacén remoto configurado (F0-04 pendiente)");
             return;
@@ -419,11 +522,20 @@ public sealed class ServicioBackup(
         {
             await almacenRemoto.SubirAsync(ruta, ct);
         }
-        catch (NotImplementedException e)
+        catch (Exception e)
         {
             // La copia local ya está escrita y comprobada: que la remota no exista no la invalida,
-            // pero tiene que quedar en el registro y no pasar desapercibido.
+            // pero tiene que quedar en el registro y no pasar desapercibido. Un almacén remoto
+            // configurado que falla es un fallo de verdad, así que también avienta alerta.
             Log.Warning("No se pudo subir la copia al almacén remoto: {Motivo}", e.Message);
+
+            if (alertas is not null)
+            {
+                var mensaje =
+                    $"La copia del {fecha:yyyy-MM-dd} está hecha pero no se pudo subir al almacén remoto: {e.Message}";
+                await alertas.RegistrarAsync(
+                    "backup", $"backup-remoto:{fecha:yyyy-MM-dd}", mensaje, ct);
+            }
         }
     }
 

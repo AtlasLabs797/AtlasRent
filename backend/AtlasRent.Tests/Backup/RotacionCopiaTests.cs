@@ -55,12 +55,67 @@ public sealed class RotacionCopiaTests : IDisposable
                 : Task.FromResult(Encoding.UTF8.GetBytes(contenido));
     }
 
-    private ServicioBackup Crear(IVolcadoBaseDatos volcado, TimeProvider reloj) => new(
+    private ServicioBackup Crear(IVolcadoBaseDatos volcado, TimeProvider reloj) => Crear(volcado, reloj, null);
+
+    /// <summary>Como <see cref="Crear(IVolcadoBaseDatos, TimeProvider)"/>, injecting el registro de alertas.</summary>
+    private ServicioBackup Crear(IVolcadoBaseDatos volcado, TimeProvider reloj, IRegistroAlertas? alertas) => new(
         _opciones,
         volcado,
         new AlmacenDocumentos(new OpcionesAlmacen { RutaDocumentos = Path.Combine(_carpeta, "documentos") }),
         new ServicioCifradoCopia(_opciones),
-        reloj);
+        reloj,
+        almacenRemoto: null,
+        alertas: alertas);
+
+    /// <summary>Alerta en memoria: guarda lo que se le pasó para poder mirarlo en el test.</summary>
+    private sealed class AlertaEnMemo(List<(string Tipo, string Clave, string Mensaje)> registradas) : IRegistroAlertas
+    {
+        public List<(string Tipo, string Clave, string Mensaje)> Registradas { get; } = registradas;
+
+        public Task RegistrarAsync(string tipo, string clave, string mensaje, CancellationToken ct)
+        {
+            Registradas.Add((tipo, clave, mensaje));
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// Un respaldo que falla tiene que dejar rastro, no solo una línea de log que nadie mira: es el
+    /// "fallo → alerta" del criterio de aceptación de F1-12. Y como la clave lleva la fecha, el
+    /// mismo fallo de mañana es otra alerta y no se pisan.
+    /// </summary>
+    [Fact]
+    public async Task UnaCopiaQueFallaDejaAlertaConLaFechaDelDia()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var reloj = new RelojPrueba();
+        var alertas = new AlertaEnMemo([]);
+        var servicio = Crear(new VolcadoFalso(null), reloj, alertas);
+
+        var accion = () => servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        await accion.Should().ThrowAsync<CopiaSeguridadFallidaException>();
+
+        var registro = alertas.Registradas.Should().ContainSingle().Subject;
+        registro.Tipo.Should().Be("backup");
+        registro.Clave.Should().Be($"backup:{servicio.FechaDeHoy:yyyy-MM-dd}", "una alerta por día de respaldo");
+        registro.Mensaje.Should().Contain("copia de seguridad", "el motivo tiene que explicar qué pasó");
+    }
+
+    /// <summary>
+    /// Un respaldo que sí sale bien no genera alertas. Si las generara, el día que el backup va bien
+    /// habría que limpiar y la señal dejaría de significar algo.
+    /// </summary>
+    [Fact]
+    public async Task UnaCopiaQueSaleBienNoDejaNingunaAlerta()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var alertas = new AlertaEnMemo([]);
+        var servicio = Crear(new VolcadoFalso(DumpConDatos), new RelojPrueba(), alertas);
+
+        await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+
+        alertas.Registradas.Should().BeEmpty();
+    }
 
     /// <summary>
     /// Tras cinco días quedan cuatro copias, y son las cuatro más recientes. La más reciente nunca
@@ -178,6 +233,39 @@ public sealed class RotacionCopiaTests : IDisposable
 
         (await servicio.VerificarAsync(resultado.RutaArchivo, ct)).Should().BeNull();
         (await servicio.UltimaCopiaValidaAsync(ct)).Should().BeNull();
+    }
+
+    /// <summary>
+    /// Renombrar la copia de ayer con el nombre de hoy no la convierte en la copia de hoy. Antes de
+    /// que la fecha viviera dentro del contenedor, ese archivo verificaba —es auténtico y descifrable—
+    /// y el servicio se lo creaba: la copia del día no se generaba, el log decía que todo estaba bien y
+    /// la rotación acababa borrando las copias buenas creyendo que eran viejas.
+    /// </summary>
+    [Fact]
+    public async Task UnaCopiaRenombradaConLaFechaDeHoyNoCuentaComoLaCopiaDeHoy()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var reloj = new RelojPrueba();
+        var servicio = Crear(new VolcadoFalso(DumpConDatos), reloj);
+
+        reloj.Avanzar(TimeSpan.FromDays(1));
+        var ayer = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+
+        // Se renombra con el nombre de mañana, que es lo que haría alguien con escritura en la carpeta.
+        var manana = ayer.Fecha.AddDays(1);
+        var rutaConNombreDeManana = Path.Combine(_carpeta, ServicioBackup.NombreDeCopia(manana));
+        File.Move(ayer.RutaArchivo, rutaConNombreDeManana, overwrite: true);
+
+        (await servicio.VerificarAsync(rutaConNombreDeManana, ct)).Should().BeNull(
+            "el nombre dice una fecha y el contenido otra: no es una copia legítima");
+
+        reloj.Avanzar(TimeSpan.FromDays(1));
+        var resultado = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+
+        resultado.YaExistia.Should().BeFalse("una copia de ayer no es la copia de hoy, aunque se renombre");
+        resultado.Fecha.Should().Be(manana);
+        (await servicio.VerificarAsync(resultado.RutaArchivo, ct)).Should().NotBeNull();
+        Directory.GetFiles(_carpeta, "*.arbk").Should().HaveCount(1);
     }
 
     /// <summary>

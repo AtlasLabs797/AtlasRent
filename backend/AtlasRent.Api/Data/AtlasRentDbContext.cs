@@ -25,6 +25,8 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<BloqueoIp> BloqueoIp => Set<BloqueoIp>();
 
+    public DbSet<Alerta> Alerta => Set<Alerta>();
+
     public DbSet<MfaDesafio> MfaDesafio => Set<MfaDesafio>();
 
     public DbSet<CodigoRecuperacion> CodigoRecuperacion => Set<CodigoRecuperacion>();
@@ -156,6 +158,21 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Usuario)
                 .WithMany()
                 .HasForeignKey(e => e.UsuarioId);
+        });
+
+        // F1-12: registro de lo que falló y que hay que mirar. La clave es única porque el criterio
+        // de aceptación de F1-12 es "fallo → alerta" sin duplicar: si el backup falla cada hora, sin
+        // esa restricción la tabla crece y la señal desaparece.
+        modelBuilder.Entity<Alerta>(entidad =>
+        {
+            entidad.ToTable("alerta");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Clave).IsRequired();
+            entidad.Property(e => e.Tipo).IsRequired();
+            entidad.Property(e => e.Mensaje).IsRequired();
+            entidad.Property(e => e.OcurridoAt).IsRequired();
+            entidad.HasIndex(e => e.Clave).IsUnique();
+            entidad.HasIndex(e => new { e.Tipo, e.OcurridoAt });
         });
 
         modelBuilder.Entity<BloqueoIp>(entidad =>

@@ -84,7 +84,7 @@
 
 ### A.8 Continuidad
 - [ ] Backup diario cifrado (BD + documentos) por Hangfire; se conservan **4**; copia cifrada en Google Drive (cuenta/carpeta propia de Atlas Rent).
-- [ ] Alerta si un backup falla o no se ejecuta.
+- [ ] Alerta si un backup falla o no se ejecuta. *(F1-12 cubre la primera mitad: cada fallo del día deja fila en `alerta` con la fecha como clave, y el mismo fallo repetido suma repeticiones en vez de duplicarse. La segunda —un backup que no llega a ejecutarse porque el proceso estaba caído— no está: no hay ningún trabajo que mire si la copia de hoy existe.)*
 - [ ] Restauración probada en otra máquina (última prueba: ____ ).
 - [ ] Runbook de recuperación y de "admin bloqueado" (break-glass) documentado.
 - [ ] SAI en el servidor.

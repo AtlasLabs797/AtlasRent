@@ -92,6 +92,7 @@ public sealed class CifradoCopiaTests
     [Fact]
     public void ElContenedorConservaLosNombresDeLasEntradas()
     {
+        var fecha = new DateOnly(2026, 10, 10);
         var entradas = new (string, byte[])[]
         {
             ("bd.sql", Encoding.UTF8.GetBytes("volcado")),
@@ -99,11 +100,26 @@ public sealed class CifradoCopiaTests
             ("documentos/subcarpeta/otro.bin", [0x00, 0xFF, 0x10, 0x00]),
         };
 
-        var abierto = ContenedorCopia.Desempaquetar(ContenedorCopia.Empaquetar(entradas));
+        var abierto = ContenedorCopia.Desempaquetar(ContenedorCopia.Empaquetar(fecha, entradas));
 
-        abierto.Select(e => e.Nombre).Should().Equal(entradas.Select(e => e.Item1));
-        abierto[1].Datos.Should().Equal(entradas[1].Item2, "los bytes van y vienen tal cual");
-        abierto[2].Datos.Should().Equal(entradas[2].Item2, "también los que no son texto");
+        abierto.Entradas.Select(e => e.Nombre).Should().Equal(entradas.Select(e => e.Item1));
+        abierto.Entradas[1].Datos.Should().Equal(entradas[1].Item2, "los bytes van y vienen tal cual");
+        abierto.Entradas[2].Datos.Should().Equal(entradas[2].Item2, "también los que no son texto");
+    }
+
+    /// <summary>
+    /// La fecha viaja dentro del contenedor. Si viviera solo en el nombre del archivo, renombrar una
+    /// copia vieja con la fecha de hoy la haría pasar por la copia vigente.
+    /// </summary>
+    [Fact]
+    public void LaFechaDelContenedorEsLaDelContenidoYNoLaDelNombre()
+    {
+        var fecha = new DateOnly(2026, 10, 10);
+
+        var abierto = ContenedorCopia.Desempaquetar(
+            ContenedorCopia.Empaquetar(fecha, [("bd.sql", Encoding.UTF8.GetBytes("volcado"))]));
+
+        abierto.Fecha.Should().Be(fecha);
     }
 
     /// <summary>
@@ -113,11 +129,24 @@ public sealed class CifradoCopiaTests
     [Fact]
     public void UnContenedorCorruptoSeRechaza()
     {
-        var contenedor = ContenedorCopia.Empaquetar([("bd.sql", Encoding.UTF8.GetBytes("hola"))]);
+        var contenedor = ContenedorCopia.Empaquetar(
+            new DateOnly(2026, 10, 10), [("bd.sql", Encoding.UTF8.GetBytes("hola"))]);
 
-        // Se falsea la longitud de la última entrada para que apunte fuera del archivo.
-        var longitud = BitConverter.ToInt32(contenedor, 2 + "ARBK1".Length + 4 + "bd.sql".Length);
-        BitConverter.GetBytes(longitud + 1_000_000).CopyTo(contenedor, 2 + "ARBK1".Length + 4 + "bd.sql".Length);
+        // Se localiza la entrada por su nombre y se falsea justo delante la longitud de sus datos,
+        // que es lo que dice el archivo al leer. Se busca el nombre en vez de calcular la posición a
+        // mano para que este test no dependa del formato exacto del contenedor.
+        var nombre = Encoding.UTF8.GetBytes("bd.sql");
+        var inicioNombre = Array.IndexOf(contenedor, nombre[0]);
+        while (inicioNombre >= 0
+            && !contenedor.AsSpan(inicioNombre, nombre.Length).SequenceEqual(nombre))
+        {
+            inicioNombre = Array.IndexOf(contenedor, nombre[0], inicioNombre + 1);
+        }
+
+        inicioNombre.Should().BeGreaterThan(0, "el contenedor tiene que llevar el nombre de la entrada");
+        var posicionLongitud = inicioNombre + nombre.Length;
+        var longitud = BitConverter.ToInt32(contenedor, posicionLongitud);
+        BitConverter.GetBytes(longitud + 1_000_000).CopyTo(contenedor, posicionLongitud);
 
         var accion = () => ContenedorCopia.Desempaquetar(contenedor);
         accion.Should().Throw<InvalidOperationException>();

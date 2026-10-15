@@ -212,6 +212,9 @@ builder.Services.AddSingleton(OpcionesBackup.Desde(builder.Configuration));
 builder.Services.AddSingleton<ServicioCifradoCopia>();
 builder.Services.AddSingleton<IVolcadoBaseDatos>(VolcadoPgDump.EnProduccion());
 builder.Services.AddScoped<ServicioBackup>();
+// F1-12: el "fallo → alerta" del criterio de aceptación. Scoped porque usa el DbContext, que es
+// scoped; el backup es scoped también y por eso lo puede recibir.
+builder.Services.AddScoped<IRegistroAlertas, ServicioAlertas>();
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>

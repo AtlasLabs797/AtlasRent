@@ -140,6 +140,55 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("ajuste_general", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Alerta", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Clave")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("clave");
+
+                    b.Property<string>("Mensaje")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("mensaje");
+
+                    b.Property<DateTimeOffset>("OcurridoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ocurrido_at");
+
+                    b.Property<int>("Repeticiones")
+                        .HasColumnType("integer")
+                        .HasColumnName("repeticiones");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tipo");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_alerta");
+
+                    b.HasIndex("Clave")
+                        .IsUnique()
+                        .HasDatabaseName("ix_alerta_clave");
+
+                    b.HasIndex("Tipo", "OcurridoAt")
+                        .HasDatabaseName("ix_alerta_tipo_ocurrido_at");
+
+                    b.ToTable("alerta", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Auditoria", b =>
                 {
                     b.Property<Guid>("Id")
