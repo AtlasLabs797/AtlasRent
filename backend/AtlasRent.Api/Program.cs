@@ -247,6 +247,10 @@ builder.Services.AddScoped<ServicioRenovaciones>();
 builder.Services.AddScoped<TrabajoRenovacionContratos>();
 builder.Services.AddScoped<ServicioIncrementos>();
 
+// F2-07: catálogo de plantillas y anexos, la congelación de la plantilla al aprobar y el PDF del
+// contrato. Scoped, y con el cifrado dentro porque el PDF descifra el documento del cliente (D16).
+builder.Services.AddScoped<ServicioPlantillas>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

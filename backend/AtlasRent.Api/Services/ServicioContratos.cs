@@ -32,6 +32,12 @@ namespace AtlasRent.Api.Services;
 /// de estado. Un fallo a media alta no deja la unidad bloqueada sin contrato.
 /// </item>
 /// <item>
+/// Al aprobar se <b>congela</b> la plantilla: se copia su texto y el de los anexos que declara a
+/// <see cref="ContratoPlantillaCongelada"/>, en la misma transacción que la aprobación. Editar o
+/// desactivar la plantilla después no cambia lo que dice un contrato ya aprobado, y el PDF sale de
+/// esa copia.
+/// </item>
+/// <item>
 /// Nada se borra. El historial va a <see cref="ContratoVersion"/> y las solicitudes a
 /// <see cref="SolicitudAprobacion"/>.
 /// </item>
@@ -43,6 +49,7 @@ public sealed class ServicioContratos(
     ServicioIdempotencia idempotencia,
     ServicioDisponibilidad disponibilidad,
     ServicioReservas reservas,
+    ServicioPlantillas plantillas,
     IPolicyService politica,
     TimeProvider reloj)
 {
@@ -363,15 +370,17 @@ public sealed class ServicioContratos(
             mutacion,
             proyectar: AResumen,
             datosAuditoria: DatosAuditoria,
-            antesDeGuardar: () =>
+            antesDeGuardar: async () =>
             {
                 ResolverSolicitud(solicitud, ResultadoSolicitud.Aprobada, aprobador);
                 CambiarEstado(contrato, EstadoContrato.Aprobado, aprobador, "Aprobado.");
                 // La plantilla se congela al aprobar (§3.5): a partir de aquí, editar la plantilla del
-                // contrato ya no cambia la que usa este contrato.
+                // contrato ya no cambia la que usa este contrato. Copia el texto y los anexos a la fila
+                // congelada en esta misma transacción, porque una aprobación sin copia es un contrato
+                // aprobado que no sabe qué texto firmó.
                 contrato.PlantillaContratoCongeladaId = contrato.PlantillaContratoId;
                 contrato.PlantillaCongeladaAt = reloj.GetUtcNow();
-                return Task.CompletedTask;
+                await plantillas.CongelarAsync(contrato, ct);
             },
             ct: ct);
     }

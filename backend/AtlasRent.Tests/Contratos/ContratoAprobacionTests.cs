@@ -174,6 +174,19 @@ public sealed class ContratoAprobacionTests(ContenedorBdFixture bd, ApiTestFacto
                 idempotencia,
                 disponibilidad,
                 new ServicioReservas(contexto, auditoria, idempotencia, disponibilidad, api.Reloj),
+                // F2-07: la aprobación congela la plantilla, y congelarla necesita el catálogo y el
+                // cifrado (para el PDF, que no se prueba aquí).
+                new ServicioPlantillas(
+                    contexto,
+                    auditoria,
+                    idempotencia,
+                    new ServicioCifrado(new OpcionesSeguridad
+                    {
+                        ClaveJwt = new byte[64],
+                        ClaveCifrado = api.ClaveCifrado,
+                        ClaveHmacDocumento = api.ClaveHmacDocumento,
+                    }),
+                    api.Reloj),
                 politica,
                 api.Reloj),
             contexto);

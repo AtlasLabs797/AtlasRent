@@ -111,11 +111,13 @@ public sealed class Contrato : IEntidadTrazada
     public int RenovacionMeses { get; set; }
 
     /// <summary>
-    /// Plantilla con la que se redacta el contrato, como identificador. <b>No es una clave ajena:</b>
-    /// la tabla de plantillas es de F2-07, así que hasta que exista esta columna guarda el
-    /// identificador que el front le pase.
-    /// TODO(A#) F2-07: cuando exista <c>plantilla_contrato</c>, esta columna pasa a ser la clave
-    /// ajena real y el PDF se compone desde ella.
+    /// <see cref="Data.PlantillaContrato.Codigo"/> de la plantilla con la que se redacta este
+    /// contrato. F2-07: es el código, y no el identificador interno de la plantilla, porque es lo
+    /// que trae el front, lo que <see cref="Inmueble.PlantillaContratoPorDefecto"/> guarda (F1-10)
+    /// y lo que un contrato ya firmado puede citar sin depender de una fila del catálogo. La
+    /// plantilla se resuelve al <b>aprobar</b>, que es cuando se copia: en borrador puede apuntar a
+    /// una plantilla que el responsable esté preparando, y si no existiera o estuviera desactivada,
+    /// la aprobación falla con 409 en vez de congelar un contrato sin texto.
     /// </summary>
     public string PlantillaContratoId { get; set; } = string.Empty;
 
@@ -124,11 +126,23 @@ public sealed class Contrato : IEntidadTrazada
     /// Es la congelación que pide la especificación (§3.5: "la plantilla del contrato se congela al
     /// aprobarse"): a partir de ahí, editar la plantilla del contrato no toca lo que el contrato
     /// firmado usa. No lo vuelve a escribir nadie.
+    /// <para>
+    /// El código solo dice <i>qué</i> plantilla se congeló. El <i>qué decía</i> está en
+    /// <see cref="PlantillaCongelada"/>, que es donde está la copia del texto y de los anexos, y de
+    /// donde sale el PDF.
+    /// </para>
     /// </summary>
     public string? PlantillaContratoCongeladaId { get; set; }
 
     /// <summary>Cuándo se congeló la plantilla, si ya está congelada.</summary>
     public DateTimeOffset? PlantillaCongeladaAt { get; set; }
+
+    /// <summary>
+    /// Copia congelada de la plantilla y de sus anexos. Nula mientras el contrato no esté aprobado.
+    /// Existe a partir de <see cref="EstadoContrato.Aprobado"/> y de ahí en adelante no se vuelve a
+    /// escribir: ni editar la plantilla del catálogo ni desactivar su anexo la tocan.
+    /// </summary>
+    public ContratoPlantillaCongelada? PlantillaCongelada { get; set; }
 
     /// <summary>Estado del flujo.</summary>
     public EstadoContrato Estado { get; set; }

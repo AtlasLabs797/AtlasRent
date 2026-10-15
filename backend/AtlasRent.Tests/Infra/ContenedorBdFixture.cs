@@ -21,6 +21,9 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
     private const string ImagenPostgres = "postgres:16-alpine";
     private const int PuertoPostgres = 5432;
 
+    /// <summary>Códigos de plantilla que las pruebas de contratos citan en sus contratos.</summary>
+    private static readonly string[] PlantillasDePrueba = ["estandar", "larga-2026"];
+
     private PostgreSqlContainer _contenedor = null!;
 
     /// <summary>Superusuario del contenedor (<c>postgres</c>). Solo para montar la estructura y para las pruebas de manipulación por debajo.</summary>
@@ -105,6 +108,12 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
         {
             await contexto.Database.MigrateAsync();
         }
+
+        // 4) F2-07: las dos plantillas de contrato que citan las pruebas de contratos. A partir de
+        //    F2-07 aprobar un contrato exige que su plantilla exista en el catálogo (§3.5, congelación
+        //    al aprobar), así que sin ellas ninguna prueba de contratos llegaría a aprobado. Se siembran
+        //    sin texto: un catálogo de plantillas lo escribe el responsable, no la infraestructura.
+        await SembrarPlantillasDePruebaAsync();
     }
 
     public async ValueTask DisposeAsync() => await _contenedor.DisposeAsync();
@@ -126,6 +135,37 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
             .Options;
 
         return new AtlasRentDbContext(opciones);
+    }
+
+
+    /// <summary>
+    /// Plantillas de contrato que usan las pruebas de contratos, sembradas si no están. Es dato de
+    /// prueba, no del catálogo real: el texto de una plantilla legal no lo escribe la base.
+    /// </summary>
+    private async Task SembrarPlantillasDePruebaAsync()
+    {
+        var ahora = DateTimeOffset.UtcNow;
+        await using var contexto = CrearContexto(CadenaMigrador);
+        foreach (var codigo in PlantillasDePrueba)
+        {
+            if (await contexto.PlantillaContrato.AnyAsync(p => p.Codigo == codigo))
+            {
+                continue;
+            }
+
+            contexto.PlantillaContrato.Add(new PlantillaContrato
+            {
+                Id = Guid.NewGuid(),
+                Codigo = codigo,
+                Nombre = $"Plantilla de prueba {codigo}",
+                Secciones = [],
+                AnexosTipos = [],
+                Activa = true,
+                CreatedAt = ahora,
+            });
+        }
+
+        await contexto.SaveChangesAsync();
     }
 
     private NpgsqlConnectionStringBuilder Conectar(string rol, string clave) => new()

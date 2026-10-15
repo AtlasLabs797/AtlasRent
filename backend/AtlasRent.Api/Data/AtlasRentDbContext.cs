@@ -112,6 +112,15 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<ContratoIncremento> ContratoIncremento => Set<ContratoIncremento>();
 
+    // F2-07: catálogo de plantillas de contrato y de anexos, y la copia congelada de cada contrato
+    // aprobado (docs/ESPECIFICACION.md §3.5). Los tres son de solo añadir y de desactivar, nunca de
+    // borrar: la copia congelada es lo que dice el contrato firmado.
+    public DbSet<PlantillaContrato> PlantillaContrato => Set<PlantillaContrato>();
+
+    public DbSet<PlantillaAnexo> PlantillaAnexo => Set<PlantillaAnexo>();
+
+    public DbSet<ContratoPlantillaCongelada> ContratoPlantillaCongelada => Set<ContratoPlantillaCongelada>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -700,8 +709,9 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.Observaciones).HasMaxLength(1000);
             entidad.Property(e => e.EstadoActualComentario).HasMaxLength(1000);
-            // La plantilla es el identificador de la plantilla, no una clave ajena: la tabla de
-            // plantillas es de F2-07 y hasta entonces esta columna guarda lo que le pase el front.
+            // F2-07: el código de la plantilla, no una clave ajena al catálogo: es lo que guarda
+            // el front y lo que trae por defecto el inmueble (F1-10). La plantilla se resuelve al
+            // aprobar, que es cuando se copia a contrato_plantilla_congelada.
             entidad.Property(e => e.PlantillaContratoId).HasMaxLength(120).IsRequired();
             entidad.Property(e => e.PlantillaContratoCongeladaId).HasMaxLength(120);
             entidad.Property(e => e.CreatedAt).IsRequired();
@@ -814,6 +824,71 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Contrato)
                 .WithMany(c => c.Incrementos)
                 .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F2-07: catálogo de plantillas de contrato (docs/ESPECIFICACION.md §3.5). El código es
+        // único y no se reutiliza: un contrato firmado cita el código de su plantilla, así que
+        // reutilizarlo haría que dos plantillas distintas se escribieran con el mismo nombre. El
+        // catálogo no tiene categorías porque la especificación no las define para plantillas (sí
+        // para los documentos del inmueble, §3.1): lo que ordena el catálogo es el código, y con
+        // él ya no pueden existir dos plantillas activas con el mismo nombre, que es lo que pedía
+        // la regla de "uno activo por categoría" si algún día esa categoría existiera.
+        modelBuilder.Entity<PlantillaContrato>(entidad =>
+        {
+            entidad.ToTable("plantilla_contrato");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Codigo).HasMaxLength(60).IsRequired();
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.Secciones)
+                .HasConversion(TextoDePlantilla.Secciones).HasColumnType("jsonb").IsRequired();
+            entidad.Property(e => e.AnexosTipos)
+                .HasConversion(TextoDePlantilla.Tipos).HasColumnType("jsonb").IsRequired();
+            entidad.HasIndex(e => e.Codigo).IsUnique();
+            // El selector de plantillas del front lista las activas por nombre.
+            entidad.HasIndex(e => new { e.Activa, e.Nombre });
+        });
+
+        // F2-07: catálogo de anexos, uno activo por tipo (§3.5). El índice único parcial sobre
+        // (tipo) con el predicado "activa" es la regla en la base, no solo en el servicio: dos
+        // anexos activos del mismo tipo no pueden existir ni por un camino futuro (importación,
+        // trabajo, inserción directa). Cuando el primero se desactiva, el segundo cabe.
+        modelBuilder.Entity<PlantillaAnexo>(entidad =>
+        {
+            entidad.ToTable("plantilla_anexo");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.Secciones)
+                .HasConversion(TextoDePlantilla.Secciones).HasColumnType("jsonb").IsRequired();
+            entidad.HasIndex(e => e.Tipo).IsUnique().HasFilter("(activa)");
+            entidad.HasIndex(e => new { e.Activa, e.Nombre });
+        });
+
+        // F2-07: la copia congelada de la plantilla y sus anexos. La clave es contrato_id, así que
+        // un contrato no puede tener dos copias; y no hay updated_at porque no se edita nunca. El
+        // texto va en jsonb porque es texto de usuario que el PDF imprime entero, no algo que la
+        // aplicación consulte por partes.
+        modelBuilder.Entity<ContratoPlantillaCongelada>(entidad =>
+        {
+            entidad.ToTable("contrato_plantilla_congelada");
+            entidad.HasKey(e => e.ContratoId);
+            entidad.Property(e => e.Codigo).HasMaxLength(60).IsRequired();
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.CongeladaAt).IsRequired();
+            entidad.Property(e => e.Secciones)
+                .HasConversion(TextoDePlantilla.Secciones).HasColumnType("jsonb").IsRequired();
+            entidad.Property(e => e.Anexos)
+                .HasConversion(TextoDePlantilla.Anexos).HasColumnType("jsonb").IsRequired();
+            entidad.HasIndex(e => e.PlantillaId);
+            entidad.HasOne(e => e.Contrato)
+                .WithOne(c => c.PlantillaCongelada)
+                .HasForeignKey<ContratoPlantillaCongelada>(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Plantilla)
+                .WithMany()
+                .HasForeignKey(e => e.PlantillaId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

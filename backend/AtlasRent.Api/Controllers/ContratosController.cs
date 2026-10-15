@@ -43,6 +43,7 @@ public sealed class ContratosController(
     ServicioContratos contratos,
     ServicioRenovaciones renovaciones,
     ServicioIncrementos increments,
+    ServicioPlantillas plantillas,
     ServicioIdempotencia idempotencia,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
@@ -277,6 +278,33 @@ public sealed class ContratosController(
     public async Task<IActionResult> Liquidar(Guid id, CancellationToken ct) =>
         await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/liquidacion", ct,
             m => contratos.LiquidarAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>
+    /// PDF del contrato (<c>docs/DESIGN.md §7</c>), como el de la cotización (F2-02).
+    /// <para>
+    /// Lectura pura, así que va con <c>cliente.ver</c>: la fila 2 de §2 es "Ver clientes, unidades,
+    /// reservas y contratos", y el PDF es el contrato. El documento sale de la plantilla congelada
+    /// al aprobar, no del catálogo: editar la plantilla después no cambia un contrato ya firmado.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/pdf")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var pdf = await plantillas.PdfContratoAsync(id, ct);
+            return File(pdf, "application/pdf", $"contrato-{id:D}.pdf");
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (InvalidOperationException conflicto)
+        {
+            return Conflicto(conflicto.Message);
+        }
+    }
 
     // ---------------------------------------------------------------- internos
 

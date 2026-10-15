@@ -811,6 +811,57 @@ namespace AtlasRent.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoPlantillaCongelada", b =>
+                {
+                    b.Property<Guid>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<string>("Anexos")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("anexos");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("codigo");
+
+                    b.Property<DateTimeOffset>("CongeladaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("congelada_at");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<Guid>("PlantillaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plantilla_id");
+
+                    b.Property<string>("Secciones")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("secciones");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("ContratoId")
+                        .HasName("pk_contrato_plantilla_congelada");
+
+                    b.HasIndex("PlantillaId")
+                        .HasDatabaseName("ix_contrato_plantilla_congelada_plantilla_id");
+
+                    b.ToTable("contrato_plantilla_congelada", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1905,6 +1956,136 @@ namespace AtlasRent.Api.Migrations
                             RolClave = "empleado",
                             Accion = "sesion.cerrar"
                         });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.PlantillaAnexo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Secciones")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("secciones");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_plantilla_anexo");
+
+                    b.HasIndex("Tipo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_plantilla_anexo_tipo")
+                        .HasFilter("(activa)");
+
+                    b.HasIndex("Activa", "Nombre")
+                        .HasDatabaseName("ix_plantilla_anexo_activa_nombre");
+
+                    b.ToTable("plantilla_anexo", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.PlantillaContrato", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<string>("AnexosTipos")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("anexos_tipos");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("codigo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Secciones")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("secciones");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_plantilla_contrato");
+
+                    b.HasIndex("Codigo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_plantilla_contrato_codigo");
+
+                    b.HasIndex("Activa", "Nombre")
+                        .HasDatabaseName("ix_plantilla_contrato_activa_nombre");
+
+                    b.ToTable("plantilla_contrato", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Prospecto", b =>
@@ -3063,6 +3244,27 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Contrato");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ContratoPlantillaCongelada", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithOne("PlantillaCongelada")
+                        .HasForeignKey("AtlasRent.Api.Data.ContratoPlantillaCongelada", "ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contrato_plantilla_congelada_contrato_contrato_id");
+
+                    b.HasOne("AtlasRent.Api.Data.PlantillaContrato", "Plantilla")
+                        .WithMany()
+                        .HasForeignKey("PlantillaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contrato_plantilla_congelada_plantilla_contrato_plantilla_id");
+
+                    b.Navigation("Contrato");
+
+                    b.Navigation("Plantilla");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContratoVersion", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
@@ -3324,6 +3526,8 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Bloques");
 
                     b.Navigation("Incrementos");
+
+                    b.Navigation("PlantillaCongelada");
 
                     b.Navigation("Solicitudes");
 
