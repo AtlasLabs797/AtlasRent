@@ -44,7 +44,7 @@ Lo que hay que tener presente, porque son consecuencias reales:
 Lo que queda:
 
 - **Revisor**: el único colaborador es el dueño. La protección sin un segundo par de ojos es un trámite; la pieza que de verdad importa sigue sin resolver.
-- **CI verde**: la rama está subida, pero el workflow solo dispara con `pull_request` o con `push` a `main`, así que **subir una rama no ejecuta nada**. Sin un PR contra `main` no hay forma de comprobar que la CI funciona, y F1-01 lo exige como aceptación.
+- **CI verde**: la rama está subida pero **sin PR** (decisión del 15/10/2026). El workflow solo dispara con `pull_request` o con `push` a `main`, así que **subir una rama no ejecuta nada**. La CI está validada en local contra el esquema oficial de GitHub y con simulaciones de los detectores, pero sin un disparo real F1-01 no puede darse por cumplida, porque su aceptación es "CI verde". Abrir el PR es una orden: `gh pr create --base main --head tarea/F0-preparacion`.
 - **Ramas sueltas**: `docs/f0-proyecto-independiente` está fusionada y sigue existiendo; la rama `V-01.00` existe solo en local y nunca se ha subido, pero el `CHANGELOG` la da por creada.
 - **Secretos de CI**: no hace falta ninguno todavía, y no hay que crear ninguno "por si acaso".
 
@@ -77,17 +77,21 @@ F0-06 son los PDF que hoy genera Factusol, saneados con datos ficticios antes de
 
 ---
 
-## La CI está en rojo y sigue así
+## La CI: causa raíz confirmada, ejecución sin verificar
 
-Independiente de lo anterior: la CI del repositorio falla sin ejecutar ningún job. Está registrada como **BUG-001** en `docs/BUGS.md`, con la causa probable y la solución. La corrección está aplicada en esta rama pero **no se ha podido verificar en GitHub**, porque comprobarlo exige subir la rama. Sin esa verificación, F1-01 no puede darse por cumplida (su aceptación es "CI verde").
+La CI del repositorio fallaba sin ejecutar ningún job. Está registrada como **BUG-001** en `docs/BUGS.md`.
 
-La corrección pasó además por una revisión independiente, que encontró dos fallos en un primer intento: el detector de `frontend` comprobaba `frontend/package.json` desde dentro de `frontend/`, por lo que nunca habría dado `true` y el job habría salido verde sin ejecutar nada; y el detector de la solución solo buscaba el `.sln` en la raíz, cuando los proyectos van en `backend/`. Los dos están corregidos y simulados con y sin los ficheros esperados.
+La causa raíz está confirmada: el `if` de nivel de job con `hashFiles(...)`. La tabla de contextos de GitHub solo admite `always`, `cancelled`, `success` y `failure` en `jobs.<job_id>.if`. Y hay una prueba de que no era un problema de estructura: **el archivo antiguo y el nuevo dan ambos 0 errores contra el esquema oficial de GitHub Actions**. Si fuera de esquema, el nuevo también fallaría.
+
+La corrección pasó además por una revisión independiente, que encontró dos fallos en un primer intento: el detector de `frontend` comprobaba `frontend/package.json` desde dentro de `frontend/` (por `working-directory`), por lo que nunca habría dado `true` y el job habría salido **verde sin ejecutar nada**; y el detector de la solución solo buscaba el `.sln` en la raíz, cuando los proyectos van en `backend/`. Los dos están corregidos y comprobados con simulaciones.
+
+Lo que **no** está verificado: la CI no se ha ejecutado en GitHub. La rama está subida sin PR y el workflow no dispara en una rama cualquiera. Mientras siga así, F0-05 no se puede cerrar del todo.
 
 ## Qué NO se ha verificado
 
 - Ninguna de las siete tareas está cerrada: todas requieren de una persona.
 - Ninguna cifra fiscal se ha inventado. Formato y rangos del comprobante, porcentajes de ITBIS y de retenciones siguen siendo huecos hasta que responda el contador.
-- La CI corregida no se ha ejecutado en GitHub.
+- La CI corregida no se ha ejecutado en GitHub: la rama está subida sin PR y el workflow no dispara en una rama suelta.
 - Los precios de WhatsApp están verificados con fuentes oficiales del 15/10/2026, pero pueden cambiar; el documento 07 señala cuál es la cifra que no pudo verificar.
 - No se ha verificado que no haya datos sensibles en el historial del repositorio antes de hacerlo público. Es una comprobación obligatoria antes de cambiar la visibilidad.
 - El SDK de .NET instalado (10.0.302) y el que fija `DOC_TECNICA.md` §2 (10.0.302) **coinciden**. No hay discrepancia que resolver aquí; queda pendiente solo decidir `rollForward` al escribir `global.json` en F1-01.

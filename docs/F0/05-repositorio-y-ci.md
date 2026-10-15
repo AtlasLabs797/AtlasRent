@@ -55,7 +55,9 @@ Cuando el repositorio sea público, activar en GitHub estos valores:
 
 **Lo que se descartó.** El archivo no tiene BOM, ni tabuladores, ni caracteres inválidos; `yaml.safe_load` lo parsea sin errores y la estructura resultante (`on`, `permissions`, `jobs` con `secretos`, `backend`, `frontend`) es correcta. No es un problema de codificación ni de YAML mal formado. La API de repositorio responde `{"enabled":true,"allowed_actions":"all"}`, o sea que Actions está activo. Tampoco es un problema de saldo de minutos: el repositorio `AtlasBalance` sí tuvo ejecuciones exitosas.
 
-**Causa probable.** El `if` de nivel de job con `hashFiles(...)` en `backend` y `frontend`. La tabla de disponibilidad de contextos de GitHub no admite `hashFiles` en `jobs.<job_id>.if`; cuando no puede evaluar la expresión, invalida el workflow entero, y por eso tampoco llegaba a crear el job `secretos`, que no usa ninguna expresión. Es la explicación más compatible con la evidencia, pero **sigue siendo una hipótesis**: solo un disparo con el workflow nuevo puede confirmarla.
+**Causa raíz, confirmada en la documentación.** El `if` de nivel de job con `hashFiles(...)`. La tabla de disponibilidad de contextos de GitHub es explícita: en `jobs.<job_id>.if` solo se admiten `always`, `cancelled`, `success` y `failure`; `hashFiles` está permitido en `steps.if` pero **no** en el `if` de nivel de job ([contexts](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts)). Cuando esa expresión no se puede evaluar, GitHub invalida el workflow entero, y por eso tampoco llegaba a crear el job `secretos`, que no usa ninguna expresión.
+
+Y se descartó que fuera un problema de estructura: validado contra el esquema oficial de GitHub Actions (`json.schemastore.org/github-workflow.json`), **el archivo antiguo da 0 errores de esquema, igual que el nuevo**. Si el rechazo fuera de esquema, el nuevo también fallaría. El fallo era de evaluación en ejecución.
 
 **Solución aplicada.** Se eliminó el `if` de nivel de job. Ahora los tres jobs se crean siempre y cada paso que necesita código se protege con un paso de detección previo que escribe `existe=true|false` en `$GITHUB_OUTPUT`, y los pasos siguientes se condicionan con `if: steps.detecta.outputs.existe == 'true'`. Es una forma más robusta y además es más legible en la interfaz: se ve que la comprobación se ejecutó y por qué se saltó, en vez de que el job aparece verde sin explicar nada.
 
@@ -66,7 +68,13 @@ Dos detalles que una revisión independiente encontró en el primer intento y qu
 
 Ventaja adicional: con el patrón anterior, cuando existiera la solución y el `dotnet restore --locked-mode` fallara, el log no decía nada de por qué estaba vacío.
 
-**Pendiente de verificar.** El archivo está validado localmente (YAML parsea y los dos scripts bash se simulan en seis escenarios, con y sin los ficheros esperados), pero **no se ha ejecutado en GitHub**. Y aquí hay un obstáculo que no se había visto: el workflow solo dispara con `pull_request` o con `push` a `main`. La rama `tarea/F0-preparacion` ya está subida, pero **subir una rama no dispara nada**. Mientras no se abra un PR contra `main`, no habrá forma de comprobar que la CI crea los jobs, y `F1-01` exige "CI verde" como criterio de aceptación.
+**Verificado en local, no en GitHub.** Tres pruebas:
+
+1. **Esquema oficial**: validación contra `json.schemastore.org/github-workflow.json` con `jsonschema` (Draft 7). El archivo nuevo da **0 errores**. Como control, el archivo antiguo también da 0: eso descarta que el fallo fuera de esquema y lo sitúa en la evaluación de expresiones.
+2. **Lógica de los detectores**: los dos scripts bash simulados en seis escenarios. Repo vacío → ambos `false`. `.sln` en la raíz → `true`. `.sln` anidada en `backend/` → `true` (con el glob de solo raíz daba `false`, que era el segundo defecto). `frontend/package.json` presente y ejecutando desde la raíz → `true`. Desde `cwd=frontend`, `test -f frontend/package.json` → `false` y `test -f package.json` → `true`, que demuestra exactamente por qué el paso detector necesita `working-directory: .`.
+3. **Regla de contextos**: contrastada con la tabla de GitHub citada arriba.
+
+**Lo que queda sin verificar.** La CI no se ha ejecutado en GitHub. El workflow solo dispara con `pull_request` o con `push` a `main`, y la decisión tomada el 15/10/2026 es **no abrir PR**: la rama `tarea/F0-preparacion` queda subida y sin PR. Mientras sea así, no habrá forma de observar un disparo, y `F1-01` no puede darse por cumplida porque su aceptación es "CI verde". Abrir el PR es una línea de orden: `gh pr create --base main --head tarea/F0-preparacion`. Con la protección activa, el PR no se fusionará solo, así que no hay riesgo de que entre código sin que lo veas.
 
 ---
 
@@ -96,7 +104,7 @@ No bloquean nada, pero conviene limpiarlas:
 - [x] Plan de GitHub decidido. *(público)*
 - [x] Protección de `main`: 1 aprobación, revisiones obsoletas se descartan, sin force push, sin borrado, historia lineal. *(activa; falta `enforce_admins` cuando haya revisor)*
 - [ ] Revisor con acceso de escritura añadido como colaborador, y entonces `enforce_admins: true`.
-- [ ] PR abierto para que la CI dispare, ydispatch con jobs en verde.
+- [ ] PR abierto para que la CI dispare, y disparo con jobs en verde. *(decisión del 15/10/2026: no abrir PR por ahora)*
 - [ ] Añadir la comprobación `CI / Secretos` como obligatoria, ya existente, cuando la CI sea verde.
 - [ ] Rama `V-01.00` subida o borrada, según la decisión sobre la versión.
 - [ ] Decidir qué hacer con las ramas ya fusionadas.
