@@ -30,6 +30,12 @@ public sealed class Usuario
     /// <summary>Marcador para F1-06 (MFA/TOTP). Aquí no hace nada más que quedar disponible.</summary>
     public bool MfaActivado { get; set; }
 
+    /// <summary>
+    /// Hasta cuándo está bloqueada la cuenta por intentos fallidos (docs/SEGURIDAD.md A.2).
+    /// Nula o pasada significa que la cuenta se puede volver a usar.
+    /// </summary>
+    public DateTimeOffset? BloqueadaHasta { get; set; }
+
     public DateTimeOffset? UltimoAcceso { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

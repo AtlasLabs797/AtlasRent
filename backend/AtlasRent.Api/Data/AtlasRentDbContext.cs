@@ -19,6 +19,10 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<Sesion> Sesion => Set<Sesion>();
 
+    public DbSet<IntentoLogin> IntentoLogin => Set<IntentoLogin>();
+
+    public DbSet<BloqueoIp> BloqueoIp => Set<BloqueoIp>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -81,6 +85,33 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Usuario)
                 .WithMany()
                 .HasForeignKey(e => e.UsuarioId);
+        });
+
+        // F1-05: intentos de login y bloqueos de IP. El contador de fallos vive en intento_login,
+        // no en una columna de contador de usuario: una sola fuente de verdad.
+        modelBuilder.Entity<IntentoLogin>(entidad =>
+        {
+            entidad.ToTable("intento_login");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Ip).IsRequired();
+            entidad.Property(e => e.OcurridoAt).IsRequired();
+            // Se cuenta por IP dentro de una ventana y por usuario desde el último acierto.
+            entidad.HasIndex(e => new { e.Ip, e.OcurridoAt });
+            entidad.HasIndex(e => new { e.UsuarioId, e.Exito });
+            entidad.HasOne(e => e.Usuario)
+                .WithMany()
+                .HasForeignKey(e => e.UsuarioId);
+        });
+
+        modelBuilder.Entity<BloqueoIp>(entidad =>
+        {
+            entidad.ToTable("bloqueo_ip");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Ip).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.UpdatedAt).IsRequired();
+            // Una fila por IP: es la búsqueda que hace el middleware en cada petición.
+            entidad.HasIndex(e => e.Ip).IsUnique();
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

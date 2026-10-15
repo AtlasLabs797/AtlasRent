@@ -1,0 +1,261 @@
+using AtlasRent.Api.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace AtlasRent.Api.Services;
+
+/// <summary>
+/// Bloqueo de cuenta y de IP por intentos fallidos de login (docs/SEGURIDAD.md A.2,
+/// docs/DOC_TECNICA.md §7).
+/// <para>
+/// Los contadores no están en columnas de contador: salen de <see cref="IntentoLogin"/>. Los fallos
+/// de una cuenta son los suyos desde el último acierto, y los de una IP son los suyos dentro de la
+/// ventana. Así no hay dos fuentes de verdad que se puedan desincronizar.
+/// </para>
+/// </summary>
+public sealed class ServicioBloqueos(
+    AtlasRentDbContext contexto,
+    OpcionesSeguridad seguridad,
+    OpcionesLimites limites,
+    TimeProvider reloj,
+    AuditoriaService auditoria)
+{
+    /// <summary>Primer escalón: una hora.</summary>
+    public static readonly TimeSpan PrimerNivel = TimeSpan.FromHours(1);
+
+    /// <summary>Segundo escalón: un día.</summary>
+    public static readonly TimeSpan SegundoNivel = TimeSpan.FromHours(24);
+
+    /// <summary>Nivel a partir del cual el bloqueo no caduca y solo lo levanta el administrador.</summary>
+    public const int NivelIndefinido = 3;
+
+    /// <summary>Si la cuenta está bloqueada ahora mismo.</summary>
+    public bool CuentaBloqueada(Usuario usuario) =>
+        usuario.BloqueadaHasta is { } hasta && hasta > reloj.GetUtcNow();
+
+    /// <summary>
+    /// Si la IP está bloqueada. Una IP de la lista blanca nunca lo está, ni aunque tenga fila.
+    /// </summary>
+    public async Task<bool> IpBloqueadaAsync(string ip, CancellationToken ct)
+    {
+        if (seguridad.EsIpPermitida(ip))
+        {
+            return false;
+        }
+
+        var fila = await contexto.BloqueoIp
+            .AsNoTracking()
+            .SingleOrDefaultAsync(b => b.Ip == ip, ct);
+
+        return fila is not null
+            && (fila.BloqueadaHasta is null || fila.BloqueadaHasta > reloj.GetUtcNow());
+    }
+
+    /// <summary>
+    /// Anota un login fallido y aplica lo que corresponda: bloqueo de la cuenta y de la IP.
+    /// Abre su propia transacción porque el login fallido no está dentro de ninguna.
+    /// </summary>
+    public async Task RegistrarIntentoFallidoAsync(
+        Guid? usuarioId,
+        string? nombreAcceso,
+        string ip,
+        CancellationToken ct)
+    {
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        await AnotarIntentoAsync(usuarioId, nombreAcceso, ip, exito: false, ct);
+        await AplicarBloqueoCuentaAsync(usuarioId, ip, ct);
+        await AplicarBloqueoIpAsync(ip, ct);
+
+        await transaccion.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// Anota un login correcto. Como el acierto es también un intento, es lo que reinicia el
+    /// contador de fallos de la cuenta. Si el usuario ya había entrado y ahora entra desde una IP
+    /// distinta, deja el evento de aviso al administrador.
+    /// </summary>
+    public async Task AnotarExitoAsync(
+        Guid usuarioId,
+        string nombreAcceso,
+        string ip,
+        CancellationToken ct)
+    {
+        // Antes de insertar el intento actual: es el que decide si la IP es nueva.
+        var habiaEntrado = await contexto.IntentoLogin.AnyAsync(i => i.UsuarioId == usuarioId && i.Exito, ct);
+        var desdeEstaIp = await contexto.IntentoLogin.AnyAsync(
+            i => i.UsuarioId == usuarioId && i.Exito && i.Ip == ip, ct);
+
+        await AnotarIntentoAsync(usuarioId, nombreAcceso, ip, exito: true, ct);
+
+        // El primer login de un usuario no es una IP nueva: no hay con qué compararlo.
+        if (!habiaEntrado || desdeEstaIp)
+        {
+            return;
+        }
+
+        await auditoria.RegistrarAsync(new RegistroAuditoria
+        {
+            Accion = "auth.ip_nueva",
+            Ip = ip,
+            UsuarioId = usuarioId,
+            Entidad = "usuario",
+            EntidadId = usuarioId.ToString("D"),
+            Resultado = "permitido",
+            Origen = "api",
+        }, ct);
+
+        // TODO(A#) F1-12: avisar al administrador de la entrada desde IP nueva (dentro de la app y
+        // por correo). Aquí solo queda el evento de auditoría; el transporte de correo es de fases
+        // posteriores y no se implementa.
+    }
+
+    /// <summary>
+    /// Quita el bloqueo de una IP. Solo lo llama el administrador: es la única vía para levantar un
+    /// bloqueo indefinido, que por definición no caduca solo.
+    /// </summary>
+    public async Task DesbloquearIpAsync(string ip, Guid usuarioAdmin, CancellationToken ct)
+    {
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        var fila = await contexto.BloqueoIp.SingleOrDefaultAsync(b => b.Ip == ip, ct);
+        if (fila is null)
+        {
+            await transaccion.RollbackAsync(ct);
+            return;
+        }
+
+        contexto.BloqueoIp.Remove(fila);
+        await auditoria.RegistrarAsync(new RegistroAuditoria
+        {
+            Accion = "seg.desbloqueo_ip",
+            Ip = ip,
+            UsuarioId = usuarioAdmin,
+            Entidad = "bloqueo_ip",
+            EntidadId = fila.Id.ToString("D"),
+            Resultado = "permitido",
+            Origen = "api",
+        }, ct);
+
+        await transaccion.CommitAsync(ct);
+    }
+
+    private async Task AnotarIntentoAsync(
+        Guid? usuarioId,
+        string? nombreAcceso,
+        string ip,
+        bool exito,
+        CancellationToken ct)
+    {
+        contexto.IntentoLogin.Add(new IntentoLogin
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuarioId,
+            NombreAcceso = nombreAcceso,
+            Ip = ip,
+            Exito = exito,
+            OcurridoAt = reloj.GetUtcNow(),
+        });
+
+        await contexto.SaveChangesAsync(ct);
+    }
+
+    private async Task AplicarBloqueoCuentaAsync(Guid? usuarioId, string ip, CancellationToken ct)
+    {
+        if (usuarioId is not { } id)
+        {
+            return;
+        }
+
+        // Un acierto borra el contador: a partir de él solo cuentan los fallos siguientes.
+        var ultimoExito = await contexto.IntentoLogin
+            .Where(i => i.UsuarioId == id && i.Exito)
+            .MaxAsync(i => (DateTimeOffset?)i.OcurridoAt, ct);
+
+        var fallos = await contexto.IntentoLogin.CountAsync(
+            i => i.UsuarioId == id && !i.Exito && i.OcurridoAt > (ultimoExito ?? DateTimeOffset.MinValue),
+            ct);
+
+        if (fallos < limites.IntentosParaBloquearCuenta)
+        {
+            return;
+        }
+
+        var usuario = await contexto.Usuario.SingleAsync(u => u.Id == id, ct);
+        var hasta = reloj.GetUtcNow().AddMinutes(limites.MinutosBloqueoCuenta);
+
+        // Con el bloqueo ya puesto no se arrastra: el quinto fallo no alarga lo que ya está corriendo.
+        if (usuario.BloqueadaHasta is { } actual && actual > hasta)
+        {
+            return;
+        }
+
+        usuario.BloqueadaHasta = hasta;
+        await contexto.SaveChangesAsync(ct);
+
+        await auditoria.RegistrarAsync(new RegistroAuditoria
+        {
+            Accion = "auth.bloqueo_cuenta",
+            Ip = ip,
+            UsuarioId = id,
+            Entidad = "usuario",
+            EntidadId = id.ToString("D"),
+            DatosJson = $"{{\"intentos\":{fallos},\"bloqueada_hasta\":\"{hasta:yyyy-MM-ddTHH:mm:ssZ}\"}}",
+            Resultado = "denegado",
+            Origen = "api",
+        }, ct);
+    }
+
+    private async Task AplicarBloqueoIpAsync(string ip, CancellationToken ct)
+    {
+        if (seguridad.EsIpPermitida(ip))
+        {
+            return;
+        }
+
+        var ahora = reloj.GetUtcNow();
+        var fallos = await contexto.IntentoLogin.CountAsync(
+            i => i.Ip == ip && !i.Exito && i.OcurridoAt >= ahora.AddMinutes(-limites.VentanaIpMinutos),
+            ct);
+
+        if (fallos < limites.IntentosParaBloquearIp)
+        {
+            return;
+        }
+
+        var fila = await contexto.BloqueoIp.SingleOrDefaultAsync(b => b.Ip == ip, ct);
+
+        // Reincide si el bloqueo anterior terminó hace menos de 24 h; si pasó más de eso, el
+        // atacante vuelve a empezar por el primer nivel.
+        var reincide = fila?.BloqueadaHasta is { } previa && ahora - previa <= SegundoNivel;
+        var nivel = reincide ? fila!.Nivel + 1 : 1;
+        DateTimeOffset? hasta = nivel switch
+        {
+            1 => ahora.Add(PrimerNivel),
+            2 => ahora.Add(SegundoNivel),
+            _ => null,
+        };
+
+        if (fila is null)
+        {
+            fila = new BloqueoIp { Id = Guid.NewGuid(), Ip = ip, CreatedAt = ahora };
+            contexto.BloqueoIp.Add(fila);
+        }
+
+        fila.Nivel = nivel;
+        fila.Fallos = fallos;
+        fila.BloqueadaHasta = hasta;
+        fila.UpdatedAt = ahora;
+        await contexto.SaveChangesAsync(ct);
+
+        await auditoria.RegistrarAsync(new RegistroAuditoria
+        {
+            Accion = "seg.bloqueo_ip",
+            Ip = ip,
+            Entidad = "bloqueo_ip",
+            EntidadId = fila.Id.ToString("D"),
+            DatosJson = $"{{\"nivel\":{nivel},\"fallos\":{fallos}}}",
+            Resultado = "denegado",
+            Origen = "api",
+        }, ct);
+    }
+}

@@ -95,6 +95,100 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("auditoria", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.BloqueoIp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("BloqueadaHasta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("bloqueada_hasta");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Fallos")
+                        .HasColumnType("integer")
+                        .HasColumnName("fallos");
+
+                    b.Property<string>("Ip")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ip");
+
+                    b.Property<int>("Nivel")
+                        .HasColumnType("integer")
+                        .HasColumnName("nivel");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bloqueo_ip");
+
+                    b.HasIndex("Ip")
+                        .IsUnique()
+                        .HasDatabaseName("ix_bloqueo_ip_ip");
+
+                    b.ToTable("bloqueo_ip", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.IntentoLogin", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Exito")
+                        .HasColumnType("boolean")
+                        .HasColumnName("exito");
+
+                    b.Property<string>("Ip")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ip");
+
+                    b.Property<string>("NombreAcceso")
+                        .HasColumnType("text")
+                        .HasColumnName("nombre_acceso");
+
+                    b.Property<DateTimeOffset>("OcurridoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ocurrido_at");
+
+                    b.Property<Guid?>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_intento_login");
+
+                    b.HasIndex("Ip", "OcurridoAt")
+                        .HasDatabaseName("ix_intento_login_ip_ocurrido_at");
+
+                    b.HasIndex("UsuarioId", "Exito")
+                        .HasDatabaseName("ix_intento_login_usuario_id_exito");
+
+                    b.ToTable("intento_login", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -177,6 +271,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("activo");
 
+                    b.Property<DateTimeOffset?>("BloqueadaHasta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("bloqueada_hasta");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -246,6 +344,16 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_usuario_nombre_acceso");
 
                     b.ToTable("usuario", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.IntentoLogin", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .HasConstraintName("fk_intento_login_usuario_usuario_id");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>

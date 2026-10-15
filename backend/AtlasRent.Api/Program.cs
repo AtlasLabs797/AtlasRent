@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using Serilog;
 using Serilog.Events;
+using System.Threading.RateLimiting;
 
 // Punto de entrada de AtlasRent.Api. Orden del pipeline documentado en docs/DOC_TECNICA.md §7.
 // F1-01 deja el esqueleto: Serilog, health checks y conexión a PostgreSQL de desarrollo.
@@ -46,15 +47,54 @@ builder.Services.AddScoped<IntegridadAuditoria>();
 // F1-04: autenticación y sesiones. La clave del JWT se lee de Seguridad__JwtClave y no tiene valor
 // por defecto: si falta, la aplicación falla al arrancar en lugar de firmar con una clave inventada.
 var opcionesSeguridad = OpcionesSeguridad.Desde(builder.Configuration);
+var opcionesLimites = OpcionesLimites.Desde(builder.Configuration);
 builder.Services.AddSingleton(opcionesSeguridad);
+builder.Services.AddSingleton(opcionesLimites);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<ServicioContrasenas>();
 builder.Services.AddScoped<ServicioSesiones>();
+builder.Services.AddScoped<ServicioBloqueos>();
 builder.Services.AddScoped<ServicioAutenticacion>();
 builder.Services.AddScoped<EmisorTokens>();
+// Sin estado: un solo sitio donde se decide qué es la IP real del cliente.
+builder.Services.AddSingleton<IResolutorIpPeticion, ResolutorIpPeticion>();
 // HaveIBeenPwned por k-anonimato: HttpClient sin paquete adicional (docs/DOC_TECNICA.md §7).
 builder.Services.AddHttpClient<ServicioComplicidad>();
+
+// F1-05: límite de peticiones. El global va por usuario si la petición está autenticada y por IP si
+// no; el login lleva además su política, más estrecha (docs/DOC_TECNICA.md §7).
+// Los contadores viven en memoria de la instancia: con una sola instancia es lo correcto; si se
+// añade otra, hay que pasar esto a almacenamiento compartido (ver OpcionesLimites).
+builder.Services.AddRateLimiter(opciones =>
+{
+    opciones.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
+        RateLimitPartition.GetFixedWindowLimiter(ClavesLimite.Global(http), _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = opcionesLimites.GlobalPorMinuto,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    opciones.AddPolicy(PoliticasLimite.Login, http =>
+        RateLimitPartition.GetFixedWindowLimiter(ClavesLimite.Login(http), _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = opcionesLimites.LoginPorMinuto,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    opciones.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    opciones.OnRejected = async (contexto, ct) => await Problemas.EscribirAsync(
+        contexto.HttpContext,
+        Problemas.Construir(
+            StatusCodes.Status429TooManyRequests,
+            Problemas.LimitePeticiones,
+            "Demasiadas peticiones",
+            "Se superó el límite de peticiones. Espera un minuto antes de reintentar."));
+});
 
 // El JWT de acceso viaja en la cookie HttpOnly atlas-rent-at, no en la cabecera Authorization.
 builder.Services
@@ -117,9 +157,15 @@ var app = builder.Build();
 
 app.UseSerilogRequestLogging();
 
-// Orden del pipeline de docs/DOC_TECNICA.md §7 (la parte de F1-04; el rate limiting de IP de
-// F1-05 y la autorización de F1-07 todavía no están): autenticación → sesión en BD → CSRF.
+// Orden del pipeline de docs/DOC_TECNICA.md §7 (la parte de F1-05): IpBan → autenticación → límite
+// de peticiones → sesión en BD → CSRF.
+// El limitador va después de la autenticación, no antes como decía el borrador de §7: el límite
+// global es por usuario cuando la petición lleva sesión, y para saberlo hace falta que el
+// AuthenticationMiddleware ya haya fijado HttpContext.User. El bloqueo de IP, que es lo que
+// protege de fuerza bruta, sigue estando antes de todo lo demás.
+app.UseMiddleware<IpBanMiddleware>();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseMiddleware<ValidacionSesionMiddleware>();
 app.UseMiddleware<CsrfMiddleware>();
 

@@ -27,6 +27,12 @@ public static class Problemas
     /// <summary>La cabecera <c>X-CSRF-Token</c> no coincide con la cookie.</summary>
     public const string CsrfInvalido = "SEG-001";
 
+    /// <summary>Se superó el límite de peticiones de la IP o del usuario.</summary>
+    public const string LimitePeticiones = "SEG-002";
+
+    /// <summary>La IP está bloqueada por intentos fallidos de login.</summary>
+    public const string IpBloqueada = "SEG-003";
+
     /// <summary>Error de validación de los datos de entrada.</summary>
     public const string Validacion = "API-001";
 

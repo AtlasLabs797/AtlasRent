@@ -4,6 +4,7 @@ using AtlasRent.Api.Middleware;
 using AtlasRent.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AtlasRent.Api.Controllers;
 
@@ -19,12 +20,14 @@ namespace AtlasRent.Api.Controllers;
 public sealed class AuthController(
     ServicioAutenticacion autenticacion,
     ContextoSesion contextoSesion,
+    IResolutorIpPeticion resolutorIp,
     TimeProvider reloj) : ControllerBase
 {
     /// <summary>Solo se mandan los datos que el frontend necesita tras entrar.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
     [SaltarCsrf]
+    [EnableRateLimiting(PoliticasLimite.Login)]
     public async Task<IActionResult> Login([FromBody] LoginPeticion peticion)
     {
         var resultado = await autenticacion.LoginAsync(
@@ -133,7 +136,7 @@ public sealed class AuthController(
     private Guid SesionIdDeLaPeticion() => Guid.Parse(User.FindFirst("sid")!.Value);
 
     /// <summary>IP de origen. El orden del pipeline de F1-13 decide si viene de un proxy de confianza.</summary>
-    private string IpDeLaPeticion() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0";
+    private string IpDeLaPeticion() => resolutorIp.Resolver(HttpContext);
 
     private void FijarCookies(ResultadoSesion resultado)
     {

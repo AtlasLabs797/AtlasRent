@@ -22,6 +22,14 @@ Seguridad__HmacDocumentoClave=<secreto 32 bytes base64>
 Seguridad__IpListaBlanca=<IP oficina separadas por coma>
 Seguridad__ProxiesConfianza=<vacío si no hay proxy>
 
+# Límites de peticiones y bloqueos (F1-05). Los valores por defecto son los del checklist.
+Seguridad__Limites__GlobalPorMinuto=300
+Seguridad__Limites__LoginPorMinuto=20
+Seguridad__Limites__IntentosParaBloquearIp=10
+Seguridad__Limites__VentanaIpMinutos=15
+Seguridad__Limites__IntentosParaBloquearCuenta=5
+Seguridad__Limites__MinutosBloqueoCuenta=30
+
 Almacen__Documentos=C:\AtlasRent\data\documentos
 Backup__CarpetaLocal=C:\AtlasRent\data\backups
 Backup__GoogleDrive__Carpeta=<id carpeta propia de Atlas Rent>

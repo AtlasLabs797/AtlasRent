@@ -29,7 +29,8 @@ public sealed class ServicioAutenticacion(
     ServicioSesiones sesiones,
     EmisorTokens emisor,
     TimeProvider reloj,
-    AuditoriaService auditoria)
+    AuditoriaService auditoria,
+    ServicioBloqueos bloqueos)
 {
     /// <summary>
     /// Intenta iniciar sesión. Devuelve <c>null</c> para cualquier credencial que no sirva: usuario
@@ -53,6 +54,17 @@ public sealed class ServicioAutenticacion(
         if (candidato is null)
         {
             contrasenas.CompararContraHashDeComparacion(contrasena);
+            // Sin usuario no hay cuenta que bloquear, pero el intento cuenta para la IP.
+            await bloqueos.RegistrarIntentoFallidoAsync(null, normalizado, ip, ct);
+            return null;
+        }
+
+        // Cuenta bloqueada: mismo trabajo de verificación y misma respuesta que una contraseña
+        // incorrecta, para que ni el tiempo de respuesta ni el código digan que está bloqueada.
+        if (bloqueos.CuentaBloqueada(candidato))
+        {
+            contrasenas.Verificar(contrasena, candidato.PasswordHash);
+            await bloqueos.RegistrarIntentoFallidoAsync(candidato.Id, normalizado, ip, ct);
             return null;
         }
 
@@ -60,6 +72,7 @@ public sealed class ServicioAutenticacion(
             || !candidato.Activo
             || candidato.DeletedAt is not null)
         {
+            await bloqueos.RegistrarIntentoFallidoAsync(candidato.Id, normalizado, ip, ct);
             return null;
         }
 
@@ -93,6 +106,11 @@ public sealed class ServicioAutenticacion(
             Resultado = "permitido",
             Origen = "api",
         }, ct);
+
+        // También es la fuente de verdad de los contadores de bloqueo, y aquí va dentro de la misma
+        // transacción que el login.
+        await bloqueos.AnotarExitoAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
+
         await transaccion.CommitAsync(ct);
 
         return new ResultadoSesion(

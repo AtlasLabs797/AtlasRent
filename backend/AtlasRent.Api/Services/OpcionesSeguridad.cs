@@ -1,3 +1,6 @@
+using System.Net;
+using Serilog;
+
 namespace AtlasRent.Api.Services;
 
 /// <summary>
@@ -19,6 +22,16 @@ public sealed class OpcionesSeguridad
 
     /// <summary>Clave de firma del JWT, en bytes.</summary>
     public required byte[] ClaveJwt { get; init; }
+
+    /// <summary>
+    /// IP de la oficina que nunca se bloquean por IP (docs/SEGURIDAD.md A.2). Viene de
+    /// <c>Seguridad__IpListaBlanca</c>, separada por comas. Una IP mal escrita se ignora y se avisa
+    /// por log: no vale la pena impedir que arranque por una variable de entorno.
+    /// </summary>
+    public IReadOnlySet<string> IpListaBlanca { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>Si la IP está en la lista blanca: nunca se bloquea ni se le cuenta como ataque.</summary>
+    public bool EsIpPermitida(string ip) => IpListaBlanca.Contains(ip);
 
     /// <summary>
     /// Coste de BCrypt. Configurable en <c>Seguridad:BcryptRondas</c>, mínimo 12 (docs/SEGURIDAD.md A.2).
@@ -75,7 +88,30 @@ public sealed class OpcionesSeguridad
 
         var rondas = configuracion.GetValue($"{Seccion}:BcryptRondas", RondasBcryptMinimas);
 
-        return new OpcionesSeguridad { ClaveJwt = bytes, RondasBcrypt = rondas };
+        return new OpcionesSeguridad
+        {
+            ClaveJwt = bytes,
+            RondasBcrypt = rondas,
+            IpListaBlanca = LeerListaBlanca(configuracion[$"{Seccion}:IpListaBlanca"]),
+        };
+    }
+
+    private static IReadOnlySet<string> LeerListaBlanca(string? valor)
+    {
+        var lista = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var texto in (valor ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (IPAddress.TryParse(texto, out var direccion))
+            {
+                lista.Add(direccion.ToString());
+            }
+            else
+            {
+                Log.Warning("{Seccion}:IpListaBlanca tiene un valor que no es una IP: se ignora", texto);
+            }
+        }
+
+        return lista;
     }
 }
 

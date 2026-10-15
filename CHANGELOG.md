@@ -16,6 +16,28 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 06:00] FEAT · F1-05 · Límites de peticiones, bloqueo de cuenta y bloqueo de IP escalado
+- Qué:
+  - Migración `20261015023651_BloqueosYLimites` con `intento_login` y `bloqueo_ip`, permisos para `rent_app` y `bloqueada_hasta` en `usuario`.
+  - `IpBanMiddleware` con escalado **1 h → 24 h → indefinido**, lista blanca desde `Seguridad__IpListaBlanca` y desbloqueo por el administrador.
+  - Límites con `Microsoft.AspNetCore.RateLimiting` (paquete del framework, ninguno añadido): global 300/min por usuario autenticado o por IP si es anónima, login 20/min por IP.
+  - Bloqueo de cuenta: 5 fallos → 30 min, con contador de fallos **desde el último acierto**.
+  - Detección y registro del evento `auth.ip_nueva` (entrada desde una IP que el usuario no había usado).
+  - 21 tests nuevos en `backend/AtlasRent.Tests/Seguridad/`.
+- Por qué: F1-05 del plan. La app está expuesta a internet y el login es el objetivo natural.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **91/91 en verde**. Los siete escenarios del encargo tienen test propio: bloqueo a los 5 fallos, reutilización a los 30 min, el acierto intermedio no cuenta como fallo, IP bloqueada recibe 403 en cualquier ruta, escalado en tres peldaños, IP de lista blanca nunca se bloquea y 429 con código de referencia.
+- NO verificado: `dotnet ef database update` contra la base de desarrollo (usaría secretos de `.env.dev`); la cobertura equivalente la da el contenedor de pruebas con `rent_migrador`.
+- Migraciones: sí. `Migrations/20261015023651_BloqueosYLimites`.
+- Riesgo / pendiente:
+  - **Orden real del pipeline**: `IpBan` → `UseAuthentication` → `UseRateLimiter` → sesión → CSRF. El limitador va después de la autenticación porque su clave global es el usuario; lo que protege de fuerza bruta (bloqueo de IP) sigue primero. Documentado en DOC_TECNICA §7.
+  - **El límite de login es solo por IP**, no por IP + usuario como pedía SEGURIDAD.md A.2: la clave sale del cuerpo de la petición, `PartitionedRateLimiter.Create` solo admite particiones síncronas y Kestrel prohíbe leer el cuerpo de forma síncrona. El control por nombre de acceso está cubierto por el bloqueo de cuenta, que es persistente. `TODO(A#)` en `ClavesLimite.Login`.
+  - **Los contadores de peticiones están en memoria de la instancia.** Con una sola instancia (Windows Server, un servicio) es correcto; con dos o más el límite pasaría a ser por réplica. El bloqueo de IP está en base de datos y sí es global.
+  - `IpBanMiddleware` es **fail-open** si la base de datos no responde, para que `/health/live` siga vivo. Toda ruta real necesita la base de datos.
+  - **La pantalla de administración de desbloqueo de IP no existe.** `ServicioBloqueos.DesbloquearIpAsync` está implementada y probada, pero exponerla sin `IPPolicyService` (F1-07) dejaría un endpoint de administración abierto. Es lo único del encargo que queda pendiente.
+  - El aviso al admin de IP nueva no se envía por ningún canal: el evento está escrito y probado, pero el envío de correo es de fases posteriores.
+  - `Seguridad__Limites__*` añadidos a `config/variables-entorno.example`.
+- Commit/PR: `feat(seguridad): limites de peticiones, bloqueo de cuenta y bloqueo de IP escalado`.
+
 ## [15/10/2026 05:20] FEAT · F1-04 · Autenticación: JWT en cookie, refresco rotatorio, CSRF y sesiones revocables
 - Qué:
   - Migración `20261015014910_AutenticacionYUsuarios` con `usuario` y `sesion`, permisos explícitos para `rent_app` y el aviso heredado de F1-03 aplicado (quitar a mano la columna `xmin` que EF genera).
