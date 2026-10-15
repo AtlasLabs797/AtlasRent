@@ -30,21 +30,21 @@ Punto de atención: la **serie 9** es histórica y puede duplicar deuda de otras
 
 Los archivos van a `imports/`, que ya está en `.gitignore` junto con `*.xlsx` y `*.csv`. **Nunca al repositorio.**
 
-### 3. F0-05 · Visibilidad del repositorio y protección de `main` — decidido
-GitHub devuelve HTTP 403 al pedir protección de `main`: *"Upgrade to GitHub Pro or make this repository public to enable this feature"*. No hay atajo, la regla es del plan.
+### 3. F0-05 · Repositorio público y protección de `main` — HECHO el 15/10/2026
+GitHub devolvía HTTP 403 al pedir protección de `main`: *"Upgrade to GitHub Pro or make this repository public to enable this feature"*. No había atajo, la regla es del plan.
 
-**Decisión tomada el 15/10/2026: el repositorio pasa a público.** Eso habilita la protección de `main` y los rulesets sin pagar. Queda pendiente de hacer.
+**Hecho: el repositorio es público desde el 15/10/2026 y `main` ya está protegido** (1 aprobación requerida, revisiones obsoletas se descartan, sin force push, sin borrado, historia lineal obligatoria). Antes de abrirlo se auditó el historial: `.env.dev` nunca estuvo versionado, no hay claves ni datos reales, y el único patrón tipo secreto era el valor de ejemplo `solo_local_cambiar`.
 
-Consecuencias que hay que asumir, porque son reales:
+Lo que hay que tener presente, porque son consecuencias reales:
 
-- Todo el código, la especificación y los documentos técnicos serán legibles por cualquiera. `ESPECIFICACION.md` contiene datos del negocio: series de facturación, tipos de cobro, reglas de retención y de occupancy.
-- Un repositorio público sigue teniendo `.gitignore` y sigue siendo obligatorio no commitear nunca secretos ni datos reales. Publicar no relaja `AGENTS.md` §6: al revés, lo hace más peligroso, porque un secreto commiteado por accidente puede ser indexado en minutos.
-- Si algún día hay que compartir con un proveedor externo, ya no hará falta: el repositorio es público.
-- Si en el futuro se decide volver a privado, se perderá la protección de `main` y habría que contratar Pro para recuperarla.
+- `ESPECIFICACION.md` queda legible para cualquiera, y contiene datos del negocio: series de facturación, tipos de cobro, reglas de retención y ocupación. Publicar no relaja `AGENTS.md` §6; lo hace más peligroso, porque un secreto commiteado por error puede indexarse en minutos.
+- `enforce_admins` quedó en **false** a propósito. Si estuviera activo, el dueño sería el único que puede abrir PR y no podría aprobarlo él mismo, así que nadie podría fusionar nunca nada. Se activa en cuanto haya un segundo colaborador.
+- Si algún día hay que volver a privado, se pierde la protección de `main` y habría que contratar Pro para recuperarla.
 
-Antes de cambiar la visibilidad hay que confirmar que no hay nada sensible en el historial, no solo en el estado actual.
+Lo que queda:
 
-- **Revisor**: hoy el único colaborador es el dueño. El flujo del proyecto exige que otra persona revise cada PR, y eso hay que seguir haciéndolo por disciplina: en un repositorio público, quien imagine que puede saltarse el proceso tiene menos fricción, no más.
+- **Revisor**: el único colaborador es el dueño. La protección sin un segundo par de ojos es un trámite; la pieza que de verdad importa sigue sin resolver.
+- **CI verde**: la rama está subida, pero el workflow solo dispara con `pull_request` o con `push` a `main`, así que **subir una rama no ejecuta nada**. Sin un PR contra `main` no hay forma de comprobar que la CI funciona, y F1-01 lo exige como aceptación.
 - **Ramas sueltas**: `docs/f0-proyecto-independiente` está fusionada y sigue existiendo; la rama `V-01.00` existe solo en local y nunca se ha subido, pero el `CHANGELOG` la da por creada.
 - **Secretos de CI**: no hace falta ninguno todavía, y no hay que crear ninguno "por si acaso".
 

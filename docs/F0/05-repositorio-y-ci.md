@@ -12,14 +12,16 @@ Fecha de verificación: 15/10/2026. Comandos usados: `gh api repos/AtlasLabs797/
 
 | Requisito de F0-05 | Estado | Evidencia |
 |---|---|---|
-| Repositorio privado `AtlasLabs797/AtlasRent` | **HECHO** | `private: true`, creado 14/10/2026 |
+| Repositorio `AtlasLabs797/AtlasRent` | **HECHO** | Creado 14/10/2026; pasado a **público** el 15/10/2026 |
 | Rama por defecto `main` | **HECHO** | `default_branch: main` |
-| Protección de `main` | **BLOQUEADO** | GitHub devuelve HTTP 403: *"Upgrade to GitHub Pro or make this repository public to enable this feature"* |
-| Reglas de repositorio (rulesets) | **BLOQUEADO** | Mismo 403; los rulesets también exigen plan de pago |
-| Revisor con acceso | **PENDIENTE** | El único colaborador es `AtlasLabs797` (admin). `PLAN.md` exige que "otra persona revisa" cada PR |
+| Protección de `main` | **HECHO** | Activa el 15/10/2026: 1 aprobación, revisiones obsoletas se descartan, sin force push, sin borrado, historia lineal |
+| Reglas de repositorio (rulesets) | **NO NECESARIO** | La protección clásica ya cubre lo que pedía el plan |
+| Revisor con acceso | **PENDIENTE** | El único colaborador es `AtlasLabs797` (admin) |
 | Lectura de `AtlasBalance` para quien use Claude Code | **YA CUMPLIDO** | `AtlasLabs797/AtlasBalance` es **público**; no hace falta conceder acceso |
 | Secretos de CI | **NINGUNO NECESARIO TODAVÍA** | La CI actual solo usa `GITHUB_TOKEN`, que GitHub genera. No hay builds ni despliegues |
-| CI en verde | **ROJA** | Ver §3 |
+| CI en verde | **ROJA, sin verificar** | Ver §3 |
+
+**Advertencia sobre `enforce_admins`.** Está en **false** a propósito. Si estuviera en true, el dueño sería el único que puede abrir PR y no podría aprobarlo él mismo, así que **nadie podría fusionar nunca nada**. Se dejará en true en cuanto se añada al menos un revisor. Esa es la pieza que falta y la que de verdad importa: la protección sin un segundo par de ojos es un trámite.
 
 Sobre los secretos de CI: hoy no hace falta ninguno. Cuando exista F1-01 solo habrá build y tests; Testcontainers levanta su propio PostgreSQL, así que tampoco hace falta una base de datos de servicio. El primer secreto real llegará con el firmado de paquetes de release (F1-13 o posterior). **No crees secretos "por si acaso": un secreto sin uso es una credencial que se puede filtrar sin que nadie lo note.**
 
@@ -53,13 +55,18 @@ Cuando el repositorio sea público, activar en GitHub estos valores:
 
 **Lo que se descartó.** El archivo no tiene BOM, ni tabuladores, ni caracteres inválidos; `yaml.safe_load` lo parsea sin errores y la estructura resultante (`on`, `permissions`, `jobs` con `secretos`, `backend`, `frontend`) es correcta. No es un problema de codificación ni de YAML mal formado. La API de repositorio responde `{"enabled":true,"allowed_actions":"all"}`, o sea que Actions está activo. Tampoco es un problema de saldo de minutos: el repositorio `AtlasBalance` sí tuvo ejecuciones exitosas.
 
-**Causa probable.** El `if` de nivel de job con `hashFiles(...)` en `backend` y `frontend`. Cuando GitHub no puede evaluar una expresión en esa posición, invalida el workflow entero, y por eso tampoco llega a crear el job `secretos`, que no usa ninguna expresión.
+**Causa probable.** El `if` de nivel de job con `hashFiles(...)` en `backend` y `frontend`. La tabla de disponibilidad de contextos de GitHub no admite `hashFiles` en `jobs.<job_id>.if`; cuando no puede evaluar la expresión, invalida el workflow entero, y por eso tampoco llegaba a crear el job `secretos`, que no usa ninguna expresión. Es la explicación más compatible con la evidencia, pero **sigue siendo una hipótesis**: solo un disparo con el workflow nuevo puede confirmarla.
 
-**Solución aplicada en esta rama.** Se eliminó el `if` de nivel de job. Ahora los tres jobs se crean siempre y cada paso que necesita código se protege con un paso de detección previo que escribe `existe=true|false` en `$GITHUB_OUTPUT`, y los pasos siguientes se condicionan con `if: steps.detecta.outputs.existe == 'true'`. Es una forma más robusta y además es más legible en la interfaz: se ve que la comprobación se ejecutó y por qué se saltó, en vez de que el job aparece verde sin explicar nada.
+**Solución aplicada.** Se eliminó el `if` de nivel de job. Ahora los tres jobs se crean siempre y cada paso que necesita código se protege con un paso de detección previo que escribe `existe=true|false` en `$GITHUB_OUTPUT`, y los pasos siguientes se condicionan con `if: steps.detecta.outputs.existe == 'true'`. Es una forma más robusta y además es más legible en la interfaz: se ve que la comprobación se ejecutó y por qué se saltó, en vez de que el job aparece verde sin explicar nada.
+
+Dos detalles que una revisión independiente encontró en el primer intento y que importan:
+
+- El detector de `frontend` comprobaba `frontend/package.json`, pero el job declara `working-directory: frontend`, que GitHub aplica a **todos** sus pasos. Es decir, comprobaba `frontend/frontend/package.json`, que no existe jamás. El job habría salido **verde sin ejecutar nada** en cuanto existiera `frontend/`. El paso detector ahora fija `working-directory: .`.
+- El detector de la solución buscaba solo en la raíz, pero `DOC_TECNICA.md` §3 sitúa los proyectos en `backend/`. Ahora busca en todo el subárbol.
 
 Ventaja adicional: con el patrón anterior, cuando existiera la solución y el `dotnet restore --locked-mode` fallara, el log no decía nada de por qué estaba vacío.
 
-**Pendiente de verificar.** El archivo está validado localmente (YAML parsea, los dos scripts bash devuelven el valor esperado en un directorio sin `.sln`), pero **no se ha ejecutado en GitHub**. Hace falta hacer push de la rama y comprobar que los jobs aparecen. Sin ese push no se puede afirmar que la CI esté verde, y `F1-01` exige "CI verde" como criterio de aceptación.
+**Pendiente de verificar.** El archivo está validado localmente (YAML parsea y los dos scripts bash se simulan en seis escenarios, con y sin los ficheros esperados), pero **no se ha ejecutado en GitHub**. Y aquí hay un obstáculo que no se había visto: el workflow solo dispara con `pull_request` o con `push` a `main`. La rama `tarea/F0-preparacion` ya está subida, pero **subir una rama no dispara nada**. Mientras no se abra un PR contra `main`, no habrá forma de comprobar que la CI crea los jobs, y `F1-01` exige "CI verde" como criterio de aceptación.
 
 ---
 
@@ -75,8 +82,8 @@ No bloquean nada, pero conviene limpiarlas:
 
 ## 5. Qué NO se verificó
 
-- Que la CI nueva pase en GitHub: requiere push de la rama y observación del disparo.
-- Que los pasos `dotnet` y `npm` estén bien escritos: no hay `backend/` ni `frontend/` todavía, así que se activarán en F1-01 y F1-13. Solo se validó la sintaxis del workflow.
+- Que la CI nueva pase en GitHub. La rama está subida, pero el workflow solo dispara con `pull_request` o con `push` a `main`, así que hace falta un PR para verlo.
+- Que los pasos `dotnet` y `npm` estén bien escritos: no hay `backend/` ni `frontend/` todavía, así que se activarán en F1-01 y F1-13. Solo se validó la sintaxis del workflow y la lógica de los detectores.
 - Si `gitleaks-action@v2` necesita clave de licencia: en cuentas personales no la pide, pero en una organización sí. Si el repositorio cambia de dueño, habría que revisarlo.
 - Las suites de comprobación de las apps **Claude** y **Cursor** están en `queued` desde el 14/10/2026 y nunca producen resultado. Si se quiere usar esos revisores automáticos, hay que instalarlos o autorizarlos correctamente; ahora mismo no aportan nada.
 
@@ -84,10 +91,12 @@ No bloquean nada, pero conviene limpiarlas:
 
 ## 6. Lista de comprobación para cerrar F0-05
 
-- [ ] Repo privado con rama `main` por defecto. *(hecho)*
+- [x] Repositorio con rama `main` por defecto. *(hecho; ahora público)*
 - [x] Lectura de `AtlasBalance` disponible sin conceder permisos. *(era público)*
-- [ ] Plan de GitHub decidido (Free o Pro).
-- [ ] Si es Pro: protección de `main` con 1 aprobación, sin push directo y con `CI` como comprobación requerida.
-- [ ] Revisor con acceso de escritura añadido como colaborador.
-- [ ] Rama con la CI corregida subida y disparo con jobs en verde.
+- [x] Plan de GitHub decidido. *(público)*
+- [x] Protección de `main`: 1 aprobación, revisiones obsoletas se descartan, sin force push, sin borrado, historia lineal. *(activa; falta `enforce_admins` cuando haya revisor)*
+- [ ] Revisor con acceso de escritura añadido como colaborador, y entonces `enforce_admins: true`.
+- [ ] PR abierto para que la CI dispare, ydispatch con jobs en verde.
+- [ ] Añadir la comprobación `CI / Secretos` como obligatoria, ya existente, cuando la CI sea verde.
 - [ ] Rama `V-01.00` subida o borrada, según la decisión sobre la versión.
+- [ ] Decidir qué hacer con las ramas ya fusionadas.

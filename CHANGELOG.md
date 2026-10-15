@@ -16,6 +16,24 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 03:05] DECISION · F0-05 · Repositorio público y protección de `main` activa (Andi)
+- Qué: `AtlasLabs797/AtlasRent` pasa de privado a público. Activa protección de `main` con 1 aprobación requerida, descartar revisiones obsoletas, sin force push, sin borrado de rama e historia lineal obligatoria. Se audita el historial antes del cambio. Se documenta en `docs/F0/05-repositorio-y-ci.md`.
+- Por qué: GitHub Free no permite proteger ramas en repositorios privados (HTTP 403). Se eligió la vía gratuita frente a contratar Pro. Consecuencia asumida: `ESPECIFICACION.md` queda legible para cualquiera y contiene datos del negocio (series de facturación, tipos de cobro, reglas de retención y ocupación). Auditoría previa: `.env.dev` nunca estuvo versionado, no hay ficheros de clave ni datos reales en el historial, y el único patrón tipo secreto es el valor de ejemplo `solo_local_cambiar`.
+- Verificado: `private` pasa de `true` a `false` (API); la protección se lee de vuelta por API con los cinco valores esperados. `enforce_admins` queda en **false** a propósito: con un solo colaborador, activarlo haría imposible fusionar, porque nadie podría aprobar el PR. **NO verificado**: que la CI nueva pase en GitHub, porque el workflow solo dispara con `pull_request` o con `push` a `main`.
+- Migraciones: no.
+- Riesgo / pendiente: añadir un revisor y entonces activar `enforce_admins`. Añadir la comprobación `CI / Secretos` como obligatoria cuando la CI esté verde.
+- Commit/PR: este mismo commit; rama `tarea/F0-preparacion` ya subida.
+
+## [15/10/2026 03:05] DECISION · F0-04 y F0-07 · Backup con OAuth propio y WhatsApp pendiente (Andi)
+- Qué: se documenta en `docs/F0/00-estado.md` y en los documentos de tarea. F0-04: el backup lo sube cada persona con su propia cuenta de Google por OAuth 2.0, no una cuenta de servicio. F0-07: el proveedor de WhatsApp se decide en equipo; la comparativa y la recomendación Twilio quedan escritas.
+- Por qué: una cuenta de servicio de Google Drive no tiene cuota ni puede ser propietaria de archivos, así que no puede subir backups. Con OAuth por usuario, el job desatendido de las 02:00 documentado en `DOC_TECNICA.md` §8 deja de ser ejecutable tal cual y habrá que rediseñarlo en F1-12: el backup se dispara desde la sesión del usuario.
+- Verificado: la limitación de las cuentas de servicio está confirmada en la documentación oficial de Google (about-shareddrives, consultado 15/10/2026). **NO verificado**: nada de la implementación, no hay código.
+- Migraciones: no.
+- Riesgo / pendiente: decidir carpeta común o por persona; vigilar que las cuotas personales se llenen; explicar con claridad para qué se pide acceso a Drive. F4-04 y F4-05 siguen bloqueadas. Independentemente de la elección final conviene iniciar el alta del emisor en Meta, que es el plazo más largo del bloque.
+- Commit/PR: este mismo commit.
+
+---
+
 ## [15/10/2026 02:40] FIX · F0-05 · La CI fallaba sin ejecutar ningún job (BUG-001) (agente)
 - Qué: `.github/workflows/ci.yml` reescrito. Se eliminó el `if` de nivel de job con `hashFiles(...)` de los jobs `backend` y `frontend`. Ahora los tres jobs se crean siempre y cada uno empieza con un paso de detección que escribe `existe=true|false` en `$GITHUB_OUTPUT`; los pasos de build y test se condicionan con `if: steps.detecta.outputs.existe == 'true'`. Registrado como BUG-001 en `docs/BUGS.md`.
 - Por qué: los tres últimos disparos terminaban en `failure` con `total_count: 0` jobs, `created_at` = `updated_at` y `rerequestable: false`, que es la firma de un workflow rechazado en la validación de GitHub. Se descartó que fuera problema de codificación (sin BOM ni tabuladores) o de YAML (`yaml.safe_load` lo parsea sin errores) y que fuera de permisos o saldo de Actions (`enabled: true` y AtlasBalance sí ejecuta). El `if` de nivel de job era el único constructo sin validar empíricamente, y explica por qué tampoco se creaba el job `secretos`, que no usa expresiones.
