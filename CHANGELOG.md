@@ -16,6 +16,17 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [16/10/2026 00:05] FIX · F3 (pre) · Pool de IPs de prueba sin reutilización (orquestador)
+- **Qué:** `backend/AtlasRent.Tests/Infra/ApiTestFactory.cs`. `ContadorInstancias` repartía las IP de las instancias de prueba por el último octeto de `198.51.100.0/24` con `Interlocked.Increment(ref n) % 254 + 1`, de modo que a partir de la instancia 254 el contador volvía a empezar. Ahora `ContadorInstancias.IpSiguiente()` reparte por los dos últimos octetos de `198.51.0.0/16` (unas 50.000 direcciones distintas) y deja fuera `198.51.100.0/24`, que es donde las pruebas escriben a mano `198.51.100.201` (`Seguridad/IpNuevaTests.cs:39`) y `198.51.100.250` (`ApiTestFactoryIpPermitida`).
+- **Por qué:** el cierre de F2 dejó abierto que la suite es intermitente por envenenamiento del pool de IPs: las pruebas de bloqueo de F1-05 dejan filas en `bloqueo_ip` sin limpiar, y si a otra clase le toca la IP reutilizada, todos sus logins reciben `403` con `Error SEG-003: La IP está bloqueada`. F3 añade los criterios de concurrencia de F3-02 (50 emisiones) y F3-03 (50 comprobantes), así que el número de instancias por ejecución crece justo cuando más daño hace ese defecto. No es un defecto del código de F3, pero lo bloquearía.
+- **Verificado:** `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores. `dotnet test -c Release --filter "FullyQualifiedName~AtlasRent.Tests.Seguridad|FullyQualifiedName~AtlasRent.Tests.Permisos"` → 104/104 en verde (son las pruebas que bloquean IPs a propósito y las que sufferían el envenenamiento). Suite completa de la línea base antes del cambio: 477/477 en verde.
+- **NO verificado:** que tres pasadas seguidas de la suite completa queden en verde con el pool nuevo. Lo ejecuta el orquestador al cierre del bloque; una sola pasada no demuestra nada aquí, porque el fallo era intermitente.
+- **Migraciones:** no.
+- **Riesgo / pendiente:** el arreglo es de infraestructura de pruebas de F1-05, no de F3. No se ha tocado el otro lado del problema (que las pruebas que bloquean limpien en `finally` la fila que escriben): con el pool sin reutilización ya no se cruzan, pero sigue siendo deuda de F1-05.
+- **Commit/PR:** `test(infra): IPs de prueba sin reutilización` en `tarea/F3-finanzas`.
+
+---
+
 ## [15/10/2026 22:40] CHK · F2 · Cierre del bloque: verificación independiente y correcciones (orquestador)
 - **Qué:** una auditoría independiente (subagente `verifier`, solo lectura) dio **FAIL** al bloque F2 con tres problemas reales, que están corregidos en la entrada de las 21:45 de más abajo. Aquí queda el cierre del orquestador: qué se arregló, qué se verificó y qué queda abierto.
 - **Verificación del orquestador, después de los arreglos, tres pasadas completas seguidas:**

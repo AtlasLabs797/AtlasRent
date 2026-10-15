@@ -41,7 +41,7 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
     /// de un test romperían los de otro. Cada instancia toma la suya y un test puede cambiarla con
     /// <see cref="Resolutor"/> para simular entrar desde otro sitio.
     /// </summary>
-    public IpFija Resolutor { get; } = new($"198.51.100.{ContadorInstancias.Next()}");
+    public IpFija Resolutor { get; } = new(ContadorInstancias.IpSiguiente());
 
     public string IpCliente => Resolutor.Ip;
 
@@ -182,12 +182,36 @@ public sealed class IpFija(string ip) : IResolutorIpPeticion
     public string Resolver(HttpContext http) => Ip;
 }
 
-/// <summary>IPs de prueba distintas por instancia de <see cref="ApiTestFactory"/>.</summary>
+/// <summary>
+/// IPs de prueba distintas por instancia de <see cref="ApiTestFactory"/>.
+/// <para>
+/// Antes el contador daba la última cifra de <c>198.51.100.0/24</c>: a partir de la instancia 254
+/// volvía a empezar, y como las pruebas de bloqueo dejan filas en <c>bloqueo_ip</c>, una instancia
+/// que reutilizaba la IP de otra convertía en <c>403</c> los logins de la que la estaba usando. Se
+/// reparten ahora por los dos últimos octetos de <c>198.51.0.0/16</c>, de donde sale el rango de
+/// pruebas que usan las pruebas, dejando fuera <c>198.51.100.0/24</c> porque hay pruebas que
+/// escriben a mano <c>198.51.100.201</c> y <c>198.51.100.250</c>.
+/// </para>
+/// </summary>
 internal static class ContadorInstancias
 {
     private static int _siguiente;
 
-    public static int Next() => Interlocked.Increment(ref _siguiente) % 254 + 1;
+    private static int Next() => Interlocked.Increment(ref _siguiente);
+
+    /// <summary>
+    /// Dirección de la instancia siguiente, repartida por los dos últimos octetos de
+    /// <c>198.51.0.0/16</c>. Da unas 50.000 direcciones distintas, de las que quedan fuera
+    /// <c>198.51.100.0/24</c> (pruebas que escriben <c>198.51.100.201</c> y
+    /// <c>198.51.100.250</c> a mano) y la red que usan las pruebas (RFC 5737).
+    /// </summary>
+    public static string IpSiguiente()
+    {
+        var n = Next();
+        var red = 1 + (n / 254) % 200;
+        var host = 1 + n % 254;
+        return $"198.51.{red}.{host}";
+    }
 }
 
 /// <summary>
