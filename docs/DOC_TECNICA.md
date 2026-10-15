@@ -194,6 +194,14 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - En .NET 10, `AesGcm.Decrypt` ordena los parámetros distinto que `Encrypt`: usar **argumentos con nombre** o se cruzan nonce y etiqueta en silencio.
   - **Rotación de clave no implementada:** subir `Seguridad__CifradoVersion` sin recifrar deja los datos antiguos ilegibles. `TODO(A#)`, y no subir la versión a ciegas.
   - `SEGURIDAD.md` SEC-005 cerrado: `usuario.mfa_secreto` cifrado en reposo.
+- **Implementado en F1-10** (inmuebles y documentos):
+  - Los documentos de propiedad se guardan **fuera del webroot** (`Almacen__Documentos`) y se sirven **por la API**. Un PDF de propiedad no es un recurso público.
+  - El nombre en disco es un **GUID**, no viene de la petición; además `RutaDe()` normaliza con `Path.GetFullPath` y exige que la ruta empiece por la carpeta raíz. El nombre enviado queda solo como metadato.
+  - La subida valida extensión **y** firma real `%PDF-` (5 primeros bytes). Al leer la firma para validarla hay que **volver a escribirla** antes de copiar el resto: si no, el PDF se guarda sin cabecera y queda corrupto.
+  - Máximo **25 MB** (`TODO(A#)`: supuesto, SEC-004 A.4 pide un límite pero no lo fija).
+  - **RLS sobre `documento_inmueble`**: solo `admin` y `gerente`. Es la **segunda** barrera, detrás del permiso de la API, y hay un test que la comprueba saltándose la API. Por eso las lecturas van en **transacción explícita** con `app.rol`: sin transacción la política vería el rol vacío y no saldría ninguna fila.
+  - La unidad solo ofrece las modalidades que tiene permitidas y su tarifa se elige por **modalidad y moneda**. El estado manual (`disponible` / `mantenimiento` / `fuera de servicio`) **no** es ocupación: ocupada y reservada se calculan por fechas en fases posteriores.
+  - `TODO(A#)`: listas de `TipoInmueble` y `TipoUnidad`, que la especificación no enumera.
 - **Logs:** Serilog con redacción de propiedades sensibles.
 - **Implementado en F1-08** (configuración):
   - CRUD bajo `/api/v1/config` con `[Accion(Acciones.ConfiguracionEditar)]` (solo admin), auditoría en la misma transacción, `Idempotency-Key` en las mutaciones y el formato de lista paginada de §6.

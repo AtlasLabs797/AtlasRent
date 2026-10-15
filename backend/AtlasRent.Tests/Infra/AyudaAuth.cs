@@ -111,6 +111,28 @@ public static class AyudaAuth
     /// porque un cliente con almacén de cookies manda las suyas y acabaría mandando la cookie de
     /// sesión dos veces (la buena y la que el test quiere probar).
     /// </summary>
+    /// <summary>
+    /// Petición multipart con las cookies escritas a mano, para las subidas de archivos. El nombre
+    /// del archivo lo elige la prueba a propósito: en producción viene del cliente y no puede tocar
+    /// el disco.
+    /// </summary>
+    public static HttpRequestMessage ConCookiesMultipart(
+        string ruta,
+        (string Nombre, string Valor)[] cookies,
+        MultipartFormDataContent cuerpo)
+    {
+        var peticion = new HttpRequestMessage(HttpMethod.Post, ruta) { Content = cuerpo };
+        var csrf = Array.Find(cookies, cookie => cookie.Nombre == NombresCookies.Csrf);
+        if (csrf.Valor is { Length: > 0 } valor)
+        {
+            peticion.Headers.Add("X-CSRF-Token", valor);
+        }
+
+        peticion.Headers.Add("Cookie", string.Join("; ", cookies.Select(cookie => $"{cookie.Nombre}={cookie.Valor}")));
+
+        return peticion;
+    }
+
     public static HttpRequestMessage ConCookies(
         HttpMethod metodo,
         string ruta,

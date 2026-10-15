@@ -16,6 +16,27 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 09:30] FEAT · F1-10 · Inmuebles, unidades, tarifas y documentos de propiedad
+- Qué:
+  - Migración `20261015053702_InmueblesUnidadesYDocumentos`: `inmueble`, `unidad`, `modalidad_unidad`, `tarifa_unidad` y `documento_inmueble`, con `GRANT` a `rent_app` y **RLS sobre `documento_inmueble`** (solo admin y gerente).
+  - `Services/AlmacenDocumentos.cs`: los documentos se guardan **fuera del webroot** y se sirven por la API; la subida valida extensión **y** la **firma real** `%PDF-`; máximo **25 MB**.
+  - `ServicioInmuebles`, `ServicioDocumentosInmueble` y `Controllers/InmueblesController` con `[Accion]`, paginación de §6 y auditoría.
+  - 17 tests nuevos en `backend/AtlasRent.Tests/Inmuebles/`.
+- Por qué: F1-10 del plan. Un título de propiedad es el documento más sensible del inmueble (SEC-004) y la app está en internet.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **249/249 en verde**. Revisé dos cosas que suelen fallar aquí y están bien:
+  - **El nombre en disco es `Guid.NewGuid():N`**, no viene de la petición, y además `RutaDe()` normaliza con `Path.GetFullPath` y exige que la ruta empiece por la carpeta raíz. Un `../` no tiene dónde colarse. El nombre enviado queda solo como metadato para la cabecera de descarga.
+  - **La validación del tipo real no rompe el archivo**: la cabecera leída se vuelve a escribir antes de copiar el resto.
+- NO verificado: `dotnet ef database update` contra la base de desarrollo (requiere secretos de `.env.dev`). Tampoco se probó la concurrencia de dos subidas simultáneas de la misma categoría: el índice único las rechaza con 409, pero eso no está probado.
+- Migraciones: sí. `Migrations/20261015053702_InmueblesUnidadesYDocumentos`.
+- Riesgo / pendiente:
+  - **Bug real cazado por los tests**: el PDF se guardaba **sin su cabecera `%PDF-`**, porque la validación se había comido los primeros bytes. Es decir, **todos los documentos subidos estaban corruptos**. Corregido antes de dar la tarea por buena.
+  - **Defensa en profundidad probada**: hay un test que consulta la base **saltándose la API**, con `app.rol = empleado`, y RLS devuelve **0 filas**. La segunda barrera funciona aunque el endpoint no aplique el permiso.
+  - `Almacen__Documentos` **debe apuntar a una carpeta temporal en los tests**, nunca a `C:\AtlasRent\data`.
+  - `TODO(A#)` y supuestos por confirmar con el responsable: **tamaño máximo 25 MB** (SEC-004 A.4 exige un límite pero no lo fija) y las **listas de `TipoInmueble` y `TipoUnidad`**, que la especificación no enumera.
+  - Las lecturas de `documento_inmueble` van en **transacción explícita** con `app.rol`: sin transacción, la política vería el rol vacío y no saldría ninguna fila.
+  - No implementado (no pedido): ocupación por fechas, borrado de documentos e `Idempotency-Key` en la subida.
+- Commit/PR: `feat(inmuebles): inmuebles, unidades, tarifas y documentos de propiedad con RLS`.
+
 ## [15/10/2026 08:40] FEAT · F1-09 · Clientes con AES-256-GCM, índice ciego y cierre de SEC-005
 - Qué:
   - `Services/Cifrado.cs`: `ServicioCifrado` (AES-256-GCM con versión de clave y **nonce aleatorio por cifrado**), `DocumentoIdentidad.Normalizar` e `IndiceCiegoDocumento` (HMAC-SHA256 con clave propia).

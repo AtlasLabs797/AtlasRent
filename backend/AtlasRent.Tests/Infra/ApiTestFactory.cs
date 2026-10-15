@@ -47,6 +47,14 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
     private readonly string _claveJwt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
 
     /// <summary>
+    /// Carpeta de documentos de esta instancia. Es una temporal del sistema y no
+    /// <c>C:\AtlasRent\data\documentos</c>: una prueba que sube un archivo escribe donde sea y lo
+    /// borra al terminar, nunca en la carpeta de desarrollo.
+    /// </summary>
+    public string CarpetaDocumentos { get; } =
+        Path.Combine(Path.GetTempPath(), $"atlas-rent-docs-{Guid.NewGuid():N}");
+
+    /// <summary>
     /// Clave de cifrado en reposo que usa esta instancia. La aplicación la exige al arrancar; la
     /// prueba la necesita para descifrar y comprobar que lo guardado es un cifrado válido.
     /// </summary>
@@ -89,6 +97,9 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
             ["Seguridad:CifradoClave"] = Convert.ToBase64String(ClaveCifrado),
             ["Seguridad:CifradoVersion"] = "1",
             ["Seguridad:HmacDocumentoClave"] = Convert.ToBase64String(ClaveHmacDocumento),
+            // F1-10: los documentos de propiedad se escriben en una temporal propia de la
+            // instancia, para que una prueba no deje nada en la carpeta de desarrollo.
+            [$"{OpcionesAlmacen.Seccion}:Documentos"] = CarpetaDocumentos,
         };
         ConfigurarAjustes(ajustes);
 
@@ -118,6 +129,20 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
 
     /// <summary>Clave de cifrado de prueba: exactamente 32 bytes en base64, como AES-256 exige.</summary>
     public static string ClaveDe32Bytes() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+
+    /// <summary>
+    /// Al terminar, la carpeta de documentos de esta instancia se borra entera. Las pruebas la
+    /// usan como almacén, no como un sitio donde dejar cosas.
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+
+        if (Directory.Exists(CarpetaDocumentos))
+        {
+            Directory.Delete(CarpetaDocumentos, recursive: true);
+        }
+    }
 }
 
 /// <summary>Resolutor de pruebas: la IP que le pone a esta instancia.</summary>
@@ -184,6 +209,13 @@ public sealed class RelojPrueba : TimeProvider
 /// </summary>
 public sealed class ApiTestFactorySinBd : WebApplicationFactory<Program>
 {
+    /// <summary>
+    /// Carpeta de documentos temporal. La aplicación exige <c>Almacen__Documentos</c> para
+    /// arrancar, y aquí no se escribe nada: solo tiene que existir la opción.
+    /// </summary>
+    private static readonly string CarpetaDocumentos =
+        Path.Combine(Path.GetTempPath(), $"atlas-rent-docs-sinbd-{Guid.NewGuid():N}");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting(
@@ -192,5 +224,6 @@ public sealed class ApiTestFactorySinBd : WebApplicationFactory<Program>
         builder.UseSetting("Seguridad:CifradoClave", ApiTestFactory.ClaveDe32Bytes());
         builder.UseSetting("Seguridad:CifradoVersion", "1");
         builder.UseSetting("Seguridad:HmacDocumentoClave", ApiTestFactory.ClaveDe32Bytes());
+        builder.UseSetting($"{OpcionesAlmacen.Seccion}:Documentos", CarpetaDocumentos);
     }
 }

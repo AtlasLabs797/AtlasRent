@@ -11,6 +11,47 @@ namespace AtlasRent.Tests.Infra;
 /// </summary>
 public sealed class SesionCliente(HttpClient cliente, (string Nombre, string Valor)[] cookies) : IDisposable
 {
+    /// <summary>
+    /// Archivo PDF de prueba: con la firma "%PDF-" al principio, que es lo que mira la aplicación
+    /// para decidir que el archivo es un PDF de verdad.
+    /// </summary>
+    public static byte[] PdfDePrueba(int tamano = 512)
+    {
+        var cabecera = "%PDF-1.7\n% atlas-rent de prueba\n"u8.ToArray();
+        var archivo = new byte[Math.Max(cabecera.Length, tamano)];
+        cabecera.CopyTo(archivo, 0);
+
+        return archivo;
+    }
+
+    /// <summary>
+    /// Subida multipart con las cookies de la sesión. <paramref name="nombreArchivo"/> es lo que
+    /// dijo el cliente: puede ser cualquier cosa y el nombre de salida no debe depender de ello.
+    /// </summary>
+    public Task<HttpResponseMessage> SubirArchivoAsync(
+        string ruta,
+        string campoArchivo,
+        string nombreArchivo,
+        byte[] contenido,
+        string? tipoContenido,
+        (string Nombre, string Valor)[] campos,
+        CancellationToken ct)
+    {
+        var cuerpo = new MultipartFormDataContent();
+        var archivo = new ByteArrayContent(contenido);
+        if (tipoContenido is not null)
+        {
+            archivo.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(tipoContenido);
+        }
+
+        cuerpo.Add(archivo, campoArchivo, nombreArchivo);
+        foreach (var (nombre, valor) in campos)
+        {
+            cuerpo.Add(new StringContent(valor), nombre);
+        }
+
+        return cliente.SendAsync(AyudaAuth.ConCookiesMultipart(ruta, cookies, cuerpo), ct);
+    }
     public Task<HttpResponseMessage> GetAsync(string ruta, CancellationToken ct) =>
         cliente.GetAsync(ruta, ct);
 

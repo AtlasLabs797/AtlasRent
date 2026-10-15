@@ -65,6 +65,19 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<ContactoCliente> ContactoCliente => Set<ContactoCliente>();
 
+    // F1-10: inmuebles y unidades con sus modalidades y tarifas, y los documentos PDF de
+    // propiedad. Los archivos de documento no están aquí: viven fuera del webroot y se sirven por
+    // la API (docs/SEGURIDAD.md SEC-004).
+    public DbSet<Inmueble> Inmueble => Set<Inmueble>();
+
+    public DbSet<Unidad> Unidad => Set<Unidad>();
+
+    public DbSet<ModalidadUnidad> ModalidadUnidad => Set<ModalidadUnidad>();
+
+    public DbSet<TarifaUnidad> TarifaUnidad => Set<TarifaUnidad>();
+
+    public DbSet<DocumentoInmueble> DocumentoInmueble => Set<DocumentoInmueble>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -418,6 +431,92 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Cliente)
                 .WithMany(c => c.Contactos)
                 .HasForeignKey(e => e.ClienteId);
+        });
+
+        // F1-10: inmuebles, unidades y documentos de propiedad (docs/ESPECIFICACION.md §3.1).
+        modelBuilder.Entity<Inmueble>(entidad =>
+        {
+            entidad.ToTable("inmueble");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(200).IsRequired();
+            entidad.Property(e => e.Direccion).HasMaxLength(300);
+            entidad.Property(e => e.Notas).HasMaxLength(1000);
+            entidad.Property(e => e.PlantillaContratoPorDefecto).HasMaxLength(120);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.Nombre);
+            entidad.HasIndex(e => e.PropietariaId);
+            // Subempresa propietaria: etiqueta, no multiempresa (docs/ESPECIFICACION.md §1). Sin
+            // navegación para que EF no la confunda con la facturadora de la unidad.
+            entidad.HasOne<Subempresa>().WithMany().HasForeignKey(e => e.PropietariaId);
+        });
+
+        modelBuilder.Entity<Unidad>(entidad =>
+        {
+            entidad.ToTable("unidad");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.Medidor).HasMaxLength(120);
+            entidad.Property(e => e.Notas).HasMaxLength(1000);
+            // Baños con medios (1,5) y metros con decimales; los dos son medidas, no cuentas.
+            entidad.Property(e => e.MetrosCuadrados).HasColumnType("numeric(18,2)");
+            entidad.Property(e => e.Banos).HasColumnType("numeric(18,2)");
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.Nombre);
+            // Índice compuesto por el filtro de estado manual de la lista de unidades.
+            entidad.HasIndex(e => new { e.InmuebleId, e.EstadoManual });
+            entidad.HasOne<Inmueble>()
+                .WithMany(i => i.Unidades)
+                .HasForeignKey(e => e.InmuebleId);
+            entidad.HasOne<Subempresa>().WithMany().HasForeignKey(e => e.PropietariaId);
+            entidad.HasOne<Subempresa>().WithMany().HasForeignKey(e => e.FacturadoraPorDefectoId);
+        });
+
+        // Modalidades permitidas: la regla que no se puede violar. La clave compuesta hace
+        // imposible repetir una modalidad en la misma unidad.
+        modelBuilder.Entity<ModalidadUnidad>(entidad =>
+        {
+            entidad.ToTable("unidad_modalidad");
+            entidad.HasKey(e => new { e.UnidadId, e.Modalidad });
+            entidad.HasOne(e => e.Unidad)
+                .WithMany(u => u.Modalidades)
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TarifaUnidad>(entidad =>
+        {
+            entidad.ToTable("unidad_tarifa");
+            entidad.HasKey(e => e.Id);
+            // La tarifa se elige por modalidad y por moneda (docs/ESPECIFICACION.md §3.1): una unidad
+            // no tiene dos tarifas de lo mismo, y el importe es numeric(18,2) por la convención.
+            entidad.HasIndex(e => new { e.UnidadId, e.Modalidad, e.Moneda }).IsUnique();
+            entidad.HasOne(e => e.Unidad)
+                .WithMany(u => u.Tarifas)
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // RLS sobre documento_inmueble (docs/SEGURIDAD.md A.4 y DOC_TECNICA.md §4.3): solo gerente y
+        // administrador leen y escriben la fila, con independencia de lo que diga la API.
+        modelBuilder.Entity<DocumentoInmueble>(entidad =>
+        {
+            entidad.ToTable("documento_inmueble");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.NombreOriginal).HasMaxLength(200).IsRequired();
+            entidad.Property(e => e.NombreArchivo).HasMaxLength(64).IsRequired();
+            entidad.Property(e => e.TipoContenido).HasMaxLength(60).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El nombre en disco es único: es la ruta del archivo, y dos filas apuntando al mismo
+            // archivo harían que una descarga sirviera el documento de otro inmueble.
+            entidad.HasIndex(e => e.NombreArchivo).IsUnique();
+            // Una versión por categoría: la versión siguiente es la que hay, y el índice único es
+            // la red de seguridad si dos subidas a la vez cogieran el mismo número.
+            entidad.HasIndex(e => new { e.InmuebleId, e.Categoria, e.Version }).IsUnique();
+            entidad.HasIndex(e => e.InmuebleId);
+            entidad.HasOne<Inmueble>()
+                .WithMany()
+                .HasForeignKey(e => e.InmuebleId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

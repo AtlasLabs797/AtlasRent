@@ -157,6 +157,12 @@ builder.Services.AddSingleton<IndiceCiegoDocumento>();
 builder.Services.AddScoped<ServicioClientes>();
 builder.Services.AddScoped<ServicioContactos>();
 builder.Services.AddScoped<ServicioProspectos>();
+// F1-10: inmuebles, unidades y documentos de propiedad. La carpeta de documentos es configuración
+// y no una constante (Almacen__Documentos): en desarrollo, pruebas y producción son tres sitios.
+builder.Services.AddSingleton(OpcionesAlmacen.Desde(builder.Configuration));
+builder.Services.AddSingleton<AlmacenDocumentos>();
+builder.Services.AddScoped<ServicioInmuebles>();
+builder.Services.AddScoped<ServicioDocumentosInmueble>();
 builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
