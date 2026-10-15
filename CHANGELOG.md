@@ -16,6 +16,27 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 12:00] FEAT · F1-12 (parcial) · Backup cifrado, rotación, verificación y Watchdog
+- Qué:
+  - `Api/Services/Backup.cs` y `Api/Services/ServicioBackup.cs`: copia de la base de datos y de los documentos en un contenedor propio, cifrada con AES-256-GCM, en `Backup__CarpetaLocal`.
+  - Migración `20261015071955_PermisosLecturaBackup`: `GRANT SELECT` para `rent_backup` y **`ALTER DEFAULT PRIVILEGES FOR ROLE rent_migrador`**, que es la pieza que faltaba (los de `02_basedatos.sql` son `FOR ROLE rent_owner` y nunca se aplicaron, porque las tablas las crea `rent_migrador`).
+  - `Watchdog/OperacionesWatchdog.cs` y un `Watchdog/Program.cs` real: restauración y actualización **con copia previa obligatoria**.
+  - 26 tests en `backend/AtlasRent.Tests/Backup/`.
+  - `db/scripts/01_roles.sql`: `ALTER ROLE rent_backup BYPASSRLS`.
+- Por qué: F1-12 del plan. **Queda a medias y no se da por hecha**: la subida a Google Drive depende de **F0-04** y el disparo diario de **Hangfire**, que todavía no está en el repo.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` y `dotnet test -c Release` → **277/277 en verde**; `dotnet list package --vulnerable` sin vulnerabilidades.
+- NO verificado: `pg_dump` de producción (aquí no hay cliente de PostgreSQL; los tests ejecutan el `pg_dump` de la imagen vía `docker exec` por socket local, sin contraseña en la línea de comandos); la aplicación del volcado con `psql` (runbook FP-03); el envío de correo de alerta; y el backup real sobre la base de desarrollo.
+- Migraciones: sí. `Migrations/20261015071955_PermisosLecturaBackup`.
+- Riesgo / pendiente:
+  - **El bloqueador que se encontró y se arregló:** `pg_dump` extrae con `COPY … TO STDOUT`, y PostgreSQL rechaza esa sentencia sobre una tabla con RLS activada si el rol no la ignora (SQLSTATE 55000). Con `auditoria` y `documento_inmueble` con RLS, **el volcado fallaba**. Ninguna política lo resuelve: el bloqueo es de la sentencia `COPY`. Solo un superusuario puede conceder `BYPASSRLS`, y se añadió a `db/scripts/01_roles.sql`. **Aplicado también al contenedor de desarrollo.**
+  - **El fallo peligroso es el contrario**: degradar ese error para que el backup "pase" produce un volcado **vacío y sin error**. Por eso el servicio comprueba `TieneFilas` y **descifra el archivo del disco para verificarlo** antes de rotar. Un backup que parece bueno y no tiene nada es peor que no tener backup.
+  - Formato: `ARBK | v1 | nonce(12) | etiqueta GCM(16) | SHA-256 del claro(32) | cifrado`, en `atlasrent-AAAA-MM-DD.arbk`. El claro es un contenedor con `bd.sql` y `documentos/…`.
+  - Rotación a 4 **solo tras verificar**; un fallo no rota. Dos ejecuciones el mismo día son idempotentes.
+  - `IAlmacenRemoto` y `AlmacenRemotoDriveNoDisponible` lanzan `NotImplementedException` diciendo que dependen de F0-04. **Sin simulación**: la copia queda solo en local.
+  - Riesgo asumido: un `rent_backup` comprometido lee todo, incluidas las tablas con RLS. Es inherente a respaldar la base; se compensa con que el backup va cifrado y con que ese rol no opera la aplicación. **Al restaurar, usar un superusuario, nunca `rent_backup`.**
+  - `TODO(A#)`: job diario de integridad de auditoría (**debe correr con `app.rol = admin` o `gerente`**); envío de correo de alerta; firma del paquete de actualización; `Backup__ClaveCifrado` asumida en base64; una base legítimamente vacía sería rechazada por `TieneFilas`.
+- Commit/PR: `feat(backup): copia cifrada, verificacion de integridad, rotacion y watchdog con copia previa`.
+
 ## [15/10/2026 11:05] FIX · Correcciones de la verificación independiente del bloque F1
 - Qué:
   - **MFA: el token provisional y el código de recuperación se gastan con una escritura condicional** (`UPDATE … WHERE consumido_at IS NULL` / `usado_at IS NULL`) y **comprobando el número de filas afectadas**, dentro de la transacción. Antes se leía fuera de la transacción y luego se asignaba la propiedad en memoria: **dos peticiones simultáneas con el mismo token pasaban las dos y abrían dos sesiones**. Es un TOCTOU real, aunque el test existente solo lo comprobaba en serie.

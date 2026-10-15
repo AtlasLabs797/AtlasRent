@@ -14,5 +14,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AtlasRent.Api\AtlasRent.Api.csproj" />
+    <!-- F1-12: el Watchdog tiene lógica propia (restaurar y actualizar con copia previa obligatoria)
+         y esa lógica se prueba, no solo el arranque del proceso. -->
+    <ProjectReference Include="..\AtlasRent.Watchdog\AtlasRent.Watchdog.csproj" />
   </ItemGroup>
 </Project>

@@ -732,6 +732,12 @@
           "Serilog.AspNetCore": "[10.0.0, )"
         }
       },
+      "atlasrent.watchdog": {
+        "type": "Project",
+        "dependencies": {
+          "AtlasRent.Api": "[1.0.0, )"
+        }
+      },
       "BCrypt.Net-Next": {
         "type": "CentralTransitive",
         "requested": "[4.2.1, )",

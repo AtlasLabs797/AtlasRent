@@ -32,6 +32,21 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
     /// <summary>Rol con el que corre la API.</summary>
     public string CadenaApp { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Rol con el que se hace el <c>pg_dump</c> de la copia de seguridad, con su puerto publicado
+    /// en el host. F1-12 lo necesita para comprobar que el volcado sale con datos de verdad y no
+    /// vacío por la RLS.
+    /// </summary>
+    public string CadenaBackup { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// La misma base, pero con el <c>host</c> y el <c>puerto</c> que se ven desde dentro del propio
+    /// contenedor. Sirve para lanzar <c>pg_dump</c> con <c>docker exec</c>: la imagen de PostgreSQL
+    /// trae el cliente y su <c>pg_hba.conf</c> acepta el socket local sin contraseña, así que la
+    /// clave de este rol no sale de la máquina ni aparece en ninguna línea de órdenes.
+    /// </summary>
+    public string CadenaBackupDentro { get; private set; } = string.Empty;
+
     public async ValueTask InitializeAsync()
     {
         var claveSuperusuario = ContrasenaAleatoria();
@@ -62,6 +77,13 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
 
         CadenaMigrador = Conectar("rent_migrador", claveMigrador).ConnectionString;
         CadenaApp = Conectar("rent_app", claveApp).ConnectionString;
+        CadenaBackup = Conectar("rent_backup", claveBackup).ConnectionString;
+        CadenaBackupDentro = new NpgsqlConnectionStringBuilder(CadenaBackup)
+        {
+            // localhost y 5432 son los que ve el proceso que corre dentro del contenedor.
+            Host = "localhost",
+            Port = PuertoPostgres,
+        }.ConnectionString;
 
         // 1) Roles, como superusuario. El script deja las contraseñas en psql -v; aquí se sustituyen
         //    por literales generados aquí.
@@ -86,6 +108,13 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
     }
 
     public async ValueTask DisposeAsync() => await _contenedor.DisposeAsync();
+
+    /// <summary>
+    /// Identificador del contenedor, para lanzar el <c>pg_dump</c> de dentro con
+    /// <c>docker exec</c>. Esta máquina no tiene las herramientas de cliente de PostgreSQL
+    /// instaladas y el cliente que trae la imagen sí está.
+    /// </summary>
+    public string IdContenedor => _contenedor.Id;
 
     /// <summary>Contexto con la misma nomenclatura e interceptor que usa la API.</summary>
     public AtlasRentDbContext CrearContexto(string cadenaConexion, ContextoSesion? sesion = null)

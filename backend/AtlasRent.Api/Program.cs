@@ -44,6 +44,11 @@ builder.Services.AddDbContext<AtlasRentDbContext>((servicios, opciones) =>
 
 builder.Services.AddScoped<AuditoriaService>();
 builder.Services.AddScoped<IntegridadAuditoria>();
+// TODO(A#): falta conectar el job diario de verificación de integridad de auditoría
+// (docs/DOC_TECNICA.md §8). No se puede hacer aquí porque los jobs (Hangfire) todavía no están
+// montados en el repositorio. Ojo al conectarlo: tiene que correr con app.rol = admin o gerente (o
+// como rent_migrador), porque con cualquier otro rol la RLS le oculta filas de 'auditoria' y la
+// verificación daría un falso "todo correcto" sobre una cadena que en realidad está rota.
 
 // F1-04: autenticación y sesiones. La clave del JWT se lee de Seguridad__JwtClave y no tiene valor
 // por defecto: si falta, la aplicación falla al arrancar en lugar de firmar con una clave inventada.
@@ -164,6 +169,17 @@ builder.Services.AddSingleton<AlmacenDocumentos>();
 builder.Services.AddScoped<ServicioInmuebles>();
 builder.Services.AddScoped<ServicioDocumentosInmueble>();
 builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
+
+// F1-12: copia de seguridad cifrada de la base de datos y de los documentos, con rotación. El
+// volcado lo hace el cliente de PostgreSQL con el rol rent_backup (ConnectionStrings__Backup), que
+// por su cuenta solo lee. El almacén remoto no se registra todavía: la subida a Google Drive
+// depende de F0-04 (carpetas y cliente OAuth), y sin él la copia se queda en local.
+// TODO(A#): registrar IAlmacenRemoto -> AlmacenRemotoDriveNoDisponible, y el job diario que la
+// dispara, cuando exista el cliente OAuth. Los jobs (Hangfire) aún no están montados en el repo.
+builder.Services.AddSingleton(OpcionesBackup.Desde(builder.Configuration));
+builder.Services.AddSingleton<ServicioCifradoCopia>();
+builder.Services.AddSingleton<IVolcadoBaseDatos>(VolcadoPgDump.EnProduccion());
+builder.Services.AddScoped<ServicioBackup>();
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>

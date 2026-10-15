@@ -63,6 +63,19 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
     /// <summary>Clave del índice ciego del documento, propia y distinta de la de cifrado.</summary>
     public byte[] ClaveHmacDocumento { get; } = RandomNumberGenerator.GetBytes(32);
 
+    /// <summary>
+    /// Carpeta de las copias de seguridad de esta instancia. Es una temporal del sistema y no
+    /// <c>C:\AtlasRent\data\backups</c>: las pruebas de rotación y de borrado escriben aquí.
+    /// </summary>
+    public string CarpetaCopias { get; } =
+        Path.Combine(Path.GetTempPath(), $"atlas-rent-copias-{Guid.NewGuid():N}");
+
+    /// <summary>
+    /// Clave con la que se cifran las copias de esta instancia. Distinta de la de los documentos,
+    /// como en producción.
+    /// </summary>
+    public byte[] ClaveCifradoCopia { get; } = RandomNumberGenerator.GetBytes(32);
+
     /// <summary>Cliente con cookies (flujo real de navegador: base https para que guarde cookies Secure).</summary>
     public HttpClient CrearCliente() => CreateClient(new WebApplicationFactoryClientOptions
     {
@@ -100,6 +113,11 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
             // F1-10: los documentos de propiedad se escriben en una temporal propia de la
             // instancia, para que una prueba no deje nada en la carpeta de desarrollo.
             [$"{OpcionesAlmacen.Seccion}:Documentos"] = CarpetaDocumentos,
+            // F1-12: la copia de seguridad exige su carpeta y su clave al arrancar. Aquí van a una
+            // temporal propia de la instancia y con una clave generada aquí: una prueba de backup
+            // nunca escribe en C:\AtlasRent\data ni con la clave de nadie.
+            [$"{OpcionesBackup.Seccion}:CarpetaLocal"] = CarpetaCopias,
+            [$"{OpcionesBackup.Seccion}:ClaveCifrado"] = Convert.ToBase64String(ClaveCifradoCopia),
         };
         ConfigurarAjustes(ajustes);
 
@@ -141,6 +159,11 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
         if (Directory.Exists(CarpetaDocumentos))
         {
             Directory.Delete(CarpetaDocumentos, recursive: true);
+        }
+
+        if (Directory.Exists(CarpetaCopias))
+        {
+            Directory.Delete(CarpetaCopias, recursive: true);
         }
     }
 }
@@ -216,6 +239,14 @@ public sealed class ApiTestFactorySinBd : WebApplicationFactory<Program>
     private static readonly string CarpetaDocumentos =
         Path.Combine(Path.GetTempPath(), $"atlas-rent-docs-sinbd-{Guid.NewGuid():N}");
 
+    /// <summary>
+    /// Carpeta de copias de seguridad temporal. La aplicación exige también
+    /// <c>Backup__CarpetaLocal</c> y <c>Backup__ClaveCifrado</c> para arrancar; aquí no se escribe
+    /// nada: solo tienen que existir las opciones.
+    /// </summary>
+    private static readonly string CarpetaCopias =
+        Path.Combine(Path.GetTempPath(), $"atlas-rent-copias-sinbd-{Guid.NewGuid():N}");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting(
@@ -225,5 +256,7 @@ public sealed class ApiTestFactorySinBd : WebApplicationFactory<Program>
         builder.UseSetting("Seguridad:CifradoVersion", "1");
         builder.UseSetting("Seguridad:HmacDocumentoClave", ApiTestFactory.ClaveDe32Bytes());
         builder.UseSetting($"{OpcionesAlmacen.Seccion}:Documentos", CarpetaDocumentos);
+        builder.UseSetting($"{OpcionesBackup.Seccion}:CarpetaLocal", CarpetaCopias);
+        builder.UseSetting($"{OpcionesBackup.Seccion}:ClaveCifrado", ApiTestFactory.ClaveDe32Bytes());
     }
 }

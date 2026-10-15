@@ -8,4 +8,9 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- F1-12: el Watchdog restaura las copias que hace la API, así que reutiliza su servicio de
+         copia y su descifrado en lugar de reescribirlos. El paquete de Google Drive no está. -->
+    <ProjectReference Include="..\AtlasRent.Api\AtlasRent.Api.csproj" />
+  </ItemGroup>
 </Project>
