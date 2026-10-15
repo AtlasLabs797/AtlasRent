@@ -16,6 +16,19 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 03:40] FEAT · F1-02 · Tipos de dominio: Dinero, redondeo, fechas de negocio y zona horaria
+- Qué: `backend/AtlasRent.Api/Dominio/` con `Moneda` (USD/DOP), `Dinero`, `Redondeo`, `Prorrateo`, `TiempoNegocio` y `MonedaDistintaException`. Tests en `backend/AtlasRent.Tests/Dominio/`.
+  - `Redondeo.Importe` half-up a 2 decimales, `Redondeo.TipoCambio` a 6 (`numeric(18,6)`) y `Redondeo.Porcentaje` a 4 (ITBIS y retenciones, F1-08).
+  - `Dinero` redondea al construirse, de modo que ningún valor con centimas ocultas llega a la base de datos ni a una suma posterior; sumar, restar o comparar monedas distintas lanza `MonedaDistintaException` en vez de convertir (D7).
+  - `Prorrateo.Mensual` aplica `renta / díasDelMes × díasFacturables` con días inclusivos y rechaza rangos imposibles.
+  - `TiempoNegocio` con `DateOnly` para fechas de negocio y `America/Santo_Domingo` para "hoy", con resolución alternativa del identificador de Windows.
+- Por qué: F1-02 del plan. Todo el dinero, las fechas y los permisos se escriben con test primero (AGENTS.md §6).
+- Verificado: `dotnet test -c Release` → 55/55 en verde (51 nuevos de dominio + los 4 de arranque de F1-01); `dotnet build -c Release -warnaserror` sin advertencias (vía `TreatWarningsAsErrors`). Cubierto: half-up en positivo y negativo (0,005 → 0,01 y −0,005 → −0,01), el caso trampa 2,675 → 2,68, meses de 28/29/30/31 días completos y parciales, cambio de día entre UTC y Santo Domingo, vencimiento el mismo día.
+- NO verificado: el consumo de estos tipos desde EF Core (conversores `numeric(18,2)`, `date` y `timestamptz`) llega en F1-03.
+- Migraciones: no.
+- Riesgo / pendiente: `Redondeo.Porcentaje` queda preparado para F1-08; `TiempoNegocio.Ahora()` no tiene test determinista por diseño (las funciones puras sí lo tienen) y se exercita en F1-04.
+- Commit/PR: `feat(dominio): tipos de dinero, redondeo, prorrateo, fechas de negocio y zona horaria`.
+
 ## [15/10/2026 03:05] FEAT · F1-01 · Esqueleto backend (solución, Serilog, health checks, PostgreSQL)
 - Qué:
   - `global.json` en la raíz (SDK 10.0.302, `rollForward: latestFeature`) **y sección `test: { runner: Microsoft.Testing.Platform }`**: el SDK 10 ya no soporta el target `VSTest`, así que `dotnet test` sin ese opt-in falla.

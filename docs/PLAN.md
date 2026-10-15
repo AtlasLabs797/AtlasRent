@@ -33,7 +33,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 | ID | Tarea | Spec | Aceptación | Depende | Estado |
 |---|---|---|---|---|---|
 | F1-01 | **Esqueleto backend:** solución `backend/` (Api, Watchdog, Tests) con las versiones de DOC_TECNICA §2 (`global.json`, `.csproj`), `Program.cs` con el pipeline base, Serilog, health check, conexión a PostgreSQL de desarrollo, CI completo (build, tests, auditoría de paquetes) | 4 | CI verde; `dotnet run` arranca y `/health` responde; versiones = DOC_TECNICA §2 | — | HECHA (15/10/2026) |
-| F1-02 | Tipos de dominio: `Dinero` (decimal + moneda), redondeo, fechas de negocio, zona horaria | 5 | Tests de redondeo y meses 28/29/30/31 | F1-01 | PENDIENTE |
+| F1-02 | Tipos de dominio: `Dinero` (decimal + moneda), redondeo, fechas de negocio, zona horaria | 5 | Tests de redondeo y meses 28/29/30/31 | F1-01 | HECHA (15/10/2026) |
 | F1-03 | BD base: roles (`db/scripts`), migración inicial, `btree_gist`/`pgcrypto`, auditoría append-only + firma e integridad, RLS base | 5, 7 | Test: UPDATE/DELETE/TRUNCATE en `auditoria` con rol app fallan; verificación de integridad detecta una fila alterada | F1-01 | PENDIENTE |
 | F1-04 | Auth (JWT + cookies HttpOnly + refresco rotatorio + CSRF + BCrypt): comprobación HaveIBeenPwned, inactividad 30 min / máx. 12 h, validación de sesión en BD para revocación inmediata | 7 | Usuario desactivado → 401 en la siguiente petición | F1-03 | PENDIENTE |
 | F1-05 | Rate limiting + bloqueo de cuenta (5 → 30 min) + **bloqueo de IP escalado** (nuevo), lista blanca, aviso de IP nueva, pantalla admin de desbloqueo | 7 | 5 fallos bloquean cuenta; N fallos desde una IP la bloquean aunque cambie de usuario; IP en lista blanca no se bloquea | F1-04 | PENDIENTE |
