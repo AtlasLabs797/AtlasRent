@@ -145,6 +145,11 @@ builder.Services
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IPolicyService, PolicyService>();
 builder.Services.AddScoped<ServicioUsuarios>();
+// F1-08: configuración. ServicioIdempotencia guarda el reintento de una mutación en su misma
+// transacción; ServicioConfiguracion y ServicioSeries escriben auditoría ahí dentro (AGENTS.md §6).
+builder.Services.AddScoped<ServicioIdempotencia>();
+builder.Services.AddScoped<ServicioConfiguracion>();
+builder.Services.AddScoped<ServicioSeries>();
 builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
 
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).

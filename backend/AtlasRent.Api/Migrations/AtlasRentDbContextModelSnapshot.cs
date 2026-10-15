@@ -93,6 +93,53 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("acceso_emergencia", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.AjusteGeneral", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("ModoRecordatorios")
+                        .HasColumnType("integer")
+                        .HasColumnName("modo_recordatorios");
+
+                    b.Property<decimal?>("ToleranciaCambioDop")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("tolerancia_cambio_dop");
+
+                    b.Property<decimal?>("ToleranciaCambioUsd")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("tolerancia_cambio_usd");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ajuste_general");
+
+                    b.ToTable("ajuste_general", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Auditoria", b =>
                 {
                     b.Property<Guid>("Id")
@@ -253,6 +300,165 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("codigo_recuperacion", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.CuentaReceptora", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<string>("Banco")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("banco");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cuenta_receptora");
+
+                    b.HasIndex("Nombre")
+                        .HasDatabaseName("ix_cuenta_receptora_nombre");
+
+                    b.ToTable("cuenta_receptora", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.FormaPago", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_forma_pago");
+
+                    b.HasIndex("Nombre")
+                        .HasDatabaseName("ix_forma_pago_nombre");
+
+                    b.ToTable("forma_pago", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Idempotencia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Clave")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("clave");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Huella")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("huella");
+
+                    b.Property<JsonDocument>("Respuesta")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("respuesta");
+
+                    b.Property<string>("Ruta")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("ruta");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_idempotencia");
+
+                    b.HasIndex("UsuarioId", "Clave")
+                        .IsUnique()
+                        .HasDatabaseName("ix_idempotencia_usuario_id_clave");
+
+                    b.ToTable("idempotencia", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.IntentoLogin", b =>
                 {
                     b.Property<Guid>("Id")
@@ -349,6 +555,65 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_mfa_desafio_usuario_id");
 
                     b.ToTable("mfa_desafio", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.NumeroSerie", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AnuladoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anulado_at");
+
+                    b.Property<Guid?>("AnuladoPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("anulado_por");
+
+                    b.Property<DateTimeOffset>("EmitidoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("emitido_at");
+
+                    b.Property<Guid>("EmitidoPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("emitido_por");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<string>("MotivoAnulacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo_anulacion");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero");
+
+                    b.Property<Guid>("SerieId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("serie_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_numero_serie");
+
+                    b.HasIndex("SerieId")
+                        .HasDatabaseName("ix_numero_serie_serie_id");
+
+                    b.HasIndex("SerieId", "Numero")
+                        .IsUnique()
+                        .HasDatabaseName("ix_numero_serie_serie_id_numero");
+
+                    b.ToTable("numero_serie", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.PermisoRol", b =>
@@ -667,6 +932,91 @@ namespace AtlasRent.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Serie", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("GeneraComprobante")
+                        .HasColumnType("boolean")
+                        .HasColumnName("genera_comprobante");
+
+                    b.Property<int?>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero");
+
+                    b.Property<string>("PlantillaPdf")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("plantilla_pdf");
+
+                    b.Property<string>("Prefijo")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("prefijo");
+
+                    b.Property<int>("Siguiente")
+                        .HasColumnType("integer")
+                        .HasColumnName("siguiente");
+
+                    b.Property<bool>("SumaAFacturado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("suma_a_facturado");
+
+                    b.Property<bool>("SumaASaldos")
+                        .HasColumnType("boolean")
+                        .HasColumnName("suma_a_saldos");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_serie");
+
+                    b.HasIndex("Numero")
+                        .IsUnique()
+                        .HasDatabaseName("ix_serie_numero");
+
+                    b.HasIndex("Prefijo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_serie_prefijo");
+
+                    b.ToTable("serie", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Sesion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -740,6 +1090,179 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_sesion_usuario_id");
 
                     b.ToTable("sesion", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Subempresa", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("Facturadora")
+                        .HasColumnType("boolean")
+                        .HasColumnName("facturadora");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<bool>("Propietaria")
+                        .HasColumnType("boolean")
+                        .HasColumnName("propietaria");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_subempresa");
+
+                    b.HasIndex("Nombre")
+                        .HasDatabaseName("ix_subempresa_nombre");
+
+                    b.ToTable("subempresa", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.TipoItbis", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<decimal>("Porcentaje")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("porcentaje");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tipo_itbis");
+
+                    b.HasIndex("Nombre")
+                        .HasDatabaseName("ix_tipo_itbis_nombre");
+
+                    b.ToTable("tipo_itbis", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.TipoRetencion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<int>("Base")
+                        .HasColumnType("integer")
+                        .HasColumnName("base");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("EsDefecto")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_defecto");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<decimal>("Porcentaje")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("porcentaje");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tipo_retencion");
+
+                    b.HasIndex("EsDefecto")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tipo_retencion_es_defecto")
+                        .HasFilter("(es_defecto = true)");
+
+                    b.HasIndex("Nombre")
+                        .HasDatabaseName("ix_tipo_retencion_nombre");
+
+                    b.ToTable("tipo_retencion", (string)null);
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Usuario", b =>

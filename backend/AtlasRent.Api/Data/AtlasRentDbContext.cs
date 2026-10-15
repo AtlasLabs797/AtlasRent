@@ -38,6 +38,26 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<UsuarioPermiso> UsuarioPermiso => Set<UsuarioPermiso>();
 
+    // F1-08: configuración. Los porcentajes de ITBIS y retención son filas de estas tablas, no
+    // constantes del código (D14).
+    public DbSet<Serie> Serie => Set<Serie>();
+
+    public DbSet<NumeroSerie> NumeroSerie => Set<NumeroSerie>();
+
+    public DbSet<TipoItbis> TipoItbis => Set<TipoItbis>();
+
+    public DbSet<TipoRetencion> TipoRetencion => Set<TipoRetencion>();
+
+    public DbSet<FormaPago> FormaPago => Set<FormaPago>();
+
+    public DbSet<CuentaReceptora> CuentaReceptora => Set<CuentaReceptora>();
+
+    public DbSet<Subempresa> Subempresa => Set<Subempresa>();
+
+    public DbSet<AjusteGeneral> AjusteGeneral => Set<AjusteGeneral>();
+
+    public DbSet<Idempotencia> Idempotencia => Set<Idempotencia>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -234,6 +254,109 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne<Usuario>()
                 .WithMany()
                 .HasForeignKey(e => e.UsuarioId);
+        });
+
+        // F1-08: series y numeración. El contador de la serie lo mueve el UPDATE ... RETURNING de
+        // ServicioSeries, dentro de la transacción de emisión; numero_serie guarda qué números se
+        // han emitido y cuáles están anulados, sin liberar nunca ninguno (docs/DOC_TECNICA.md §4.3).
+        modelBuilder.Entity<Serie>(entidad =>
+        {
+            entidad.ToTable("serie");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Prefijo).HasMaxLength(16);
+            entidad.Property(e => e.PlantillaPdf).HasMaxLength(120);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El número de serie y el prefijo identifican la serie para el usuario: los dos únicos.
+            entidad.HasIndex(e => e.Numero).IsUnique();
+            entidad.HasIndex(e => e.Prefijo).IsUnique();
+        });
+
+        modelBuilder.Entity<NumeroSerie>(entidad =>
+        {
+            entidad.ToTable("numero_serie");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.MotivoAnulacion).HasMaxLength(500);
+            entidad.Property(e => e.EmitidoAt).IsRequired();
+            // La unicidad (serie, numero) es la red de seguridad del contador: si dos emisiones
+            // simultáneas salieran con el mismo número, la segunda no llegaría a commitear.
+            entidad.HasIndex(e => new { e.SerieId, e.Numero }).IsUnique();
+            entidad.HasIndex(e => e.SerieId);
+        });
+
+        // F1-08: D14. Los porcentajes son datos y van con cuatro decimales, que es lo que
+        // redondea Redondeo.Porcentaje. No hay ninguna cifra fiscal en el código.
+        modelBuilder.Entity<TipoItbis>(entidad =>
+        {
+            entidad.ToTable("tipo_itbis");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.Porcentaje).HasColumnType("numeric(18,4)");
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.Nombre);
+        });
+
+        modelBuilder.Entity<TipoRetencion>(entidad =>
+        {
+            entidad.ToTable("tipo_retencion");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.Porcentaje).HasColumnType("numeric(18,4)");
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.Nombre);
+            // Solo un tipo de retención puede ser el de por defecto. El servicio además le quita
+            // el distintivo al anterior, así que este índice casi nunca se nota: está para que dos
+            // administradores a la vez no dejen la tabla con dos por defecto.
+            entidad.HasIndex(e => e.EsDefecto)
+                .IsUnique()
+                .HasFilter("(es_defecto = true)");
+        });
+
+        modelBuilder.Entity<FormaPago>(entidad =>
+        {
+            entidad.ToTable("forma_pago");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.Nombre);
+        });
+
+        modelBuilder.Entity<CuentaReceptora>(entidad =>
+        {
+            entidad.ToTable("cuenta_receptora");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.Banco).HasMaxLength(120);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.Nombre);
+        });
+
+        modelBuilder.Entity<Subempresa>(entidad =>
+        {
+            entidad.ToTable("subempresa");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.HasIndex(e => e.Nombre);
+        });
+
+        modelBuilder.Entity<AjusteGeneral>(entidad =>
+        {
+            entidad.ToTable("ajuste_general");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+        });
+
+        modelBuilder.Entity<Idempotencia>(entidad =>
+        {
+            entidad.ToTable("idempotencia");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Clave).HasMaxLength(128).IsRequired();
+            entidad.Property(e => e.Ruta).HasMaxLength(256).IsRequired();
+            entidad.Property(e => e.Huella).HasMaxLength(64).IsRequired();
+            entidad.Property(e => e.Respuesta).HasColumnType("jsonb").IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // La clave es del usuario: dos personas distintas pueden usar la misma cadena.
+            entidad.HasIndex(e => new { e.UsuarioId, e.Clave }).IsUnique();
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

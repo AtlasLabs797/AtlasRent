@@ -15,10 +15,36 @@ public sealed class SesionCliente(HttpClient cliente, (string Nombre, string Val
         cliente.GetAsync(ruta, ct);
 
     public Task<HttpResponseMessage> PostAsync(string ruta, object cuerpo, CancellationToken ct) =>
-        cliente.SendAsync(AyudaAuth.ConCookies(HttpMethod.Post, ruta, cookies, cuerpo), ct);
+        Enviar(HttpMethod.Post, ruta, cuerpo, null, ct);
+
+    /// <summary>Mutación con <c>Idempotency-Key</c> (docs/DOC_TECNICA.md §6).</summary>
+    public Task<HttpResponseMessage> PostAsync(string ruta, object cuerpo, string claveIdempotencia, CancellationToken ct) =>
+        Enviar(HttpMethod.Post, ruta, cuerpo, claveIdempotencia, ct);
 
     public Task<HttpResponseMessage> PutAsync(string ruta, object cuerpo, CancellationToken ct) =>
-        cliente.SendAsync(AyudaAuth.ConCookies(HttpMethod.Put, ruta, cookies, cuerpo), ct);
+        Enviar(HttpMethod.Put, ruta, cuerpo, null, ct);
+
+    public Task<HttpResponseMessage> PutAsync(string ruta, object cuerpo, string claveIdempotencia, CancellationToken ct) =>
+        Enviar(HttpMethod.Put, ruta, cuerpo, claveIdempotencia, ct);
+
+    public Task<HttpResponseMessage> DeleteAsync(string ruta, CancellationToken ct) =>
+        Enviar(HttpMethod.Delete, ruta, null, null, ct);
+
+    private Task<HttpResponseMessage> Enviar(
+        HttpMethod metodo,
+        string ruta,
+        object? cuerpo,
+        string? claveIdempotencia,
+        CancellationToken ct)
+    {
+        var peticion = AyudaAuth.ConCookies(metodo, ruta, cookies, cuerpo ?? new { });
+        if (claveIdempotencia is not null)
+        {
+            peticion.Headers.Add("Idempotency-Key", claveIdempotencia);
+        }
+
+        return cliente.SendAsync(peticion, ct);
+    }
 
     public void Dispose() => cliente.Dispose();
 }

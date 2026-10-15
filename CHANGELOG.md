@@ -16,6 +16,27 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [15/10/2026 07:55] FEAT · F1-08 · Configuración: series, ITBIS, retenciones y ajustes, sin cifras fiscales en código
+- Qué:
+  - Migración `20261015042341_Configuracion`: `serie`, `numero_serie`, `tipo_itbis`, `tipo_retencion`, `forma_pago`, `cuenta_receptora`, `subempresa`, `ajuste_general` e `idempotencia`, con `GRANT` a `rent_app` y sin columnas `xmin`.
+  - `Controllers/ConfigController.cs` bajo `/api/v1/config`, con `[Accion(Acciones.ConfiguracionEditar)]`, **auditoría en la misma transacción**, listas paginadas de §6 e **`Idempotency-Key`** en las mutaciones.
+  - `ServicioSeries`: contador transaccional `UPDATE … RETURNING` con `UNIQUE (serie_id, numero)`; un número emitido no se reutiliza y una factura anulada no lo libera.
+  - `Dominio/CalculoImpuestos`: ITBIS y retenciones (base subtotal / ITBIS / total) **sin ningún porcentaje propio**; los porcentajes entran como datos.
+  - 19 tests nuevos en `backend/AtlasRent.Tests/Configuracion/`.
+- Por qué: F1-08 del plan. D14 exige que las cifras fiscales sean datos editables por el admin, no constantes en el código.
+- Verificado (por el orquestador): `dotnet build -c Release -warnaserror` → 0 advertencias, 0 errores; `dotnet test -c Release` → **206/206 en verde**. Leí `CalculoImpuestos.cs` y confirmo que no contiene ninguna cifra fiscal: solo multiplica por los porcentajes que recibe. El test de concurrencia exige lo fuerte: 24 emisiones simultáneas dan **exactamente 1..24, sin repetidos y sin huecos**, no solo "que no se duplique".
+- NO verificado: `dotnet ef database update` contra la base de desarrollo (requiere secretos de `.env.dev`); la migración sí aplica desde cero en cada ejecución de la suite.
+- Migraciones: sí. `Migrations/20261015042341_Configuracion`.
+- Riesgo / pendiente:
+  - **El guard de D14 es mecánico**: un test recorre el fuente de la API, quita comentarios y cadenas y falla si aparece una cifra junto a un concepto fiscal. Se verificó **que falla** plantando `ItbisTemporalDePrueba = 18m` y `RetencionPaisTemporal = 10m`. "IVA" quedó fuera de la lista a propósito porque colisiona con "activar"/"desactivar".
+  - **Tolerancias de diferencia de cambio nacen en `null`**, no en los valores `[Supuesto]` de la especificación (1,00 USD / 50,00 DOP): una cifra fiscal no debe ser un valor por defecto en el código. `TODO(A#)` para que el contador confirme los valores y qué hacer si no hay tolerancia fijada.
+  - Los tipos de ITBIS y retención **no vienen sembrados**: sin filas, hasta que el administrador las cree. Igual para formas de pago, cuentas y subempresas. Las series sí se siembran (1, 2, 3, 4 y 9) por venir numeradas en §3.7.
+  - Los **prefijos de serie no están en la especificación**: los pone el admin. `TODO(A#)`.
+  - `Subempresa` va **sin RNC a propósito**: cifrado AES-256-GCM, en la tarea de cifrado.
+  - Supuestos: la serie 9 (histórica) no suma a facturado ni a saldos, y cualquier serie no desactivada suma a ambos. `AnularNumeroAsync` existe como API de servicio pero sin endpoint, porque aún no hay facturas que la llamen.
+  - "Genera comprobante" no debería poder cambiarse en una serie con facturas emitidas: comprobación pendiente en la tarea de facturas.
+- Commit/PR: `feat(configuracion): series, ITBIS, retenciones y ajustes sin cifras fiscales en codigo`.
+
 ## [15/10/2026 07:15] FEAT · F1-07 · Roles, permisos, denegar por omisión y auditoría de denegaciones
 - Qué:
   - Migración `20261015035827_RolesYPermisos`: tablas `rol`, `permiso_rol`, `usuario_rol` y `usuario_permiso`, con la matriz de `docs/ESPECIFICACION.md` §2 **sembrada como datos** (no como `switch` en el código) y conversión de `usuario.es_admin` al modelo de roles. Sin columnas `xmin` y con `GRANT` explícito a `rent_app`.

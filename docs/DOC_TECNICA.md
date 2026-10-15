@@ -185,6 +185,15 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - `usuario.es_admin` (provisional de F1-06) desaparece: la migración lo vuelca a `usuario_rol`. `ServicioMfa.NecesitaMfa` y `ServicioEmergencia.EsAdmin` usan ya `IPolicyService`.
   - `app.rol` de RLS lleva el rol real del usuario, no un valor por defecto.
 - **Logs:** Serilog con redacción de propiedades sensibles.
+- **Implementado en F1-08** (configuración):
+  - CRUD bajo `/api/v1/config` con `[Accion(Acciones.ConfiguracionEditar)]` (solo admin), auditoría en la misma transacción, `Idempotency-Key` en las mutaciones y el formato de lista paginada de §6.
+  - **D14 se respeta mecánicamente**: un test (`CifrasFiscalesEnCodigoTests`) recorre el fuente de la API, descarta comentarios y cadenas y falla si aparece una cifra junto a un concepto fiscal. Está verificado que **falla** al plantar una constante. "IVA" no está en la lista de conceptos porque colisiona con "activar"/"desactivar".
+  - `CalculoImpuestos` no tiene ningún porcentaje propio: solo reparte los que le llegan de la configuración. El `100` es divisor de porcentaje, no una cifra fiscal.
+  - Contador de series: `UPDATE serie SET siguiente = siguiente + 1 … RETURNING` con `UNIQUE (serie_id, numero)`. Un número emitido no se reutiliza y una factura anulada no lo libera.
+  - **Las tolerancias de diferencia de cambio nacen en `null`**, no en los valores `[Supuesto]` de la especificación (1,00 USD / 50,00 DOP): una cifra fiscal no debe ser un valor por defecto en el código.
+  - Los tipos de ITBIS, las retenciones, las formas de pago, las cuentas y las subempresas **no vienen sembrados**: los crea el administrador. Las series sí se siembran (1, 2, 3, 4 y 9) porque §3.7 las numera.
+  - `subempresa` va sin RNC a propósito: el cifrado AES-256-GCM llega con F1-09.
+  - **Prefijos de serie pendientes**: la especificación da los números pero no los prefijos, así que los pone el admin. `TODO(A#)`.
 - **Implementado en F1-06** (MFA):
   - Activación en dos pasos: se devuelve la URI `otpauth://` y el MFA **solo** queda activo tras confirmar un código válido. El QR lo dibuja el frontend; el backend no genera imágenes.
   - El login correcto con MFA activo devuelve un **desafío**, no una sesión: token provisional opaco de **5 min**, de un solo uso, en cookie `atlas-rent-mfa` (`HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`). El código incorrecto cuenta para el bloqueo de cuenta igual que una contraseña incorrecta.

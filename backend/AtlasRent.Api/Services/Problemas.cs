@@ -63,6 +63,15 @@ public static class Problemas
     /// <summary>Error de validación de los datos de entrada.</summary>
     public const string Validacion = "API-001";
 
+    /// <summary>La clave de idempotencia ya se usó con una petición distinta.</summary>
+    public const string IdempotenciaEnConflicto = "API-002";
+
+    /// <summary>
+    /// Ya existe un registro con ese valor único (número o prefijo de serie, tipo de retención por
+    /// defecto), o el registro cambió entre que se leyó y se guardó.
+    /// </summary>
+    public const string ValorDuplicado = "API-003";
+
     /// <summary>
     /// Construye la respuesta de error y la registra. No lleva traza: solo el código, el título y
     /// una explicación que no delate datos internos.
