@@ -1209,6 +1209,9 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             // La referencia de e-factura es texto libre que alguien teclea (D5): se limita la
             // longitud para que no quepa un documento entero dentro de una factura.
             entidad.Property(e => e.ReferenciaEfactura).HasMaxLength(120);
+            // F3-08: el motivo de la anulación es texto que alguien teclea, igual que la referencia
+            // de arriba, y comparte su límite para que no quepa un documento dentro del otro.
+            entidad.Property(e => e.MotivoAnulacion).HasMaxLength(500);
             // El tipo de cambio congelado es el único decimal de la tabla que no es dinero:
             // numeric(18,6), como en la fila de F3-01 de la que salió.
             entidad.Property(e => e.TipoCambioValor).HasColumnType("numeric(18,6)");
@@ -1374,6 +1377,9 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             // El único decimal que no es dinero: el cambio realmente aplicado en esta línea
             // (numeric(18,6)), con el mismo tipo que el congelado en el cobro.
             entidad.Property(e => e.TipoCambioValor).HasColumnType("numeric(18,6)");
+            // F3-08: el motivo de la anulación de la asignación es el de la factura que dejó de
+            // pagarse, y por eso comparte su longitud con el de la cabecera del cobro.
+            entidad.Property(e => e.MotivoAnulacion).HasMaxLength(500);
             // El índice por factura es el que resuelve la suma de lo cobrado de una página de
             // facturas en una sola consulta, sin N+1 (§3.13).
             entidad.HasIndex(e => e.FacturaId);

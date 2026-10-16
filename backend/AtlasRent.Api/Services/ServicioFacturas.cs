@@ -415,7 +415,12 @@ public sealed class ServicioFacturas(
     {
         await ExigirAsync(Acciones.FacturaEmitir, $"factura/{id:D}", usuario, ct);
 
-        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+        // F3-08: la conversión de proforma llama a este método desde su propia transacción para que la
+        // factura nueva y la proforma caigan juntas. Cuando ya hay una abierta se usa esa y no se
+        // confirma aquí; si algo falla después, el número y el comprobante tampoco salen.
+        await using var transaccion = contexto.Database.CurrentTransaction is null
+            ? await contexto.Database.BeginTransactionAsync(ct)
+            : null;
 
         var factura = await CargarAsync(id, ct);
 
@@ -496,10 +501,915 @@ public sealed class ServicioFacturas(
             enTransaccionDelLlamador: true,
             ct: ct);
 
+        if (transaccion is not null)
+        {
+            await transaccion.CommitAsync(ct);
+        }
+
+        return respuesta;
+    }
+
+    // ---------------------------------------------------------------- ciclo de vida (F3-08)
+    //
+    // Aquí se cierra el ciclo del documento: lo que ya salió se modifica o se anula, y lo que se
+    // anula se puede rehacer en otra moneda. Todo lo que hay aquí conserva el número ya emitido
+    // (D28): anular marca, nunca borra (AGENTS.md §6).
+    //
+    // Las seis operaciones de este bloque piden `factura.anular`, el permiso que §2 da exactamente a
+    // este trabajo («modificar o anular una factura ya emitida»), y no `factura.emitir`: emitir es
+    // sacar número y comprobante, que es otra cosa y ya tiene su propio permiso.
+
+    /// <summary>
+    /// Modifica las líneas de una factura ya emitida (F3-08, §3.8).
+    /// <para>
+    /// <b>Solo las líneas, y solo si no hay comprobante fiscal.</b> Lo demás de la factura —número,
+    /// fecha de emisión, tipo de cambio congelado, cliente, moneda— sale intacto: esos datos son los
+    /// que la DGII y el cliente ya tienen delante, y una factura que cambia de número no es la factura
+    /// que se emitió. Si hay comprobante fiscal tampoco se tocan los importes: el 409 dice que el
+    /// camino es anular y emitir otra.
+    /// </para>
+    /// <para>
+    /// Los totales se vuelven a calcular con las mismas funciones de dominio de F3-02 y F3-04, y el
+    /// neto a cobrar también: cambiar una cantidad cambia lo que se pide, no solo el impreso.
+    /// </para>
+    /// </summary>
+    public async Task<FacturaRespuesta> ModificarAsync(
+        Guid id,
+        FacturaModificacionPeticion peticion,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.FacturaAnular, $"factura/{id:D}", usuario, ct);
+
+        var factura = await CargarAsync(id, ct);
+        ExigirModificable(factura);
+
+        // TODO(A#): §3.7 y §3.8 marcan como [Verificar] el formato y los rangos del comprobante
+        // fiscal con el contador. Mientras eso no esté confirmado con la DGII, aquí solo se mira que
+        // exista: si el día se acordara que hay comprobantes anulables, esta condición es la que
+        // habría que cambiar, porque es la que protege los importes.
+        if (await contexto.ComprobanteFiscal.AnyAsync(c => c.FacturaId == id, ct))
+        {
+            throw new InvalidOperationException(
+                $"La factura '{id:D}' tiene comprobante fiscal y sus importes no se modifican: lo que "
+                    + "salió con comprobante se anula y se emite otra (F3-08).");
+        }
+
+        foreach (var cambio in peticion.Lineas)
+        {
+            var linea = factura.Lineas.SingleOrDefault(l => l.Id == cambio.LineaId)
+                ?? throw new KeyNotFoundException(
+                    $"La línea '{cambio.LineaId:D}' no está en la factura '{id:D}'.");
+
+            var tipoItbis = await CargarTipoItbisAsync(cambio.TipoItbisId, ct);
+            var tipoRetencion = await CargarTipoRetencionAsync(cambio.TipoRetencionId, cambio.Tipo, ct);
+
+            if (tipoRetencion is not null)
+            {
+                ExigirAgenteRetencion(factura);
+            }
+
+            AplicarLinea(linea, AComoLinea(cambio), tipoItbis, tipoRetencion);
+        }
+
+        // Recalcular es obligatorio y no opcional: dejar el total viejo con líneas nuevas es un
+        // documento que no cuadra contra sí mismo.
+        RecalcularTotales(factura);
+
+        // ModificadaAt se escribe una sola vez (la primera), porque es la marca que va a filtrar
+        // «modificadas tras envío» de F4-02 y para eso vale la primera vez y no la última.
+        factura.ModificadaAt ??= reloj.GetUtcNow();
+        factura.ModificadaPor ??= usuario;
+
+        return await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, factura,
+            esAlta: false,
+            accion: "factura.modificada",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: ARespuesta,
+            datosAuditoria: c => DatosAuditoria(c),
+            ct: ct);
+    }
+
+    /// <summary>
+    /// Anula una factura emitida conservando todo lo que salió (F3-08, §3.8, D6, D28).
+    /// <para>
+    /// <b>Una sola transacción para cinco cosas:</b> la factura queda <c>Anulada</c> con su motivo, su
+    /// número pasa a anulado en <c>numero_serie</c> sin que el contador retroceda, su comprobante
+    /// fiscal pasa a anulado, sus asignaciones de cobro dejan de contar y, si un cobro se queda sin
+    /// ninguna asignación viva, ese cobro se anula también. Si algo falla, no queda ninguna de ellas a
+    /// medias: un comprobante anulado con la factura viva sería un documento fiscal que contradice al
+    /// libro.
+    /// </para>
+    /// <para>
+    /// <b>Un cobro con otras facturas vivas no se toca.</b> Si ese cobro seguía pagando otra factura,
+    /// sigue vigente y solo pierde esta: anular la factura no es Deshacer el cobro.
+    /// </para>
+    /// </summary>
+    public async Task<FacturaRespuesta> AnularAsync(
+        Guid id,
+        FacturaAnulacionPeticion peticion,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.FacturaAnular, $"factura/{id:D}", usuario, ct);
+
+        var motivo = peticion.Motivo?.Trim();
+        if (string.IsNullOrWhiteSpace(motivo))
+        {
+            // 400 y no 409, por el mismo motivo que en los cobros: no es un conflicto con lo que hay,
+            // es una petición incompleta. El modelo ya rechaza el motivo ausente; esto cubre el de
+            // puros espacios.
+            throw new ArgumentException(
+                "El motivo de la anulación es obligatorio: sin motivo, una factura que ya salió con "
+                    + "número no se puede explicar.",
+                nameof(peticion));
+        }
+
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        var factura = await CargarAsync(id, ct);
+        ExigirAnulable(factura);
+
+        var respuesta = await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, factura,
+            esAlta: false,
+            accion: "factura.anulada",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: ARespuesta,
+            // El motivo va en la auditoría firmada además de en la fila: la fila se puede leer desde
+            // la factura, la auditoría es la que no se puede reescribir.
+            datosAuditoria: c => new
+            {
+                Factura = c.Id.ToString("D"),
+                Numero = c.Numero,
+                Serie = c.SerieId.ToString("D"),
+                Estado = c.Estado.ToString(),
+                Motivo = motivo,
+                TotalAnulado = c.Total,
+            },
+            antesDeGuardar: async () => await AnularEnTransaccionAsync(factura, motivo, usuario, ip, ct),
+            enTransaccionDelLlamador: true,
+            ct: ct);
+
         await transaccion.CommitAsync(ct);
 
         return respuesta;
     }
+
+    /// <summary>
+    /// Lo que la anulación haría, sin hacerlo (§3.8: la pantalla de confirmación).
+    /// <para>
+    /// <b>No escribe nada.</b> Devuelve los cobros que se anularían enteros y los que solo dejarían de
+    /// pagar esta factura, con sus importes, que es la información que hace falta antes de confirmar
+    /// una corrección de dinero. F3-10 la usa en la vista de cuentas.
+    /// </para>
+    /// </summary>
+    public async Task<FacturaAnulacionSimulacion> SimularAnulacionAsync(
+        Guid id,
+        Guid usuario,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.FacturaAnular, $"factura/{id:D}", usuario, ct);
+
+        var factura = await CargarAsync(id, ct);
+
+        var asignaciones = await AsignacionesVivasDeFacturaAsync(id, ct);
+        var cobrosIds = asignaciones.Select(a => a.CobroId).Distinct().ToArray();
+
+        // Todas las asignaciones de esos cobros, no solo las de esta factura: hace falta saber si al
+        // cobro le queda algo vivo por lo otro lado antes de decir que se anula.
+        List<CobroAsignacion> todas = cobrosIds.Length == 0
+            ? []
+            : await contexto.CobroAsignacion
+                .Include(a => a.Factura)
+                .Include(a => a.Cobro)
+                .Where(a => cobrosIds.Contains(a.CobroId))
+                .ToListAsync(ct);
+
+        var anulanEntero = new List<CobroAfectadoPorFactura>();
+        var soloSeTocan = new List<CobroAfectadoPorFactura>();
+
+        foreach (var cobro in todas.Where(a => a.Cobro is not null).Select(a => a.Cobro!).Distinct())
+        {
+            var suyas = todas.Where(a => a.CobroId == cobro.Id).ToList();
+            var mias = suyas.Where(a => a.FacturaId == id).ToList();
+            var quedanVivas = suyas.Any(a => a.Vigente && a.FacturaId != id);
+
+            var seAnula = !quedanVivas && cobro.Estado == EstadoCobro.Registrado;
+
+            var registro = new CobroAfectadoPorFactura(
+                cobro.Id,
+                cobro.FechaEfectiva,
+                cobro.MonedaRecibida,
+                cobro.ImporteRecibido,
+                Redondeo.Importe(mias.Sum(a => a.Importe)),
+                // Solo se cuenta lo que sigue vigente en la moneda de esta factura: sumar importes de
+                // monedas distintas daría un número que no significa nada.
+                Redondeo.Importe(suyas.Where(a => a.Vigente && a.FacturaId != id && a.Factura?.Moneda == factura.Moneda).Sum(a => a.Importe)),
+                seAnula ? SaldoQueCambia(cobro) : 0m,
+                seAnula);
+
+            if (seAnula)
+            {
+                anulanEntero.Add(registro);
+            }
+            else
+            {
+                soloSeTocan.Add(registro);
+            }
+        }
+
+        return new FacturaAnulacionSimulacion(
+            factura.Id,
+            factura.Numero,
+            factura.Estado,
+            factura.NetoACobrar,
+            await contexto.ComprobanteFiscal.AnyAsync(c => c.FacturaId == id, ct),
+            true,
+            anulanEntero,
+            soloSeTocan);
+    }
+
+    /// <summary>
+    /// Duplica una factura en borrador (F3-08, §3.8).
+    /// <para>
+    /// <b>Copia el documento, no su historia.</b> Van cliente, unidad, contrato, serie, moneda,
+    /// líneas y sus tipos de ITBIS y retención. No van el número, el comprobante, los cobros, los
+    /// envíos, la retención recibida, la referencia de e-factura ni la proforma de origen: eso ya
+    /// pasó y pasó una vez. Los porcentajes de ITBIS y retención se vuelven a leer de la
+    /// configuración vigente, que es lo mismo que hace una factura nueva.
+    /// </para>
+    /// </summary>
+    public async Task<FacturaDuplicacionRespuesta> DuplicarAsync(
+        Guid id,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.FacturaAnular, $"factura/{id:D}", usuario, ct);
+
+        var origen = await CargarAsync(id, ct);
+
+        // Una factura periódica no se puede duplicar: su clave (contrato, periodo, concepto) es única
+        // mientras no esté anulada (§3.8, F3-05), así que la copia chocaría con ella misma. El camino
+        // es anular la que hizo el trabajo anterior y emitir otra, que es justo lo que hace la
+        // anulación al liberar la clave.
+        if (origen.PeriodoInicio is not null)
+        {
+            throw new InvalidOperationException(
+                $"La factura '{id:D}' es de periodo ({origen.PeriodoInicio:yyyy-MM-dd} a "
+                    + $"{origen.PeriodoFin:yyyy-MM-dd}) y no se puede duplicar: no puede haber dos "
+                    + "facturas del mismo contrato, periodo y concepto. Si la anterior está mal, "
+                    + "anúlala y emite la correcta.");
+        }
+
+        var copia = new Factura
+        {
+            Estado = EstadoFactura.Borrador,
+            SerieId = origen.SerieId,
+            ClienteId = origen.ClienteId,
+            UnidadId = origen.UnidadId,
+            ContratoId = origen.ContratoId,
+            Moneda = origen.Moneda,
+            FechaVencimiento = origen.FechaVencimiento,
+            Concepto = origen.Concepto,
+            PeriodoInicio = origen.PeriodoInicio,
+            PeriodoFin = origen.PeriodoFin,
+
+            // Las navegaciones ya cargadas: sin ellas, el nombre del cliente y el número de serie
+            // saldrían nulos en la respuesta de la copia.
+            Cliente = origen.Cliente,
+            Unidad = origen.Unidad,
+            Serie = origen.Serie,
+        };
+
+        foreach (var linea in origen.Lineas.OrderBy(l => l.Posicion))
+        {
+            var tipoItbis = await CargarTipoItbisAsync(linea.TipoItbisId, ct);
+            var tipoRetencion = await CargarTipoRetencionAsync(linea.TipoRetencionId, linea.Tipo, ct);
+
+            if (tipoRetencion is not null)
+            {
+                ExigirAgenteRetencion(origen);
+            }
+
+            copia.Lineas.Add(ConstruirLinea(
+                copia,
+                new FacturaLineaPeticion
+                {
+                    Tipo = linea.Tipo,
+                    Concepto = linea.Concepto,
+                    Cantidad = linea.Cantidad,
+                    PrecioUnitario = linea.PrecioUnitario,
+                    TipoItbisId = linea.TipoItbisId,
+                    TipoRetencionId = linea.TipoRetencionId,
+                },
+                tipoItbis,
+                tipoRetencion,
+                usuario));
+        }
+
+        RecalcularTotales(copia);
+
+        // La fecha de emisión la pone la emisión, con el día de salida. La copia nace hoy por el
+        // camino de siempre: se crea hoy y se emite cuando se emita.
+        // TODO(A#): §3.8 dice que la copia «nace con la fecha del día»; aquí se copia el vencimiento y
+        // la fecha de emisión queda para la emisión, que es lo que exige el modelo. Si lo que se
+        // quería era el vencimiento de hoy, es una línea.
+        var creada = await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, copia,
+            esAlta: true,
+            accion: "factura.duplicada",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: AResumen,
+            datosAuditoria: c => new
+            {
+                Factura = c.Id.ToString("D"),
+                Origen = id.ToString("D"),
+                Total = c.Total,
+                Lineas = c.Lineas.Count,
+            },
+            ct: ct);
+
+        // El aviso va después de guardar, y excluye la propia copia: lo que interesa es que haya otra
+        // factura igual, no que la copia se avise a sí misma.
+        var similares = await contexto.Factura.AsNoTracking()
+            .Where(f => f.Id != creada.Id
+                && f.ContratoId == origen.ContratoId
+                && f.PeriodoInicio == origen.PeriodoInicio
+                && f.Concepto == origen.Concepto
+                && f.Estado != EstadoFactura.Anulada)
+            .OrderByDescending(f => f.CreatedAt)
+            .Take(20)
+            .Select(f => new FacturaDuplicadaParecida(
+                f.Id,
+                f.Numero,
+                f.Estado,
+                f.PeriodoInicio,
+                f.PeriodoFin,
+                f.Total,
+                f.Concepto))
+            .ToListAsync(ct);
+
+        return new FacturaDuplicacionRespuesta(creada, similares);
+    }
+
+    /// <summary>
+    /// Convierte una proforma emitida en factura, con su misma moneda y sus mismos importes (F3-08,
+    /// D7).
+    /// <para>
+    /// <b>La proforma deja de contar en la misma transacción en que nace la factura</b> (§3.7): su
+    /// estado pasa a <c>Convertida</c> y su serie no suma a facturado ni a saldos, así que el mismo
+    /// importe no aparece dos veces en la vista de cuentas. La factura se emite aquí y no queda en
+    /// borrador, porque una proforma convertida sin factura emitida sí que dejaría de contar sin
+    /// que nada la reemplazara.
+    /// </para>
+    /// <para>
+    /// La serie destino es la fiscal activa —la 3 en la instalación normal— y el usuario puede
+    /// cambiarla: se valida que exista, que esté activa y que sea fiscal, porque una factura no se
+    /// emite en una serie de proformas.
+    /// </para>
+    /// </summary>
+    public async Task<ProformaConversionRespuesta> ConvertirProformaAsync(
+        Guid id,
+        ProformaConversionPeticion peticion,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.FacturaAnular, $"factura/{id:D}", usuario, ct);
+
+        var proforma = await CargarAsync(id, ct);
+
+        if (proforma.Serie?.Tipo != TipoSerie.Proforma)
+        {
+            throw new InvalidOperationException(
+                $"El documento '{id:D}' no es una proforma: sale de una serie fiscal o normal, y eso "
+                    + "no se convierte en otra cosa.");
+        }
+
+        if (proforma.Estado == EstadoFactura.Convertida)
+        {
+            throw new InvalidOperationException(
+                $"La proforma '{id:D}' ya se convirtió y no se convierte dos veces.");
+        }
+
+        if (proforma.Estado != EstadoFactura.Emitida)
+        {
+            throw new InvalidOperationException(
+                $"La proforma '{id:D}' está en {proforma.Estado} y no se convierte: convertir es pasar de "
+                    + "un documento que ya salió a uno con valor fiscal. Emítela primero.");
+        }
+
+        var destino = await SerieDestinoAsync(peticion.SerieId, proforma.SerieId, ct);
+
+        // D7: la moneda no se toca. Si la serie destino tiene moneda fija y es otra, el 409 lo dice y
+        // el usuario elige otra serie.
+        ExigirMonedaDeSerie(destino, proforma.Moneda);
+
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        var factura = new Factura
+        {
+            Estado = EstadoFactura.Borrador,
+            SerieId = destino.Id,
+            ClienteId = proforma.ClienteId,
+            UnidadId = proforma.UnidadId,
+            ContratoId = proforma.ContratoId,
+            Moneda = proforma.Moneda,
+            FechaVencimiento = proforma.FechaVencimiento,
+            Concepto = proforma.Concepto,
+            PeriodoInicio = proforma.PeriodoInicio,
+            PeriodoFin = proforma.PeriodoFin,
+            Cliente = proforma.Cliente,
+            Unidad = proforma.Unidad,
+            Serie = destino,
+        };
+
+        foreach (var linea in proforma.Lineas.OrderBy(l => l.Posicion))
+        {
+            var tipoItbis = await CargarTipoItbisAsync(linea.TipoItbisId, ct);
+            var tipoRetencion = await CargarTipoRetencionAsync(linea.TipoRetencionId, linea.Tipo, ct);
+
+            if (tipoRetencion is not null)
+            {
+                ExigirAgenteRetencion(proforma);
+            }
+
+            factura.Lineas.Add(ConstruirLinea(
+                factura,
+                new FacturaLineaPeticion
+                {
+                    Tipo = linea.Tipo,
+                    Concepto = linea.Concepto,
+                    Cantidad = linea.Cantidad,
+                    PrecioUnitario = linea.PrecioUnitario,
+                    TipoItbisId = linea.TipoItbisId,
+                    TipoRetencionId = linea.TipoRetencionId,
+                },
+                tipoItbis,
+                tipoRetencion,
+                usuario));
+        }
+
+        RecalcularTotales(factura);
+
+        await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, factura,
+            esAlta: true,
+            accion: "proforma.factura_creada",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion: null,
+            proyectar: AResumen,
+            datosAuditoria: c => new
+            {
+                Factura = c.Id.ToString("D"),
+                Proforma = id.ToString("D"),
+                Serie = destino.Numero,
+                Total = c.Total,
+            },
+            // La factura nueva, la proforma convertida y la emisión salen en el mismo commit: si la
+            // factura no se crea, la proforma sigue contando como antes.
+            enTransaccionDelLlamador: true,
+            ct: ct);
+
+        // La proforma se marca antes de emitir la factura, y las dos cosas están en esta transacción:
+        // si la emisión falla por el numerador, la proforma sigue contando como antes.
+        await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, proforma,
+            esAlta: false,
+            accion: "proforma.convertida",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion: null,
+            proyectar: AResumen,
+            datosAuditoria: c => new
+            {
+                Proforma = c.Id.ToString("D"),
+                Factura = factura.Id.ToString("D"),
+                NumeroProforma = c.Numero,
+                Estado = c.Estado.ToString(),
+            },
+            antesDeGuardar: () =>
+            {
+                proforma.Estado = EstadoFactura.Convertida;
+                proforma.ModificadaAt ??= reloj.GetUtcNow();
+                proforma.ModificadaPor ??= usuario;
+                return Task.CompletedTask;
+            },
+            enTransaccionDelLlamador: true,
+            ct: ct);
+
+        var emitida = await EmitirAsync(factura.Id, usuario, ip, null, ct);
+
+        await transaccion.CommitAsync(ct);
+
+        return new ProformaConversionRespuesta(emitida, proforma.Id, destino.Id);
+    }
+
+    /// <summary>
+    /// Rehace una factura en otra moneda (F3-08, §3.8): la original se anula y nace un borrador en la
+    /// moneda pedida con el importe tecleado.
+    /// <para>
+    /// <b>El importe lo pone quien lo teclea</b>, no un tipo de cambio calculado: cambiar la moneda de
+    /// un documento que ya salió es una decisión comercial con su tipo de cambio y su momento, y la
+    /// aplicación no puede decidir eso. La factura original no cambia de moneda ni se borra: queda
+    /// anulada con su número (D28), y la respuesta lo dice para que no quede duda de qué pasó con ella.
+    /// </para>
+    /// </summary>
+    public async Task<FacturaRehacerRespuesta> RehacerEnMonedaAsync(
+        Guid id,
+        RehacerMonedaPeticion peticion,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.FacturaAnular, $"factura/{id:D}", usuario, ct);
+
+        var motivo = peticion.Motivo?.Trim();
+        if (string.IsNullOrWhiteSpace(motivo))
+        {
+            throw new ArgumentException(
+                "El motivo es obligatorio: la factura original queda anulada y su número no vuelve a "
+                    + "liberarse, y eso se explica siempre.",
+                nameof(peticion));
+        }
+
+        if (peticion.Total <= 0m)
+        {
+            // 400: el importe tecleado es el dato de la operación, no un conflicto con lo guardado.
+            throw new ArgumentException(
+                "El importe de la factura nueva tiene que ser mayor que cero.",
+                nameof(peticion));
+        }
+
+        var original = await CargarAsync(id, ct);
+        ExigirAnulable(original);
+
+        // La serie va trackeada por lo mismo que en la conversión de proforma: la factura nueva la
+        // lleva como navegación y una serie suelta en el grafo de un alta se insertaría con ella.
+        var serie = await contexto.Serie.SingleOrDefaultAsync(s => s.Id == peticion.SerieId, ct)
+            ?? throw new KeyNotFoundException($"La serie '{peticion.SerieId:D}' no existe.");
+
+        if (!serie.Activa)
+        {
+            throw new InvalidOperationException($"La serie {serie.Numero} está desactivada y no emite.");
+        }
+
+        ExigirMonedaDeSerie(serie, peticion.Moneda);
+
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, original,
+            esAlta: false,
+            accion: "factura.anulada",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: AResumen,
+            datosAuditoria: c => new
+            {
+                Factura = c.Id.ToString("D"),
+                Numero = c.Numero,
+                Motivo = motivo,
+                Rehecha = true,
+            },
+            antesDeGuardar: async () => await AnularEnTransaccionAsync(original, motivo, usuario, ip, ct),
+            enTransaccionDelLlamador: true,
+            ct: ct);
+
+        var nueva = new Factura
+        {
+            Estado = EstadoFactura.Borrador,
+            SerieId = serie.Id,
+            ClienteId = original.ClienteId,
+            UnidadId = original.UnidadId,
+            ContratoId = original.ContratoId,
+            Moneda = peticion.Moneda,
+            FechaVencimiento = original.FechaVencimiento,
+            Concepto = original.Concepto,
+            Cliente = original.Cliente,
+            Unidad = original.Unidad,
+            Serie = serie,
+        };
+
+        // TODO(A#): §3.8 no dice cómo se reparte el importe tecleado entre las líneas. Se copia el
+        // concepto de la original en una sola línea y se le pone el importe entero, porque inventar un
+        // desglose sería inventar la factura. Si el caso real es un contrato con varias líneas, aquí
+        // habrá que pedir el desglose.
+        nueva.Lineas.Add(ConstruirLinea(
+            nueva,
+            new FacturaLineaPeticion
+            {
+                Tipo = TipoLineaFactura.Servicio,
+                Concepto = original.Concepto,
+                Cantidad = 1m,
+                PrecioUnitario = peticion.Total,
+            },
+            null,
+            null,
+            usuario));
+
+        RecalcularTotales(nueva);
+
+        var resumen = await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, nueva,
+            esAlta: true,
+            accion: "factura.rehecha",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion: null,
+            proyectar: AResumen,
+            datosAuditoria: c => new
+            {
+                Factura = c.Id.ToString("D"),
+                Origen = id.ToString("D"),
+                Serie = serie.Numero,
+                Moneda = c.Moneda.ToString(),
+                Total = c.Total,
+            },
+            enTransaccionDelLlamador: true,
+            ct: ct);
+
+        await transaccion.CommitAsync(ct);
+
+        return new FacturaRehacerRespuesta(original.Id, original.Numero, resumen);
+    }
+
+    /// <summary>
+    /// Lo que la anulación hace dentro de la transacción: la factura, su número, su comprobante fiscal y
+    /// sus cobros. Es una sola unidad porque las cuatro cosas tienen que caer juntas.
+    /// </summary>
+    private async Task AnularEnTransaccionAsync(
+        Factura factura,
+        string motivo,
+        Guid usuario,
+        string ip,
+        CancellationToken ct)
+    {
+        var ahora = reloj.GetUtcNow();
+
+        factura.Estado = EstadoFactura.Anulada;
+        factura.AnuladoAt = ahora;
+        factura.AnuladoPor = usuario;
+        factura.MotivoAnulacion = motivo;
+        factura.ModificadaAt ??= ahora;
+        factura.ModificadaPor ??= usuario;
+
+        // El número deja de estar disponible para ese documento pero sigue quemado: el contador no
+        // retrocede y el siguiente número sigue siendo el de después (D28). El servicio de series usa
+        // la transacción que ya está abierta.
+        await series.AnularNumeroAsync(
+            factura.SerieId,
+            factura.Numero ?? throw new InvalidOperationException(
+                $"La factura '{factura.Id:D}' no tiene número y no se puede anular."),
+            motivo,
+            usuario,
+            ip,
+            ct);
+
+        var comprobante = await contexto.ComprobanteFiscal
+            .SingleOrDefaultAsync(c => c.FacturaId == factura.Id, ct);
+
+        if (comprobante is not null)
+        {
+            comprobante.Estado = EstadoComprobanteFiscal.Anulado;
+            comprobante.AnuladoAt = ahora;
+            comprobante.AnuladoPor = usuario;
+            comprobante.MotivoAnulacion = motivo;
+            comprobante.UpdatedAt = ahora;
+            comprobante.UpdatedBy = usuario;
+        }
+
+        await AnularCobrosDeFacturaAsync(factura, motivo, usuario, ahora, ct);
+    }
+
+    /// <summary>
+    /// Deja de aplicar a esta factura los cobros que la pagaban (D6, F3-08) y anula los que se quedan
+    /// sin nada que pagar.
+    /// <para>
+    /// <b>Solo esos.</b> Un cobro que sigue pagando otra factura no se toca: es dinero que llegó y que
+    /// sigue cubriendo una deuda, y anular la factura que compartía cobro con ella no devuelve ese
+    /// dinero.
+    /// </para>
+    /// </summary>
+    private async Task AnularCobrosDeFacturaAsync(
+        Factura factura,
+        string motivo,
+        Guid usuario,
+        DateTimeOffset ahora,
+        CancellationToken ct)
+    {
+        var asignaciones = await contexto.CobroAsignacion
+            .Include(a => a.Cobro)
+            .Where(a => a.FacturaId == factura.Id && a.Vigente)
+            .ToListAsync(ct);
+
+        if (asignaciones.Count == 0)
+        {
+            return;
+        }
+
+        var cobrosIds = asignaciones.Select(a => a.CobroId).Distinct().ToArray();
+
+        foreach (var asignacion in asignaciones)
+        {
+            asignacion.Vigente = false;
+            asignacion.AnuladaAt = ahora;
+            asignacion.AnuladaPor = usuario;
+            asignacion.MotivoAnulacion = motivo;
+            asignacion.UpdatedAt = ahora;
+            asignacion.UpdatedBy = usuario;
+        }
+
+        // Las asignaciones de esos mismos cobros, incluidas las que no son de esta factura: el filtro
+        // se aplica en memoria y no en la consulta, porque la consulta no ve los cambios que aún no
+        // se han guardado y daría por hecho que las de esta factura siguen vivas.
+        var todas = await contexto.CobroAsignacion
+            .Include(a => a.Cobro)
+            .Where(a => cobrosIds.Contains(a.CobroId))
+            .ToListAsync(ct);
+
+        foreach (var cobro in todas.Where(a => a.Cobro is not null).Select(a => a.Cobro!).Distinct())
+        {
+            if (todas.Any(a => a.CobroId == cobro.Id && a.Vigente) || cobro.Estado != EstadoCobro.Registrado)
+            {
+                continue;
+            }
+
+            cobro.Estado = EstadoCobro.Anulado;
+            cobro.AnuladoAt = ahora;
+            cobro.AnuladoPor = usuario;
+            cobro.MotivoAnulacion = $"Anulado junto con la factura {factura.Numero}: {motivo}";
+            cobro.UpdatedAt = ahora;
+            cobro.UpdatedBy = usuario;
+
+            // El dinero que no se aplicó a ninguna factura vuelve a ser crédito del contrato, y el
+            // crédito que este cobro consumió vuelve a estar disponible (§3.10.1).
+            if (cobro.ContratoId is { } contratoId)
+            {
+                var saldo = await contexto.SaldoAFavor
+                    .SingleOrDefaultAsync(s => s.ContratoId == contratoId && s.Moneda == cobro.MonedaRecibida, ct);
+
+                if (saldo is not null)
+                {
+                    saldo.Importe = Redondeo.Importe(Math.Max(0m, saldo.Importe + SaldoQueCambia(cobro)));
+                    saldo.UpdatedAt = ahora;
+                    saldo.UpdatedBy = usuario;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cuánto cambia el saldo a favor del contrato al anular este cobro, con su signo: vuelve el
+    /// crédito que el cobro consumió y sale el excedente que dejó. Es el mismo cálculo que hace la
+    /// anulación de cobro de F3-06, escrito al revés para que la suma sea la de aquí.
+    /// </summary>
+    private static decimal SaldoQueCambia(Cobro cobro) =>
+        Redondeo.Importe(cobro.SaldoFavorUsado - cobro.Excedente);
+
+    private Task<List<CobroAsignacion>> AsignacionesVivasDeFacturaAsync(Guid id, CancellationToken ct) =>
+        contexto.CobroAsignacion
+            .Include(a => a.Cobro)
+            .Where(a => a.FacturaId == id && a.Vigente)
+            .ToListAsync(ct);
+
+    /// <summary>
+    /// Serie en la que se convierte una proforma: la que pidió el usuario, o la fiscal activa —la 3 si
+    /// existe, que es la instalación normal—. Se comprueba que sea fiscal y que esté activa: convertir
+    /// en una serie de proformas dejaría la factura en el mismo sitio del que ha salido.
+    /// </summary>
+    /// <remarks>
+    /// La serie viene <b>sin <c>AsNoTracking</c></b> a propósito: la factura nueva la lleva como
+    /// navegación para que su número salga en la respuesta, y una serie suelta que entra en el grafo de
+    /// un alta se inserta con ella. Trackeada, EF la reconoce como existente y la respeta.
+    /// </remarks>
+    private async Task<Serie> SerieDestinoAsync(Guid? serieId, Guid serieProformaId, CancellationToken ct)
+    {
+        var destino = serieId is { } id
+            ? await contexto.Serie.SingleOrDefaultAsync(s => s.Id == id, ct)
+                ?? throw new KeyNotFoundException($"La serie '{id:D}' no existe.")
+            : await contexto.Serie
+                .Where(s => s.Activa && s.Tipo == TipoSerie.Fiscal)
+                .OrderBy(s => s.Numero == 3 ? 0 : 1)
+                .ThenBy(s => s.Numero)
+                .FirstOrDefaultAsync(ct)
+                ?? throw new InvalidOperationException(
+                    "No hay ninguna serie fiscal activa: crea una antes de convertir una proforma "
+                        + "(Configuración → Series).");
+
+        if (destino.Id == serieProformaId)
+        {
+            throw new InvalidOperationException(
+                $"La serie {destino.Numero} es la propia de la proforma y una factura no se emite en "
+                    + "una serie de proformas.");
+        }
+
+        if (!destino.Activa)
+        {
+            throw new InvalidOperationException($"La serie {destino.Numero} está desactivada y no emite.");
+        }
+
+        if (destino.Tipo != TipoSerie.Fiscal)
+        {
+            throw new InvalidOperationException(
+                $"La serie {destino.Numero} no es fiscal: una factura no se emite en una serie "
+                    + "histórica o de proformas.");
+        }
+
+        return destino;
+    }
+
+    /// <summary>
+    /// Una factura solo se modifica si salió sin comprobante fiscal. Anulada no se modifica (lo que
+    /// salió no se reescribe) y convertida tampoco: una proforma convertida ya está detrás de una
+    /// factura.
+    /// </summary>
+    private static void ExigirModificable(Factura factura)
+    {
+        if (factura.Estado == EstadoFactura.Emitida)
+        {
+            return;
+        }
+
+        var porque = factura.Estado == EstadoFactura.Borrador
+            ? "está en borrador y se reescribe entera con sus líneas"
+            : factura.Estado == EstadoFactura.Anulada
+                ? "está anulada y lo que salió no se reescribe"
+                : "es una proforma ya convertida y lo que se modifica es la factura que salió de ella";
+
+        throw new InvalidOperationException($"La factura '{factura.Id:D}' {porque}.");
+    }
+
+    /// <summary>
+    /// Solo se anula lo que salió con número. Un borrador no se anula porque no ha salido: se
+    /// descarta, y por eso este camino no existe para él.
+    /// </summary>
+    private static void ExigirAnulable(Factura factura)
+    {
+        switch (factura.Estado)
+        {
+            case EstadoFactura.Emitida:
+                return;
+            case EstadoFactura.Borrador:
+                throw new InvalidOperationException(
+                    $"La factura '{factura.Id:D}' está en borrador y no tiene número, así que no hay "
+                        + "nada que anular ni que conservar: anulada, se descarta y se vuelve a hacer.");
+            case EstadoFactura.Anulada:
+                throw new InvalidOperationException(
+                    $"La factura '{factura.Id:D}' ya está anulada y no se anula dos veces.");
+            default:
+                throw new InvalidOperationException(
+                    $"La factura '{factura.Id:D}' es una proforma convertida: lo que se anula es la "
+                        + "factura que salió de ella.");
+        }
+    }
+
+    /// <summary>
+    /// Los campos editables de una línea de modificación, en la forma que espera
+    /// <see cref="AplicarLinea"/>. Existe para que el cálculo de una línea emitida sea exactamente el
+    /// mismo que el de una línea de borrador, y no una copia que se pueda quedar atrás.
+    /// </summary>
+    private static FacturaLineaPeticion AComoLinea(FacturaLineaModificacionPeticion cambio) => new()
+    {
+        Tipo = cambio.Tipo,
+        Concepto = cambio.Concepto,
+        Cantidad = cambio.Cantidad,
+        PrecioUnitario = cambio.PrecioUnitario,
+        TipoItbisId = cambio.TipoItbisId,
+        TipoRetencionId = cambio.TipoRetencionId,
+    };
 
     // ---------------------------------------------------------------- referencia e-factura
 
@@ -956,7 +1866,7 @@ public sealed class ServicioFacturas(
     /// </summary>
     private FacturaResumen ConCobro(FacturaResumen f, decimal cobrado, decimal ajustado, bool retencionSinComprobante)
     {
-        var situacion = cobros.SituacionDeFactura(f.Total, f.Retencion, cobrado, ajustado, f.FechaVencimiento);
+        var situacion = cobros.SituacionDeFactura(f.Total, f.Retencion, cobrado, ajustado, f.FechaVencimiento, f.Estado);
 
         return f with
         {
@@ -972,7 +1882,7 @@ public sealed class ServicioFacturas(
     /// <summary>Igual que <see cref="ConCobro(FacturaResumen, decimal, decimal, bool)"/>, para el detalle.</summary>
     private FacturaRespuesta ConCobro(FacturaRespuesta f, decimal cobrado, decimal ajustado, bool retencionSinComprobante)
     {
-        var situacion = cobros.SituacionDeFactura(f.Total, f.Retencion, cobrado, ajustado, f.FechaVencimiento);
+        var situacion = cobros.SituacionDeFactura(f.Total, f.Retencion, cobrado, ajustado, f.FechaVencimiento, f.Estado);
 
         return f with
         {

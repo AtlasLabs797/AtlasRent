@@ -66,14 +66,26 @@ public static class CalculoCobro
     /// </param>
     /// <param name="vencimiento">Día de vencimiento en día de negocio.</param>
     /// <param name="hoy">Hoy en Santo Domingo; lo pone el reloj de la aplicación, no el servidor UTC.</param>
+    /// <param name="estadoFactura">
+    /// Estado del documento (F3-08). Una factura anulada no tiene pendiente: su número se conserva pero
+    /// la deuda desapareció, y sumarla en el aging haría que el cliente debiera dinero por un documento
+    /// que ya no vale. Por eso entra en este cálculo y no se resuelve en quien llama: cuatro tareas
+    /// distintas leen estos números y todas tienen que ver lo mismo.
+    /// </param>
     public static SituacionCobroFactura Calcular(
         decimal total,
         decimal retencion,
         decimal cobrado,
         decimal ajustado,
         DateOnly vencimiento,
-        DateOnly hoy)
+        DateOnly hoy,
+        EstadoFactura estadoFactura = EstadoFactura.Emitida)
     {
+        if (estadoFactura == EstadoFactura.Anulada)
+        {
+            return new SituacionCobroFactura(0m, 0m, 0m, EstadoCobroFactura.Anulada, false, 0);
+        }
+
         // El neto a cobrar es lo que la factura dice que hay que ingresar (docs/ESPECIFICACION.md
         // §3.9). El redondeo es el del sistema (D27) y se aplica una sola vez, al total menos la
         // retención, que es donde el céntimo puede aparecer.

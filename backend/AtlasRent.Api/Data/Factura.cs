@@ -144,6 +144,40 @@ public sealed class Factura : IEntidadTrazada
     /// </summary>
     public string? ReferenciaEfactura { get; set; }
 
+    // F3-08: la anulación y la modificación de un documento ya emitido. Son marcas, no borrados: la
+    // factura sigue aquí con su número, que además no vuelve a liberarse (D28, AGENTS.md §6).
+
+    /// <summary>
+    /// Cuándo se anuló. Nulo mientras la factura no lo esté, y se escribe una sola vez: anular dos
+    /// veces es un 409 (F3-08).
+    /// </summary>
+    public DateTimeOffset? AnuladoAt { get; set; }
+
+    /// <summary>Quién anuló la factura.</summary>
+    public Guid? AnuladoPor { get; set; }
+
+    /// <summary>
+    /// Por qué se anuló. Obligatorio en la anulación (F3-08, §3.8): una factura que sale del
+    /// historical sin explicación es un número quemado sin causa, que es lo que más cuesta
+    /// defender delante de un contador.
+    /// </summary>
+    public string? MotivoAnulacion { get; set; }
+
+    /// <summary>
+    /// Cuándo se tocó por primera vez el contenido de la factura ya emitida (F3-08). Lo rellenan la
+    /// modificación de líneas y la anulación, y no se vuelve a escribir: es la marca que alimentará
+    /// el filtro «modificadas tras envío» de F4-02 y el de «modificadas» de la vista de cuentas
+    /// (§3.13, F3-10), y para eso sirve la primera vez, no la última.
+    /// <para>
+    /// No guarda el tipo de cambio ni el número porque esos no cambian: una factura emitida que se
+    /// modifica conserva su número y su cambio congelado (D28, D9).
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? ModificadaAt { get; set; }
+
+    /// <summary>Quién hizo esa primera modificación.</summary>
+    public Guid? ModificadaPor { get; set; }
+
     /// <summary>
     /// Líneas del documento. Se reemplazan enteras mientras la factura está en borrador; en cuanto
     /// se emite quedan congeladas.

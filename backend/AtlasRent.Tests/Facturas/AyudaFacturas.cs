@@ -63,7 +63,9 @@ internal static class AyudaFacturas
         TipoSerie tipo,
         Moneda? moneda,
         CancellationToken ct,
-        bool generaComprobante = false)
+        bool generaComprobante = false,
+        bool sumaAFacturado = true,
+        bool sumaASaldos = true)
     {
         var creada = await sesion.PostAsync(
             "/api/v1/config/series",
@@ -73,8 +75,8 @@ internal static class AyudaFacturas
                 prefijo = $"F{Guid.NewGuid():N}"[..8],
                 tipo = tipo.ToString(),
                 moneda = moneda?.ToString(),
-                sumaAFacturado = true,
-                sumaASaldos = true,
+                sumaAFacturado,
+                sumaASaldos,
                 generaComprobante,
                 activa = true,
             },

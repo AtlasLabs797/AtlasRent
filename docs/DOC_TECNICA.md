@@ -255,6 +255,38 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   (`factura.periodicas.generadas`) registra si los contratos venían de una lista —lo que se vio— o
   se facturaron todos los candidatos sin mirar.
 
+### 6.2.2 Ciclo de vida de la factura (F3-08)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `PUT /api/v1/facturas/{id}/modificar` | `factura.anular` | Cambia **solo líneas** de una factura emitida: `{ lineas: [{ lineaId, tipo, concepto, cantidad, precioUnitario, tipoItbisId?, tipoRetencionId? }] }`. Recalcula subtotal, ITBIS, retención, total y neto con las mismas funciones de dominio de F3-02/F3-04. **409** si hay comprobante fiscal, si está anulada o convertida, o si la línea no es suya. Acepta `Idempotency-Key`. |
+| `POST /api/v1/facturas/{id}/simular-anulacion` | `factura.anular` | Lo que la anulación haría, **sin escribir nada**: los cobros que se anularían enteros y los que solo dejarían de pagar esta factura, con sus importes. Es la pantalla de confirmación de §3.8. |
+| `POST /api/v1/facturas/{id}/anular` | `factura.anular` | Cuerpo `{ motivo }` **obligatorio** (400 sin él). En una sola transacción: factura `Anulada`, número `Anulado` en `numero_serie` (el contador no retrocede, D28), comprobante fiscal `Anulado`, asignaciones de cobro sin vigor y —los que se quedan sin ninguna— cobro `Anulado` con el motivo derivado. **409** si ya está anulada, si es borrador o si es una proforma convertida. Acepta `Idempotency-Key`. |
+| `POST /api/v1/facturas/{id}/duplicar` | `factura.anular` | Copia cliente, unidad, contrato, serie, moneda, líneas, ITBIS y retenciones **al borrador**; no copia número, comprobante, cobros, envíos, retención recibida, referencia de e-factura ni la proforma de origen. Devuelve la copia y `similares`: facturas del mismo contrato, periodo y concepto que ya existían. **No bloquea** por eso. **409** si el original es periódico (límite conocido, más abajo). |
+| `POST /api/v1/facturas/{id}/convertir-proforma` | `factura.anular` | Cuerpo `{ serieId? }`. La factura sale **emitida** con la misma moneda y los mismos importes (D7) y la proforma queda `Convertida`, todo en un commit. La serie destino por defecto es la primera fiscal activa (la 3 si está sembrada) y se valida: tiene que ser fiscal y estar activa, y no puede ser la de la proforma. |
+| `POST /api/v1/facturas/{id}/rehacer-moneda` | `factura.anular` | Cuerpo `{ moneda, serieId, total, motivo }`, con `motivo` y `total` obligatorios. **Anula la original** (que conserva su número y su moneda) y crea un borrador en la otra moneda con el importe **tecleado**: el tipo de cambio con el que se rehace lo elige quien lo teclea. Acepta `Idempotency-Key`. |
+
+- **Una factura anulada no es una deuda.** `CalculoCobro` recibe el estado del documento y devuelve
+  pendiente cero con `estadoCobro = "Anulada"`; sin eso, el aging sumaría dinero que el cliente no debe
+  por un documento que ya no vale.
+- **Los cobros se tocan uno a uno, no en bloque.** Un cobro con otras facturas vivas sigue vigente y solo
+  pierde la asignación de la factura anulada; solo se anula si se queda sin ninguna asignación viva, y
+  entonces su excedente sale y su crédito vuelve al `saldo_a_favor` del contrato (§3.10.1).
+- **Las seis piden `factura.anular`, no `factura.emitir`.** Es el permiso que §2 da exactamente a este
+  trabajo («modificar o anular una factura ya emitida») y estaba sembrado desde F1-09 sin que ninguna
+  tarea lo usara: emitir es sacar número y comprobante, que es otra cosa y ya tiene su propio permiso.
+  Se comprobó que el techo por rol ya estaba sembrado (admin y gerente), así que el cambio fue solo el
+  atributo y el servicio: ninguna migración.
+- **Límite conocido: duplicar una factura periódica da 409.** Su clave `(contrato, periodo, concepto)`
+  es única mientras no esté anulada (`ix_factura_periodo_unico`), así que la copia chocaría con ella
+  misma y la base no deja ni intentarlo. Las salidas son **anular la original** —que libera la clave—
+  y emitir la correcta, o pedir la copia **con otro periodo**, que ya es otro documento a propósito.
+  - `TODO(A#)`: §3.8 dice que duplicar avisa de lo que ya existe «sin impedir la duplicación», lo que es
+    cierto para las facturas tecleadas a mano y **no puede ser cierto para las periódicas**. Hay que
+    decidir si duplicar una periódica debe **ofrecer cambiar el periodo de la copia** en lugar de
+    rechazar, y si eso lo propone la aplicación o lo teclea quien duplica. No se resuelve aquí porque es
+    una regla de negocio, no un fallo de implementación.
+
 ### 6.3 Cobros (F3-06, F3-07)
 
 | Endpoint | Acción | Notas |

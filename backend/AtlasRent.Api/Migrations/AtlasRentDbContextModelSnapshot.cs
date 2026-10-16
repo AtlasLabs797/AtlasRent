@@ -645,6 +645,14 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("AnuladaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anulada_at");
+
+                    b.Property<Guid?>("AnuladaPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("anulada_por");
+
                     b.Property<Guid>("CobroId")
                         .HasColumnType("uuid")
                         .HasColumnName("cobro_id");
@@ -668,6 +676,11 @@ namespace AtlasRent.Api.Migrations
                     b.Property<decimal?>("ImporteRecibido")
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("importe_recibido");
+
+                    b.Property<string>("MotivoAnulacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo_anulacion");
 
                     b.Property<decimal?>("TipoCambioValor")
                         .HasColumnType("numeric(18,6)")
@@ -1835,6 +1848,14 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("AnuladoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anulado_at");
+
+                    b.Property<Guid?>("AnuladoPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("anulado_por");
+
                     b.Property<Guid>("ClienteId")
                         .HasColumnType("uuid")
                         .HasColumnName("cliente_id");
@@ -1873,9 +1894,22 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("itbis");
 
+                    b.Property<DateTimeOffset?>("ModificadaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificada_at");
+
+                    b.Property<Guid?>("ModificadaPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificada_por");
+
                     b.Property<int>("Moneda")
                         .HasColumnType("integer")
                         .HasColumnName("moneda");
+
+                    b.Property<string>("MotivoAnulacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo_anulacion");
 
                     b.Property<decimal>("NetoACobrar")
                         .HasColumnType("numeric(18,2)")

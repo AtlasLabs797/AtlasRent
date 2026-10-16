@@ -199,13 +199,18 @@ public sealed class ServicioCobros(
     /// por diferencia de cambio de F3-07).
     /// </para>
     /// </summary>
+    /// <param name="estadoFactura">
+    /// F3-08: una factura anulada no tiene pendiente ni cobrado, y eso solo se puede ver si quien
+    /// pregunta trae el estado del documento.
+    /// </param>
     public SituacionCobroFactura SituacionDeFactura(
         decimal total,
         decimal retencion,
         decimal cobrado,
         decimal ajustado,
-        DateOnly vencimiento)
-        => CalculoCobro.Calcular(total, retencion, cobrado, ajustado, vencimiento, FechaDeNegocio());
+        DateOnly vencimiento,
+        EstadoFactura estadoFactura = EstadoFactura.Emitida)
+        => CalculoCobro.Calcular(total, retencion, cobrado, ajustado, vencimiento, FechaDeNegocio(), estadoFactura);
 
     // ---------------------------------------------------------------- simulación
 
@@ -622,7 +627,8 @@ public sealed class ServicioCobros(
             cobrados.GetValueOrDefault(factura.Id),
             ajustados.GetValueOrDefault(factura.Id),
             factura.FechaVencimiento,
-            FechaDeNegocio()).Pendiente;
+            FechaDeNegocio(),
+            factura.Estado).Pendiente;
     }
 
     // ---------------------------------------------------------------- planificación
@@ -1111,14 +1117,16 @@ public sealed class ServicioCobros(
             // La retención entra en el pendiente desde F3-04 (§3.9, D14) y no antes: cierra lo que
             // falta cobrar, pero no es dinero cobrado. El ajuste por diferencia de cambio (F3-07,
             // §3.10.2) entra por el mismo motivo y desde antes: es el céntimo que dejó el cambio,
-            // tampoco es dinero que entró en caja.
+            // tampoco es dinero que entró en caja. El estado del documento va porque una factura anulada
+            // (F3-08) no tiene pendiente aunque sus cobros se hayan dejado sin vigor con ella.
             f => CalculoCobro.Calcular(
                 f.Total,
                 f.Retencion,
                 cobrados.GetValueOrDefault(f.Id),
                 ajustados.GetValueOrDefault(f.Id),
                 f.FechaVencimiento,
-                FechaDeNegocio()).Pendiente);
+                FechaDeNegocio(),
+                f.Estado).Pendiente);
     }
 
     // ---------------------------------------------------------------- saldo a favor

@@ -63,6 +63,23 @@ public sealed class CobroAsignacion : IEntidadTrazada
     /// </summary>
     public bool Vigente { get; set; } = true;
 
+    /// <summary>
+    /// Cuándo dejó de contar esta asignación (F3-08, D6). Nula mientras sigue viva.
+    /// <para>
+    /// Es lo que distingue las dos maneras de que una asignación deje de contar: anular el cobro
+    /// (F3-06) y anular la factura que pagaba (F3-08). En el segundo caso
+    /// <see cref="MotivoAnulacion"/> es el de la factura, y por eso la columna no es un adorno: sin
+    /// ella no se puede saber por qué un cobro que sigue vigente dejó de pagar una factura.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? AnuladaAt { get; set; }
+
+    /// <summary>Quién la dejó sin vigor.</summary>
+    public Guid? AnuladaPor { get; set; }
+
+    /// <summary>Motivo, o el de la factura anulada cuando lo fue la factura lo que la dejó sin vigor.</summary>
+    public string? MotivoAnulacion { get; set; }
+
     /// <inheritdoc />
     public DateTimeOffset CreatedAt { get; set; }
 

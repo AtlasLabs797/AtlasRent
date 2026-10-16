@@ -40,4 +40,11 @@ public enum EstadoCobroFactura
 
     /// <summary>Cobros más retenciones llegan al total: no queda nada pendiente.</summary>
     Pagada = 3,
+
+    /// <summary>
+    /// La factura está anulada (F3-08). <b>No es <c>Pagada</c></b>: no llegó dinero, lo que pasó es que
+    /// la deuda dejó de existir porque el documento se anuló. Decir «pagada» haría creer que alguien
+    /// pagó una factura que no vale, y el aging (F3-10) sumaría un pendiente que no existe.
+    /// </summary>
+    Anulada = 4,
 }

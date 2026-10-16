@@ -85,6 +85,13 @@ public sealed class ServicioSeries(
     /// Marca un número emitido como anulado (docs/ESPECIFICACION.md §3.7, D28). El contador no
     /// retrocede: el número sigue ocupado y el siguiente sigue siendo el de después.
     /// </summary>
+    /// <remarks>
+    /// F3-08: la anulación de una factura llama a este método desde su propia transacción, porque la
+    /// factura, su número, su comprobante y sus cobros tienen que caer juntos o no caer. Cuando ya
+    /// hay una transacción abierta se usa esa y no se confirma aquí: el <c>numero_serie.anulado</c>
+    /// de auditoría queda también dentro del mismo commit, que es lo que hace falta para que la
+    /// auditoría no pueda contar una anulación que al final no ocurrió.
+    /// </remarks>
     /// <param name="usuarioAdmin">Usuario que anula; queda en auditoría y en la fila.</param>
     /// <param name="ip">IP de origen, obligatoria en toda mutación (AGENTS.md §6).</param>
     public async Task AnularNumeroAsync(
@@ -100,7 +107,9 @@ public sealed class ServicioSeries(
             throw new ArgumentException("La anulación de un número lleva motivo.", nameof(motivo));
         }
 
-        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+        await using var transaccionPropia = contexto.Database.CurrentTransaction is null
+            ? await contexto.Database.BeginTransactionAsync(ct)
+            : null;
 
         var fila = await contexto.NumeroSerie
             .SingleOrDefaultAsync(n => n.SerieId == serieId && n.Numero == numero, ct)
@@ -129,6 +138,9 @@ public sealed class ServicioSeries(
             Origen = "api",
         }, ct);
 
-        await transaccion.CommitAsync(ct);
+        if (transaccionPropia is not null)
+        {
+            await transaccionPropia.CommitAsync(ct);
+        }
     }
 }

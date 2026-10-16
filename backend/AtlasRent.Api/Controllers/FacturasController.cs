@@ -205,6 +205,126 @@ public sealed class FacturasController(
             id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
     }
 
+    // ---------------------------------------------------------------- ciclo de vida (F3-08)
+
+    /// <summary>
+    /// Modificación de una factura ya emitida (F3-08, §3.8): solo sus líneas. El número, la fecha de
+    /// emisión y el tipo de cambio congelado no se tocan, y con comprobante fiscal los importes tampoco.
+    /// </summary>
+    [HttpPut("{id:guid}/modificar")]
+    [Accion(Acciones.FacturaAnular)]
+    public async Task<IActionResult> Modificar(
+        Guid id,
+        FacturaModificacionPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/facturas/{id:D}/modificar");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => facturas.ModificarAsync(
+            id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Anulación con motivo (F3-08, §3.8, D28). Conserva la factura, su número y su comprobante: los
+    /// marca como anulados y les quita el efecto económico. Un reintento con la misma
+    /// <c>Idempotency-Key</c> devuelve la factura ya anulada en vez de anularla otra vez.
+    /// </summary>
+    [HttpPost("{id:guid}/anular")]
+    [Accion(Acciones.FacturaAnular)]
+    public async Task<IActionResult> Anular(
+        Guid id,
+        FacturaAnulacionPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/facturas/{id:D}/anular");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => facturas.AnularAsync(
+            id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Qué haría la anulación y a qué cobros tocaría, con sus importes, sin escribir nada. Va por
+    /// <c>POST</c> y no por <c>GET</c> aunque no escriba, porque la pantalla de §3.8 la pide antes de
+    /// confirmar y así el botón de confirmar y esta llamada hablan el mismo idioma.
+    /// </summary>
+    [HttpPost("{id:guid}/simular-anulacion")]
+    [Accion(Acciones.FacturaAnular)]
+    public async Task<IActionResult> SimularAnulacion(Guid id, CancellationToken ct) =>
+        await ResponderAsync(() => facturas.SimularAnulacionAsync(
+            id, UsuarioDeLaPeticion(), ct));
+
+    /// <summary>
+    /// Duplica la factura en borrador, sin número, sin comprobante y sin cobros (F3-08).
+    /// </summary>
+    [HttpPost("{id:guid}/duplicar")]
+    [Accion(Acciones.FacturaAnular)]
+    public async Task<IActionResult> Duplicar(Guid id, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { id }, $"/api/v1/facturas/{id:D}/duplicar");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => facturas.DuplicarAsync(
+            id, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Convierte una proforma en factura conservando moneda e importes (F3-08, D7). La proforma queda
+    /// convertida y deja de contar; la serie destino es la fiscal activa y se puede cambiar.
+    /// </summary>
+    [HttpPost("{id:guid}/convertir-proforma")]
+    [Accion(Acciones.FacturaAnular)]
+    public async Task<IActionResult> ConvertirProforma(
+        Guid id,
+        ProformaConversionPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/facturas/{id:D}/convertir-proforma");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => facturas.ConvertirProformaAsync(
+            id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Rehace la factura en otra moneda (F3-08): anula la original y deja un borrador en la moneda y con
+    /// el importe que se tecleen aquí.
+    /// </summary>
+    [HttpPost("{id:guid}/rehacer-moneda")]
+    [Accion(Acciones.FacturaAnular)]
+    public async Task<IActionResult> RehacerMoneda(
+        Guid id,
+        RehacerMonedaPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/facturas/{id:D}/rehacer-moneda");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => facturas.RehacerEnMonedaAsync(
+            id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
     // ---------------------------------------------------------------- internos
 
     /// <summary>

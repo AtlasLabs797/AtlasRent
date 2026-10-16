@@ -24,6 +24,13 @@ namespace AtlasRent.Api.Jobs;
 /// La consulta es solo por estado, que es exactamente lo que cubre el índice: si un día llegaran a
 /// existir muchas facturas pendientes, el trabajo crece con ellas y no con la base entera.
 /// </para>
+/// <para>
+/// <b>F3-08: una factura anulada no avisa.</b> Su comprobante de retención se queda pendiente para
+/// siempre, porque a una factura anulada no hay que pedirle el <c>607</c> a nadie. Si el trabajo
+/// siguiera mirándola, la factura anulada produciría un aviso perpetuo que nadie puede resolver, que
+/// es la peor forma de alerta: la que enseña a ignorar la bandeja. Por eso la alerta se resuelve
+/// aquí en vez de dejarse.
+/// </para>
 /// </summary>
 public sealed class TrabajoRetenciones(
     AtlasRentDbContext contexto,
@@ -40,9 +47,21 @@ public sealed class TrabajoRetenciones(
             .Include(c => c.Factura)
             .ToListAsync(ct);
 
+        var avisadas = 0;
+
         foreach (var comprobante in pendientes)
         {
             var factura = comprobante.Factura;
+
+            if (factura?.Estado == EstadoFactura.Anulada)
+            {
+                await alertas.ResolverAsync(
+                    ServicioRetenciones.ClaveAlerta(comprobante.FacturaId),
+                    ct);
+
+                continue;
+            }
+
             var dias = hoy.DayNumber - TiempoNegocio.FechaEnZonaNegocio(comprobante.CreatedAt).DayNumber;
 
             await alertas.RegistrarAsync(
@@ -51,10 +70,11 @@ public sealed class TrabajoRetenciones(
                 $"La factura {NumeroDeFactura(factura)} retuvo {comprobante.Importe:0.00} por {comprobante.Tipo} "
                     + $"y su comprobante de retención sigue pendiente {DiasPendientes(dias)}. Pídeselo al cliente.",
                 ct);
+
+            avisadas++;
         }
 
-        Log.Information("Avisos de comprobante de retención: {Pendientes} factura(s) sin comprobante",
-            pendientes.Count);
+        Log.Information("Avisos de comprobante de retención: {Pendientes} factura(s) sin comprobante", avisadas);
     }
 
     /// <summary>

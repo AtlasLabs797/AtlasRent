@@ -293,3 +293,217 @@ public sealed record FacturaLineaRespuesta(
     // Nulo en toda línea que no sea de retención, así que aquí hace falta el conversor que además
     // entiende el nulo: el genérico de <see cref="EstadoFactura"/> no sirve para un enum nullable.
     [property: JsonConverter(typeof(JsonStringEnumConverter))] BaseRetencion? BaseRetencion);
+
+// ─────────────────────────────── F3-08 ───────────────────────────────
+// Cerrar el ciclo de vida del documento: modificar lo que ya se emitió (nunca su número), anular,
+// duplicar, convertir una proforma en factura y rehacer en otra moneda (§3.8, D6, D7, D28).
+
+/// <summary>
+/// Modificación de una factura ya emitida (F3-08). Solo las líneas: la cabecera y el número están
+/// fuera de alcance porque una factura emitida no se reescribe, se anula y se vuelve a emitir.
+/// <para>
+/// Se mandan las líneas que cambian, no todas. Cada entrada reemplaza los campos editables de esa
+/// línea y las líneas que no van en la lista se quedan como están; añadir o quitar líneas de una
+/// factura emitida no tiene sentido porque cambiaría el total sin que nadie lo haya decidido como
+/// documento nuevo.
+/// </para>
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class FacturaModificacionPeticion
+{
+    /// <summary>Líneas a cambiar, en el orden que tengan.</summary>
+    [Required]
+    [MinLength(1)]
+    public required IReadOnlyList<FacturaLineaModificacionPeticion> Lineas { get; init; }
+}
+
+/// <summary>
+/// Campos editables de una línea de factura emitida. Es la línea entera menos su <c>Id</c>, que es lo
+/// único que no cambia nunca.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class FacturaLineaModificacionPeticion
+{
+    /// <summary>La línea a cambiar.</summary>
+    [Required]
+    public required Guid LineaId { get; init; }
+
+    /// <summary>Renta, servicio o retención. No se puede pasar de renta o servicio a retención (F3-04).</summary>
+    [Required]
+    [JsonConverter(typeof(JsonStringEnumConverter<TipoLineaFactura>))]
+    public required TipoLineaFactura Tipo { get; init; }
+
+    /// <summary>Texto que se imprime y se ve en la factura.</summary>
+    [Required]
+    [StringLength(500, MinimumLength = 1)]
+    public required string Concepto { get; init; }
+
+    /// <summary>
+    /// Cantidad facturable, con cuatro decimales. Tiene que ser mayor que cero, y eso lo comprueba
+    /// el servicio con el mismo criterio que una línea de borrador, no un atributo.
+    /// </summary>
+    public decimal Cantidad { get; init; }
+
+    /// <summary>
+    /// Precio unitario en la moneda de la factura. No negativo, por el mismo motivo que arriba.
+    /// </summary>
+    public decimal PrecioUnitario { get; init; }
+
+    /// <summary>Tipo de ITBIS configurado, o nulo si la línea no lleva.</summary>
+    public Guid? TipoItbisId { get; init; }
+
+    /// <summary>Tipo de retención configurado, o nulo si la línea no lleva.</summary>
+    public Guid? TipoRetencionId { get; init; }
+}
+
+/// <summary>Anulación de una factura emitida (F3-08, §3.8). El motivo es lo único que se pide.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class FacturaAnulacionPeticion
+{
+    /// <summary>
+    /// Por qué se anula. Obligatorio y no vacío, por el mismo motivo que en los cobros: sin motivo la
+    /// anulación es un borrado con otro nombre, y este documento ya salió con un número que no
+    /// vuelve a liberarse (D28).
+    /// </summary>
+    [Required]
+    [StringLength(500, MinimumLength = 1)]
+    public required string Motivo { get; init; }
+}
+
+/// <summary>
+/// Cómo quedaría la anulación si se aceptara, sin escribir nada (F3-08). Es lo que necesita la
+/// pantalla de confirmación: no basta con decir «se va a anular», hay que enseñar el dinero que se
+/// toca antes de que alguien lo toque.
+/// </summary>
+/// <param name="FacturaId">La factura que se anularía.</param>
+/// <param name="Numero">Su número, que se conserva aunque se anule (D28).</param>
+/// <param name="Estado">Su estado ahora mismo.</param>
+/// <param name="NetoACobrar">Lo que estaba pendiente de cobrar.</param>
+/// <param name="ComprobanteFiscalSeAnula">Si su comprobante fiscal pasaría a anulado con ella.</param>
+/// <param name="NumeroSeConserva">
+/// Siempre <c>true</c>. Está aquí para que quien llama a la API lo vea escrito en el contrato: el
+/// número no se libera nunca.
+/// </param>
+/// <param name="CobrosQueSeAnulan">Cobros que se quedarían sin ninguna asignación viva.</param>
+/// <param name="CobrosQueSeToCan">Cobros que solo dejan de pagar esta factura y siguen cobrando otra.</param>
+public sealed record FacturaAnulacionSimulacion(
+    Guid FacturaId,
+    int? Numero,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<EstadoFactura>))]
+    EstadoFactura Estado,
+    decimal NetoACobrar,
+    bool ComprobanteFiscalSeAnula,
+    bool NumeroSeConserva,
+    IReadOnlyList<CobroAfectadoPorFactura> CobrosQueSeAnulan,
+    IReadOnlyList<CobroAfectadoPorFactura> CobrosQueSeToCan);
+
+/// <summary>
+/// Un cobro que la anulación de una factura toca. Sirve igual para los que se anulan enteros y para
+/// los que solo pierden esta factura, porque el usuario necesita ver el importe en los dos casos; lo
+/// que los distingue es <see cref="SeAnulaEntero"/>.
+/// </summary>
+/// <param name="CobroId">El cobro.</param>
+/// <param name="FechaEfectiva">Su fecha de valor.</param>
+/// <param name="Moneda">Moneda del cobro.</param>
+/// <param name="ImporteRecibido">Cuánto entró.</param>
+/// <param name="ImporteDeEstaFactura">Cuánto de ese importe estaba asignado a esta factura.</param>
+/// <param name="ImporteQueSigueVigente">
+/// Lo que el cobro sigue cubriendo con otras facturas. Cero si se anula entero.
+/// </param>
+/// <param name="CambioDelSaldoAFavor">
+/// Cuánto cambiaría el saldo a favor del contrato (§3.10.1), con su signo: vuelve el crédito que el
+/// cobro consumió y sale el excedente que dejó. Cero si el cobro no se anula entero.
+/// </param>
+/// <param name="SeAnulaEntero">Si el cobro se queda sin ninguna asignación viva y se anula con ella.</param>
+public sealed record CobroAfectadoPorFactura(
+    Guid CobroId,
+    DateOnly FechaEfectiva,
+    Moneda Moneda,
+    decimal ImporteRecibido,
+    decimal ImporteDeEstaFactura,
+    decimal ImporteQueSigueVigente,
+    decimal CambioDelSaldoAFavor,
+    bool SeAnulaEntero);
+
+/// <summary>Resultado de duplicar una factura (F3-08).</summary>
+/// <param name="Factura">El borrador nuevo, con su identificador.</param>
+/// <param name="Similares">
+/// Facturas del mismo contrato, periodo y concepto que ya existían. No bloquean nada: el aviso está
+/// para que el operador mire, y puede que la otra sea una factura anterior correcta.
+/// </param>
+public sealed record FacturaDuplicacionRespuesta(
+    FacturaResumen Factura,
+    IReadOnlyList<FacturaDuplicadaParecida> Similares);
+
+/// <summary>Factura casi idéntica a la duplicada, que ya existía (F3-08).</summary>
+public sealed record FacturaDuplicadaParecida(
+    Guid FacturaId,
+    int? Numero,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<EstadoFactura>))]
+    EstadoFactura Estado,
+    DateOnly? PeriodoInicio,
+    DateOnly? PeriodoFin,
+    decimal Total,
+    string Concepto);
+
+/// <summary>
+/// Conversión de una proforma en factura (F3-08, D7). Solo la serie destino: la moneda y los
+/// importes no se tocan.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class ProformaConversionPeticion
+{
+    /// <summary>
+    /// Serie en la que se emite la factura nueva. Si no se manda, la primera fiscal activa, que es
+    /// la 3 de la instalación normal (§3.7); el usuario puede cambiarla porque la fiscal activa
+    /// puede no ser la que le sirve.
+    /// </summary>
+    public Guid? SerieId { get; init; }
+}
+
+/// <summary>Resultado de convertir una proforma en factura (F3-08).</summary>
+/// <param name="Factura">La factura nueva.</param>
+/// <param name="ProformaId">La proforma de origen, que queda <c>Convertida</c> y deja de contar.</param>
+/// <param name="SerieIdUsada">La serie en la que se emitió, para que la interfaz pueda explicarlo.</param>
+public sealed record ProformaConversionRespuesta(
+    FacturaRespuesta Factura,
+    Guid ProformaId,
+    Guid SerieIdUsada);
+
+/// <summary>
+/// Rehacer una factura anulada en otra moneda (F3-08). El importe va tecleado a propósito: el tipo de
+/// cambio con el que se calcula el importe nuevo lo pone quien lo teclea, y esa es una decisión
+/// comercial que la aplicación no puede tomar por su cuenta.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class RehacerMonedaPeticion
+{
+    /// <summary>Moneda de la factura nueva. Obligatoria: es lo que se está rehaciendo.</summary>
+    [Required]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public required Moneda Moneda { get; init; }
+
+    /// <summary>Serie de la factura nueva. Obligatoria: se elige a mano porque la serie fija la moneda.</summary>
+    [Required]
+    public required Guid SerieId { get; init; }
+
+    /// <summary>Total de la factura nueva, ya en la moneda pedida. Tiene que ser mayor que cero.</summary>
+    public decimal Total { get; init; }
+
+    /// <summary>
+    /// Por qué se anula la original. Obligatorio: la original queda anulada y su número no vuelve a
+    /// liberarse (D28), y eso se explica siempre.
+    /// </summary>
+    [Required]
+    [StringLength(500, MinimumLength = 1)]
+    public required string Motivo { get; init; }
+}
+
+/// <summary>Resultado de rehacer en otra moneda (F3-08).</summary>
+/// <param name="FacturaAnulada">La factura que quedó anulada.</param>
+/// <param name="NumeroAnulado">Su número, que se conserva aunque se anule (D28).</param>
+/// <param name="Nueva">El borrador nuevo, en la moneda pedida.</param>
+public sealed record FacturaRehacerRespuesta(
+    Guid FacturaAnulada,
+    int? NumeroAnulado,
+    FacturaResumen Nueva);
