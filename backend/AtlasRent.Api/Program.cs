@@ -305,6 +305,14 @@ builder.Services.AddScoped<ServicioCobros>();
 builder.Services.AddScoped<ServicioRetenciones>();
 builder.Services.AddScoped<TrabajoRetenciones>();
 
+// F3-05: la facturación periódica del mes natural y la factura de la reserva corta. Va después de
+// ServicioFacturas porque no tiene contador propio: crea el borrador, añade la línea y emite por el
+// mismo camino de F3-02, que es lo que garantiza que una factura periódica numere, congele el
+// cambio y lleve comprobante igual que una tecleada a mano. El trabajo diario solo avisa de lo que
+// no está facturado; facturar es de gerente o administrador (D15) y pasa por el permiso, no por él.
+builder.Services.AddScoped<ServicioFacturacionPeriodica>();
+builder.Services.AddScoped<TrabajoPeriodosSinFacturar>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

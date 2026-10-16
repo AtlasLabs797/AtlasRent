@@ -1224,6 +1224,18 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasIndex(e => new { e.SerieId, e.Numero })
                 .IsUnique()
                 .HasFilter("numero IS NOT NULL");
+            // F3-05: una factura periódica por contrato, periodo y concepto (§3.8 «impide duplicados:
+            // contrato, periodo, concepto»). El filtro saca las facturas que no son periódicas
+            // (periodo_inicio nulo) y las anuladas: una factura anulada libera su clave, que es lo que
+            // permite emitir la que la sustituye (F3-08), y su número no vuelve atrás (D28).
+            //
+            // En la base el índice es NULLS NOT DISTINCT (ver la migración), cosa que el modelo no
+            // puede expresar: sin ella, una factura de reserva corta —que no tiene contrato— no
+            // estaría protegida y su doble ejecución sí duplicaría.
+            entidad.HasIndex(e => new { e.ContratoId, e.PeriodoInicio, e.Concepto })
+                .IsUnique()
+                .HasDatabaseName("ix_factura_periodo_unico")
+                .HasFilter("(periodo_inicio IS NOT NULL AND estado <> 3)");
             entidad.HasOne(e => e.Cliente)
                 .WithMany()
                 .HasForeignKey(e => e.ClienteId)

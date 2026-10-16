@@ -1885,6 +1885,14 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("numero");
 
+                    b.Property<DateOnly?>("PeriodoFin")
+                        .HasColumnType("date")
+                        .HasColumnName("periodo_fin");
+
+                    b.Property<DateOnly?>("PeriodoInicio")
+                        .HasColumnType("date")
+                        .HasColumnName("periodo_inicio");
+
                     b.Property<string>("ReferenciaEfactura")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
@@ -1958,6 +1966,11 @@ namespace AtlasRent.Api.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_factura_serie_id_numero")
                         .HasFilter("numero IS NOT NULL");
+
+                    b.HasIndex("ContratoId", "PeriodoInicio", "Concepto")
+                        .IsUnique()
+                        .HasDatabaseName("ix_factura_periodo_unico")
+                        .HasFilter("(periodo_inicio IS NOT NULL AND estado <> 3)");
 
                     b.ToTable("factura", null, t =>
                         {

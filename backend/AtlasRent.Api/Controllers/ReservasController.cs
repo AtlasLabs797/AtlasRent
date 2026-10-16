@@ -26,6 +26,7 @@ namespace AtlasRent.Api.Controllers;
 [Route("api/v1/reservas")]
 public sealed class ReservasController(
     ServicioReservas reservas,
+    ServicioFacturacionPeriodica periodicas,
     ServicioIdempotencia idempotencia,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
@@ -122,6 +123,37 @@ public sealed class ReservasController(
 
         return await GuardarAsync(
             () => reservas.CancelarAsync(id, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Factura de la reserva corta, que «se cobra antes» (§3.4): la crea F3-05 y va por el mismo
+    /// camino de emisión que cualquier otra factura, con número de serie, cambio congelado y
+    /// comprobante si la serie es fiscal.
+    /// <para>
+    /// Usa <c>factura.emitir</c> y no <c>cliente.editar</c>: crear el documento es emitirlo, y quien
+    /// puede dar de alta una reserva no puede por eso sacarle una factura con número.
+    /// </para>
+    /// <para>
+    /// El anticipo no se cobra aquí. D10 lo deja como nota de la reserva y §3.4 pide que al crear la
+    /// factura se muestre el aviso, que es lo que la respuesta devuelve.
+    /// </para>
+    /// </summary>
+    [HttpPost("{id:guid}/factura")]
+    [Accion(Acciones.FacturaEmitir)]
+    public async Task<IActionResult> Facturar(
+        Guid id,
+        FacturaReservaPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/reservas/{id:D}/factura");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => periodicas.FacturarReservaAsync(
+            id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
     }
 
     // ---------------------------------------------------------------- internos

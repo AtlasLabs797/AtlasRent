@@ -133,6 +133,7 @@ public sealed class ProgramacionJobsTests
                 typeof(TrabajoTipoCambio),
                 typeof(TrabajoComprobantes),
                 typeof(TrabajoRetenciones),
+                typeof(TrabajoPeriodosSinFacturar),
             ]);
     }
 
@@ -351,6 +352,49 @@ public sealed class ProgramacionJobsTests
         }
     }
 
+    /// <summary>
+    /// F3-05: el aviso de «periodos sin facturar» va a las 06:00, la hora de los otros avisos que
+    /// escriben en <c>alerta</c>.
+    /// <para>
+    /// Detrás de la copia de las 02:00, la integridad y la vigilancia —si el servidor se apagó, la
+    /// copia falta y avisar sobre un estado que nadie ha verificado sería avisar de algo que puede
+    /// que ya no sea cierto— y por delante del fin y de los avisos de operación, que son los últimos
+    /// por el mismo motivo. Comparte hora con la renovación, el numerador fiscal y las retenciones:
+    /// los cinco son cortos e independientes, y ninguno espera al otro.
+    /// </para>
+    /// <para>
+    /// Que no se solape con el aviso de operaciones a las 08:00 es lo que además garantiza
+    /// <see cref="LosAvisosDeOperacionVanLaUltimaDeLaMadrugada"/>, que exige que ese trabajo sea el
+    /// último de la madrugada.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ElAvisoDePeriodosSinFacturarVaDetrasDeLaCopiaYAntesDelFin()
+    {
+        var aviso = Trabajo(ProgramacionJobs.RutaPeriodosSinFacturar);
+
+        aviso.HoraLocal.Should().Be(6);
+        aviso.Tipo.Should().Be(typeof(TrabajoPeriodosSinFacturar));
+        aviso.Metodo.Should().Be(nameof(TrabajoPeriodosSinFacturar.EjecutarAsync));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(aviso.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 6, 0, 0));
+
+        foreach (var otra in ProgramacionJobs.Todos.Where(t =>
+            t.Ruta is ProgramacionJobs.RutaCopiaSeguridad
+                or ProgramacionJobs.RutaIntegridadAuditoria
+                or ProgramacionJobs.RutaVigilanciaCopia))
+        {
+            aviso.HoraLocal.Should().BeGreaterThan(otra.HoraLocal, $"el aviso va detrás de {otra.Ruta}");
+        }
+
+        foreach (var otra in ProgramacionJobs.Todos.Where(t =>
+            t.Ruta is ProgramacionJobs.RutaFinContratos or ProgramacionJobs.RutaAvisosOperacion))
+        {
+            aviso.HoraLocal.Should().BeLessThan(otra.HoraLocal, $"el aviso va antes de {otra.Ruta}");
+        }
+    }
+
     [Fact]
     public void RegistrarDejaCadaTrabajoConSuCronYSuMetodo()
     {
@@ -370,6 +414,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaTipoCambio,
                 ProgramacionJobs.RutaComprobantes,
                 ProgramacionJobs.RutaRetenciones,
+                ProgramacionJobs.RutaPeriodosSinFacturar,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

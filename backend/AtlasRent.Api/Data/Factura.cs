@@ -71,6 +71,24 @@ public sealed class Factura : IEntidadTrazada
     /// <summary>Concepto del documento: lo que se factura de un vistazo en la vista de cuentas (§3.13).</summary>
     public string Concepto { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Primer día del periodo facturado, y el segundo de la clave que impide el duplicado (F3-05,
+    /// §3.8 «impide duplicados: contrato, periodo, concepto»).
+    /// <para>
+    /// Es nulo en una factura tecleada a mano, y por eso el índice único no la mira: el periodo lo
+    /// pone la facturación periódica, no quien escribe el documento. Con la columna, «ejecutar dos
+    /// veces el mismo mes» deja una sola factura <b>en la base</b>, no solo en el código.
+    /// </para>
+    /// </summary>
+    public DateOnly? PeriodoInicio { get; set; }
+
+    /// <summary>
+    /// Último día del periodo facturado (F3-05). Junto a <see cref="PeriodoInicio"/> dice qué mes
+    /// natural cubre la factura aunque se haya prorrateado por días. Nulo en la factura manual, por el
+    /// mismo motivo que <see cref="PeriodoInicio"/>.
+    /// </summary>
+    public DateOnly? PeriodoFin { get; set; }
+
     /// <summary>Suma algebraica de los importes de las líneas, redondeada medio hacia arriba.</summary>
     public decimal Subtotal { get; set; }
 

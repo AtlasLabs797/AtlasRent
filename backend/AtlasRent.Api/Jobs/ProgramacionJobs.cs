@@ -61,6 +61,7 @@ public static class ProgramacionJobs
     public const string RutaTipoCambio = "tipo-cambio";
     public const string RutaComprobantes = "comprobantes-fiscales";
     public const string RutaRetenciones = "comprobantes-retencion";
+    public const string RutaPeriodosSinFacturar = "periodos-sin-facturar";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
@@ -192,6 +193,19 @@ public static class ProgramacionJobs
             CronDiarioEnUtc(6),
             typeof(TrabajoRetenciones),
             nameof(TrabajoRetenciones.EjecutarAsync),
+            6),
+        // F3-05: el aviso de los contratos cuyo mes natural ya pasó sin factura (§3.16). A las 06:00,
+        // la misma hora que los otros avisos de comprobante y por el mismo motivo (§8): escribe en
+        // `alerta`, así que quiere la copia de la madrugada por delante, y antes del fin y de los
+        // avisos de operación, que siguen siendo los últimos. Comparte hora con los tres anteriores
+        // porque los cuatro son cortos e independientes: solo leen contratos y facturas y escriben en
+        // la tabla de alertas con claves distintas. No factura nada —facturar es una acción de
+        // gerente o administrador (D15)—, así que puede ir antes de que empiece el día.
+        new(
+            RutaPeriodosSinFacturar,
+            CronDiarioEnUtc(6),
+            typeof(TrabajoPeriodosSinFacturar),
+            nameof(TrabajoPeriodosSinFacturar.EjecutarAsync),
             6),
     ];
 

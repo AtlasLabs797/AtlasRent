@@ -183,7 +183,8 @@ public sealed class ServicioFacturas(
         Guid usuario,
         string ip,
         MutacionIdempotente? mutacion,
-        CancellationToken ct)
+        CancellationToken ct,
+        PeriodoFacturacion? periodo = null)
     {
         await ExigirAsync(Acciones.FacturaBorrador, "factura", usuario, ct);
         await ExigirReferenciasAsync(peticion, ct);
@@ -197,6 +198,11 @@ public sealed class ServicioFacturas(
             SerieId = peticion.SerieId,
         };
         Aplicar(factura, peticion);
+
+        // F3-05: el periodo solo lo fija quien factura un mes natural —la facturación periódica—. Una
+        // factura tecleada a mano lo deja nulo, y por eso el índice único de periodo no la mira.
+        factura.PeriodoInicio = periodo?.Inicio;
+        factura.PeriodoFin = periodo?.Fin;
 
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -1099,6 +1105,10 @@ public sealed class ServicioFacturas(
         Moneda = f.Moneda.ToString(),
         Emision = f.FechaEmision?.ToString("yyyy-MM-dd"),
         Vencimiento = f.FechaVencimiento.ToString("yyyy-MM-dd"),
+        // F3-05: el periodo es lo que distingue una factura periódica de una tecleada a mano, así que
+        // va en la auditoría junto al concepto que forma la clave de no duplicado.
+        PeriodoInicio = f.PeriodoInicio?.ToString("yyyy-MM-dd"),
+        PeriodoFin = f.PeriodoFin?.ToString("yyyy-MM-dd"),
         f.Concepto,
         f.Subtotal,
         f.Itbis,

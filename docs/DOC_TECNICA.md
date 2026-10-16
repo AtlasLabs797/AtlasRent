@@ -132,7 +132,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Contador de serie:** `UPDATE serie SET siguiente = siguiente + 1 WHERE id = @id RETURNING siguiente - 1`; `UNIQUE (serie_id, numero)`.
 - **Contador de serie en la factura (F3-02):** la emisión llama a `ServicioSeries.ReservarNumeroAsync` **dentro de la transacción de la factura**, y esa llamada reutiliza la transacción abierta si la hay. Por eso un fallo posterior (un choque de índice, un cliente que ya no está) deshace el número junto con la factura: no hay número consumido sin factura detrás (D28). La red que lo hace inevitable si dos emisiones se colaran es doble: `UNIQUE (serie_id, numero)` en `factura` (índice parcial `WHERE numero IS NOT NULL`, porque un borrador no tiene número) y `UNIQUE (serie_id, numero)` en `numero_serie`.
 - **Comprobante fiscal (F3-03):** `UPDATE numerador_fiscal SET siguiente_numero = siguiente_numero + 1 WHERE serie_id = @id AND siguiente_numero <= rango_hasta RETURNING siguiente_numero - 1`, **dentro de la transacción de la factura** y reutilizando la que ya está abierta; sin fila → 409 y rollback completo. Es un contador **distinto** del de la serie (`serie.siguiente` numera facturas; `numerador_fiscal.siguiente_numero` numera comprobantes) y vive en su propia fila, 1:1 con la serie, con `UNIQUE (serie_id)` en `numerador_fiscal` y `UNIQUE (serie_id, numero)` en `comprobante_fiscal`. El `WHERE … siguiente_numero <= rango_hasta` es lo que hace el bloqueo de agotado íntegro bajo carrera; el de vencimiento va antes, en el servicio, porque es una comparación de fechas. **Ningún rango, tipo ni umbral está sembrado ni en el código**: los configura el administrador en `PUT /api/v1/config/numeradores-fiscales/{serieId}`.
-- **Periódica:** índice único parcial `(contrato_id, periodo, concepto) WHERE estado <> 'anulada'`.
+- **Periódica (F3-05):** columnas `periodo_inicio` / `periodo_fin` en `factura`, nulas en la factura tecleada a mano, e índice único parcial `NULLS NOT DISTINCT (contrato_id, periodo_inicio, concepto) WHERE periodo_inicio IS NOT NULL AND estado <> 3`. El filtro saca las facturas que no son periódicas y las anuladas (la clave se libera al anular, F3-08). `NULLS NOT DISTINCT` (PostgreSQL 15) es lo que protege también a la factura de la reserva corta, que llega con `contrato_id` nulo; **el modelo de EF no expresa esa variante**, así que si una migración reconstruye el índice hay que volver a escribirlo a mano.
 - **Auditoría:** append-only (`db/scripts/03_auditoria_append_only.sql`) + **firma de registros** (hash encadenado SHA-256 por fila) y job diario de verificación de integridad.
 - **RLS:** activado en `documento_inmueble` (solo gerente/admin) y `auditoria` (lectura solo admin/gerente), con variable de sesión (`set_config('app.usuario_id', …, true)` y `app.rol`) fijada por la API al abrir cada transacción mediante un interceptor de EF Core.
 - **Número de cliente:** `SEQUENCE` iniciada en `max(Factusol)+1`.
@@ -230,6 +230,30 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   corrige borrando una línea y replace-all obligaría a reenviar todas las demás.
 - **Series 9 y 3**: la histórica (9) queda desactivada por la migración de F3-02 —no emite, la usan las
   importaciones de Factusol conservando su número— y la fiscal (3) es la que genera comprobante (F3-03).
+
+### 6.2.1 Facturación periódica y factura de reserva (F3-05)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `POST /api/v1/facturas/periodicas/simular` | `factura.emitir` | Lo que se factura de un mes natural, **sin escribir nada**: contrato, periodo, días facturables, importe y prorrateo aplicado, vencimiento, serie, comprobante y los motivos de omitirse. Cuerpo `{ periodo, serieId, contratosIds? }`; `contratosIds` ausente = todos los candidatos. |
+| `POST /api/v1/facturas/periodicas/generar` | `factura.emitir` | Emite esas facturas por el mismo camino de F3-02 (número, cambio congelado, comprobante y retención si el cliente es agente). Lo saltado se devuelve con su motivo en vez de fallar. Acepta `Idempotency-Key`. |
+| `POST /api/v1/reservas/{id}/factura` | `factura.emitir` | Factura de una reserva corta (§3.4 «se cobra antes»): importe, moneda y vencimiento son los de la reserva, y el cuerpo solo lleva la serie. Devuelve el aviso del anticipo; **no crea cobros** (D10). 409 si la reserva ya tiene factura. Acepta `Idempotency-Key`. |
+
+- **La serie es obligatoria y única por ejecución**, y no hay serie «de la casa»: §3.7 deja la
+  numeración en la serie. Un contrato cuya moneda no admite la serie aparece **omitido con su
+  motivo** en la simulación y en la ejecución; no es un 409 a mitad del lote.
+- **El prorrateo** es `renta / días del mes × días facturables`, con días **inclusivos**, y el mes
+  entero paga la renta íntegra sin dividir (dividir y multiplicar por los mismos días no siempre
+  vuelve a dar la renta exacta en `decimal`).
+- **El vencimiento** es el día de pago del contrato dentro del periodo facturado, recortado al final
+  del mes; si ese día ya pasó al facturar, vence en el ciclo siguiente (el mismo día del mes
+  siguiente). Con más de un mes de retraso la factura nace vencida: eso no lo arregla ninguna regla
+  escrita todavía.
+- **Los dos endpoints piden `factura.emitir`**, y la simulación también: enseña los importes, los
+  vencimientos y la serie y el comprobante de facturas que van a existir.
+- **Ejecutar sin haber simulado es legal y visible**: la auditoría de la ejecución
+  (`factura.periodicas.generadas`) registra si los contratos venían de una lista —lo que se vio— o
+  se facturaron todos los candidatos sin mirar.
 
 ### 6.3 Cobros (F3-06, F3-07)
 
@@ -467,7 +491,7 @@ primeras facturas. Y lo mismo con los trabajos previstos de F3 y F4: las horas d
   trabajo dos veces no crea una segunda fila y no lanza.
 
 ### 8.1 Estado (F1-12)
-Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; **avisos del numerador de comprobante** (06:00), de F3-03; y **avisos de comprobante de retención** (06:00), de F3-04. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; **avisos del numerador de comprobante** (06:00), de F3-03; **avisos de comprobante de retención** (06:00), de F3-04; y **periodos sin facturar** (06:00), de F3-05. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3-10), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
 
 - **Avisos del numerador de comprobante (`TrabajoComprobantes`, 06:00 AST):** recorre los numeradores y
   levanta tres alertas de tipo `comprobante`, con clave estable por serie y condición —
@@ -491,6 +515,17 @@ Con el único de `clave`, una alerta cerrada bloqueaba su propia clave para siem
  identidad de un fallo es «de qué tipo y con qué clave»: dos tipos que coinciden en la clave son dos
  hechos.
 
+- **Periodos sin facturar (`TrabajoPeriodosSinFacturar`, 06:00 AST, F3-05):** recorre los contratos
+  `Activo` y `BajaProgramada` cuya vigencia toca el **mes natural anterior** —no el que está en
+  curso, que aún se factura— y levanta una alerta de tipo **`factura`** por cada uno que no tenga
+  factura de ese periodo, con clave estable por contrato y periodo
+  (`factura-sin-facturar:{contratoId}:{yyyy-MM}`). Tipo nuevo a propósito: los que ya había son de
+  copia, reserva, contrato, comprobante y tipo de cambio, y §3.16 enumera los avisos que espera
+  —este es uno—; reutilizar «contrato» metería un problema de facturación entre las bajas y los
+  finales sin liquidar. Una factura **anulada no cuenta** como factura del periodo: el aviso tiene que
+  seguir vivo. Se **resuelve al facturar** (dentro de la transacción que cierra la ejecución
+  periódica), no aquí: quien sabe que la factura ha salido es el servicio que la emite. Comparte hora
+  con los otros tres avisos de las 06:00 porque los cinco son cortos e independientes.
 - **Avisos de comprobante de retención (`TrabajoRetenciones`, 06:00 AST, F3-04):** recorre los
   `comprobante_retencion` en estado `Pendiente` —que es exactamente lo que cubre su índice— y levanta
   una alerta de tipo `comprobante` por cada uno, con clave estable **por factura**
