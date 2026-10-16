@@ -132,6 +132,7 @@ public sealed class ProgramacionJobsTests
                 typeof(TrabajoAvisosOperacion),
                 typeof(TrabajoTipoCambio),
                 typeof(TrabajoComprobantes),
+                typeof(TrabajoRetenciones),
             ]);
     }
 
@@ -173,6 +174,33 @@ public sealed class ProgramacionJobsTests
         numerador.HoraLocal.Should().Be(
             Trabajo(ProgramacionJobs.RutaRenovacionContratos).HoraLocal,
             "comparte hora con la renovación: los dos son cortos e independientes");
+    }
+
+    /// <summary>
+    /// F3-04: los avisos de comprobante de retención van a las 06:00, por las mismas dos reglas que
+    /// los del numerador fiscal (§8): escriben en <c>alerta</c>, así que van detrás de la copia, la
+    /// integridad y la vigilancia, y por delante del fin y de los avisos de operación, que son los
+    /// últimos. Compartir hora con el numerador y con la renovación es lo mismo: tres trabajos cortos
+    /// e independientes.
+    /// </summary>
+    [Fact]
+    public void LosAvisosDeRetencionVanALas06DetrasDeLaVigilanciaYDelanteDelFin()
+    {
+        var retenciones = Trabajo(ProgramacionJobs.RutaRetenciones);
+
+        retenciones.HoraLocal.Should().Be(6);
+        retenciones.Tipo.Should().Be(typeof(TrabajoRetenciones));
+        retenciones.Metodo.Should().Be(nameof(TrabajoRetenciones.EjecutarAsync));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(retenciones.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 6, 0, 0));
+
+        retenciones.HoraLocal.Should().BeGreaterThan(
+            Trabajo(ProgramacionJobs.RutaVigilanciaCopia).HoraLocal,
+            "escribe en alerta, así que va detrás de la copia, la integridad y la vigilancia");
+        retenciones.HoraLocal.Should().BeLessThan(
+            Trabajo(ProgramacionJobs.RutaFinContratos).HoraLocal,
+            "el fin y los avisos de operación siguen siendo los últimos de la madrugada");
     }
 
     /// <summary>
@@ -341,6 +369,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaAvisosOperacion,
                 ProgramacionJobs.RutaTipoCambio,
                 ProgramacionJobs.RutaComprobantes,
+                ProgramacionJobs.RutaRetenciones,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

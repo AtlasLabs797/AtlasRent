@@ -13,8 +13,10 @@ namespace AtlasRent.Tests.Cobros;
 /// </para>
 /// <para>
 /// <b>Lo que hereda F3-04 es el caso de la retención</b>: como la columna <c>Factura.Retencion</c>
-/// todavía no existe, esta es la única forma de comprobar que «cobros más retenciones iguales al
-/// total» deja la factura pagada, y se comprueba pasando la retención como parámetro.
+/// no existía cuando se escribió esta prueba, el caso «cobros más retenciones iguales al total»
+/// se comprobaba pasando la retención como parámetro. F3-04 lo mantiene aquí —es la misma fórmula,
+/// ahora con la columna detrás— y añade en <c>Retenciones/</c> el caso que faltaba: una factura a
+/// la que solo la retención cubre, sin ningún cobro.
 /// </para>
 /// </summary>
 public sealed class CobroCalculoTests
@@ -94,8 +96,9 @@ public sealed class CobroCalculoTests
     }
 
     /// <summary>
-    /// Cobro más retención igual al total deja la factura pagada (§3.9, D14). Es el caso que hereda
-    /// F3-04 en cuanto exista la columna de retención, y por eso se prueba ahora con el parámetro.
+    /// Cobro más retención igual al total deja la factura pagada (§3.9, D14). Es el criterio de
+    /// aceptación de F3-04, comprobado aquí sobre el cálculo puro y sobre la API en
+    /// <c>Retenciones/RetencionCalculoTests</c> y <c>RetencionFacturaTests</c>.
     /// </summary>
     [Fact]
     public void CobroMasRetencionIgualesAlTotalDejaLaFacturaPagada()

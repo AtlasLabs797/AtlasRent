@@ -101,7 +101,14 @@ internal static class AyudaFacturas
         return Random.Shared.Next(900, 999);
     }
 
-    public static async Task<Guid> CrearClienteAsync(SesionCliente sesion, CancellationToken ct)
+    /// <summary>
+    /// Cliente de la prueba. <paramref name="agenteRetencion"/> es la marca de §3.9 y va aquí para que
+    /// las pruebas de retención (F3-04) no tengan que escribir a mano el mismo cliente de siempre.
+    /// </summary>
+    public static async Task<Guid> CrearClienteAsync(
+        SesionCliente sesion,
+        CancellationToken ct,
+        bool agenteRetencion = false)
     {
         var documento = $"001-{Guid.NewGuid():N}"[..13];
         var creada = await sesion.PostAsync(
@@ -112,6 +119,7 @@ internal static class AyudaFacturas
                 tipo = "PersonaFisica",
                 documento,
                 email = "cliente@example.test",
+                agenteRetencion,
             },
             ct);
 
@@ -161,19 +169,25 @@ internal static class AyudaFacturas
         return (await cargado.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
     }
 
+    /// <param name="contratoId">
+    /// Nulo es lo normal. Solo las pruebas de cobro (F3-06) lo pasan, porque un cobro con
+    /// asignaciones explícitas necesita un contrato al que moverle el dinero.
+    /// </param>
     public static async Task<Guid> CrearFacturaAsync(
         SesionCliente sesion,
         Guid clienteId,
         Guid serieId,
         Moneda moneda,
         DateOnly vencimiento,
-        CancellationToken ct)
+        CancellationToken ct,
+        Guid? contratoId = null)
     {
         var creada = await sesion.PostAsync(
             "/api/v1/facturas",
             new
             {
                 clienteId,
+                contratoId,
                 serieId,
                 moneda = moneda.ToString(),
                 fechaVencimiento = vencimiento.ToString("yyyy-MM-dd"),

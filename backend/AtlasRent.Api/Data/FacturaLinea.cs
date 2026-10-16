@@ -14,6 +14,12 @@ namespace AtlasRent.Api.Data;
 /// este impuesto": si mañana el tipo de ITBIS cambia, una factura ya emitida tiene que seguir
 /// diciendo lo que decía, que es justamente lo que no haría si guardara solo la clave foránea.
 /// </para>
+/// <para>
+/// F3-04 (§3.9) añade una línea más, de tipo <see cref="TipoLineaFactura.Retencion"/>, también en
+/// negativo y con el mismo criterio de congelar el porcentaje. Se diferencia en que su importe se
+/// recalcula cada vez que cambian los totales de la factura, porque la base de la retención es un
+/// importe de la factura y no de la línea.
+/// </para>
 /// </summary>
 public sealed class FacturaLinea : IEntidadTrazada
 {
@@ -38,10 +44,13 @@ public sealed class FacturaLinea : IEntidadTrazada
     /// <summary>Cantidad facturable, con cuatro decimales: hay líneas que no son enteras (medios días).</summary>
     public decimal Cantidad { get; set; }
 
-    /// <summary>Precio unitario en la moneda de la factura. Negativo solo en un descuento.</summary>
+    /// <summary>Precio unitario en la moneda de la factura. Negativo solo en un descuento o en una retención.</summary>
     public decimal PrecioUnitario { get; set; }
 
-    /// <summary>Cantidad por precio, redondeado medio hacia arriba (D27). Negativo en un descuento.</summary>
+    /// <summary>
+    /// Cantidad por precio, redondeado medio hacia arriba (D27). Negativo en un descuento y en una
+    /// retención (F3-04).
+    /// </summary>
     public decimal Importe { get; set; }
 
     /// <summary>Tipo de ITBIS aplicado. Nulo cuando la línea no lleva impuesto (§3.8: opcional).</summary>
@@ -58,6 +67,29 @@ public sealed class FacturaLinea : IEntidadTrazada
 
     /// <summary>ITBIS de esta línea ya redondeado. El de la factura es la suma de estos.</summary>
     public decimal ItbisImporte { get; set; }
+
+    // ---------------------------------------------------------------- retención (F3-04, §3.9)
+
+    /// <summary>
+    /// Tipo de retención del que sale esta línea. Solo en líneas <see cref="TipoLineaFactura.Retencion"/>
+    /// y solo a clientes agente de retención (§3.9, D14).
+    /// </summary>
+    public Guid? TipoRetencionId { get; set; }
+
+    public TipoRetencion? TipoRetencion { get; set; }
+
+    /// <summary>
+    /// Porcentaje de retención congelado, como el de ITBIS: si mañana el administrador cambia el
+    /// tipo, la factura sigue diciendo el porcentaje con el que se calculó.
+    /// </summary>
+    public decimal? PorcentajeRetencion { get; set; }
+
+    /// <summary>
+    /// Sobre qué importe de la factura se calculó esta línea, copiado del tipo (<c>base</c>). Vive en
+    /// la línea porque el importe retenido cambia cuando cambian los totales de la factura: es la
+    /// única forma de que la línea siga cuadrando sin releer la configuración en cada lectura.
+    /// </summary>
+    public BaseRetencion? BaseRetencion { get; set; }
 
     /// <inheritdoc />
     public DateTimeOffset CreatedAt { get; set; }

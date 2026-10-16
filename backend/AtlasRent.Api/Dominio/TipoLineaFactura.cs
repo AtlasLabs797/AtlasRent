@@ -29,4 +29,11 @@ public enum TipoLineaFactura
     /// líneas, así que un descuento resta sin ser un signo aparte.
     /// </summary>
     Descuento = 7,
+
+    /// <summary>
+    /// Línea de retención de §3.9 (D14), también en negativo y <b>fuera</b> del subtotal: el total
+    /// de la factura no baja por retener, lo que baja es el neto a cobrar. Por eso esta línea no es
+    /// un descuento más, aunque se le parezca en el signo.
+    /// </summary>
+    Retencion = 8,
 }

@@ -51,6 +51,8 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<ComprobanteFiscal> ComprobanteFiscal => Set<ComprobanteFiscal>();
 
+    public DbSet<ComprobanteRetencion> ComprobanteRetencion => Set<ComprobanteRetencion>();
+
     public DbSet<TipoItbis> TipoItbis => Set<TipoItbis>();
 
     public DbSet<TipoRetencion> TipoRetencion => Set<TipoRetencion>();
@@ -505,6 +507,44 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasIndex(e => e.EsDefecto)
                 .IsUnique()
                 .HasFilter("(es_defecto = true)");
+        });
+
+        // F3-04 (D14): el comprobante que el cliente de agente de retención entrega tras la emisión.
+        // Uno por factura y no se borra nunca, porque es la prueba de que se retuvo lo que dijo
+        // retener, así que la tabla tampoco lleva DELETE en los permisos.
+        modelBuilder.Entity<ComprobanteRetencion>(entidad =>
+        {
+            entidad.ToTable("comprobante_retencion", tabla =>
+            {
+                // Recibido o pendiente, y sin medios estados: o hay número, fecha y quién lo recibió,
+                // o no hay nada. Sin esta regla, "pendiente" con un número puesto significa que
+                // alguien empezó a rellenarlo y se quedó, que es indistinguible de que llegó.
+                tabla.HasCheckConstraint(
+                    "ck_comprobante_retencion_recibido_completo",
+                    "(estado = 1) = (numero IS NULL AND fecha_recepcion IS NULL AND recibido_at IS NULL AND recibido_por IS NULL)");
+                // El importe retenido es positivo y el porcentaje no es negativo: los dos son
+                // magnitudes, el signo lo lleva la línea de factura.
+                tabla.HasCheckConstraint("ck_comprobante_retencion_importe", "importe > 0");
+                tabla.HasCheckConstraint("ck_comprobante_retencion_porcentaje", "porcentaje >= 0");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Tipo).HasMaxLength(160).IsRequired();
+            // El porcentaje, como en tipo_itbis, es un porcentaje y no dinero.
+            entidad.Property(e => e.Porcentaje).HasColumnType("numeric(18,4)");
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El número lo teclea quien recibe el comprobante y no se valida contra nada (D6, D14),
+            // pero sigue siendo texto libre de una persona: se limita para que no quepa un documento
+            // entero dentro de una fila.
+            entidad.Property(e => e.Numero).HasMaxLength(120);
+            // Una factura, un comprobante. El índice único es también la red de seguridad contra
+            // una doble emisión que soltara dos comprobantes para la misma factura.
+            entidad.HasIndex(e => e.FacturaId).IsUnique();
+            // El trabajo diario busca por estado, que es toda su consulta.
+            entidad.HasIndex(e => e.Estado);
+            entidad.HasOne(e => e.Factura)
+                .WithOne()
+                .HasForeignKey<ComprobanteRetencion>(e => e.FacturaId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<FormaPago>(entidad =>
@@ -1152,6 +1192,16 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
                 tabla.HasCheckConstraint(
                     "ck_factura_cambio_con_emision",
                     "tipo_cambio_fecha IS NULL OR fecha_emision IS NOT NULL");
+                // F3-04: la retención va en positivo, porque es una cantidad que se resta de lo
+                // facturado y no un descuento más, que ya va en negativo dentro de las líneas.
+                tabla.HasCheckConstraint(
+                    "ck_factura_retencion_no_negativa",
+                    "retencion >= 0");
+                // El neto a cobrar es una identidad, no un dato que alguien pueda escribir de otra
+                // manera: si la fórmula no cuadra, la fila está corrupta y la base lo dice.
+                tabla.HasCheckConstraint(
+                    "ck_factura_neto_a_cobrar",
+                    "neto_a_cobrar = total - retencion");
             });
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.Concepto).HasMaxLength(300).IsRequired();
@@ -1209,6 +1259,8 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             // El porcentaje de ITBIS es un porcentaje, no dinero: cuatro decimales, que es lo que
             // redondea Redondeo.Porcentaje.
             entidad.Property(e => e.PorcentajeItbis).HasColumnType("numeric(18,4)");
+            // F3-04: el porcentaje de retención, igual que el de ITBIS, es un porcentaje y no dinero.
+            entidad.Property(e => e.PorcentajeRetencion).HasColumnType("numeric(18,4)");
             entidad.Property(e => e.CreatedAt).IsRequired();
             // El orden del documento sale de aquí, no del orden en que PostgreSQL devuelva las
             // filas: el PDF y la vista de cuentas leen este número.
@@ -1220,6 +1272,13 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.TipoItbis)
                 .WithMany()
                 .HasForeignKey(e => e.TipoItbisId)
+                .OnDelete(DeleteBehavior.Restrict);
+            // F3-04: la línea de retención apunta al tipo del que salió. Restrict y no cascada porque
+            // un tipo de retención es configuración compartida y no puede desaparecer debajo de una
+            // factura ya emitida.
+            entidad.HasOne(e => e.TipoRetencion)
+                .WithMany()
+                .HasForeignKey(e => e.TipoRetencionId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

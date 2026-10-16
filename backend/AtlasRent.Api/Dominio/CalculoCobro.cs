@@ -26,7 +26,7 @@ public sealed record SituacionCobroFactura(
 
 /// <summary>
 /// Saldo y estado de cobro de una factura (F3-06, docs/ESPECIFICACION.md §3.8 y §3.9; F3-07 añade
-/// el ajuste por diferencia de cambio de §3.10.2).
+/// el ajuste por diferencia de cambio de §3.10.2; F3-04 hace que la retención llegue con valor).
 /// <para>
 /// <b>El pendiente es el total menos las retenciones menos lo cobrado menos lo ajustado</b>, y el
 /// estado sale de comparar ese pendiente con cero. Vive aquí y no en el servicio porque lo leen
@@ -55,9 +55,9 @@ public static class CalculoCobro
     /// </summary>
     /// <param name="total">Total de la factura, ITBIS incluido.</param>
     /// <param name="retencion">
-    /// Suma de las retenciones de la factura (§3.9). Hoy siempre cero, porque la columna de
-    /// retención es de F3-04; el parámetro existe desde F3-06 para que F3-04 no tenga que cambiar la
-    /// firma ni las reglas de este cálculo.
+    /// Suma de las retenciones de la factura (§3.9, F3-04), en positivo. El parámetro existía desde
+    /// F3-06 para que F3-04 no tuviera que cambiar la firma ni las reglas de este cálculo; desde
+    /// F3-04 llega con el valor real de la columna <c>factura.retencion</c>.
     /// </param>
     /// <param name="cobrado">Suma de las asignaciones vigentes de cobros a esta factura.</param>
     /// <param name="ajustado">

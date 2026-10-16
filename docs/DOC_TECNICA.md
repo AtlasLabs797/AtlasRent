@@ -156,7 +156,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **ITBIS de la factura (F3-02):** es **por línea** (§3.8), no sobre el total. `CalculoImpuestosLinea.Calcular(cantidad, precio, porcentaje)` redondea una vez el importe (`cantidad × precio`) y una vez su impuesto (`importe × porcentaje / 100`), y los totales de la cabecera son `Subtotal = Σ Importe`, `Itbis = Σ ItbisImporte` y `Total = Subtotal + Itbis`. No es lo mismo que redondear el subtotal entero: dos líneas al 18 % de 100,01 y 0,30 dan 18,00 + 0,05 = **18,05**, mientras que 100,31 × 18 % redondeado da **18,06**. El céntimo se pierde si el impuesto se calcula sobre el total. `CalculoImpuestos.Calcular` (de factura completa, con retenciones) sigue existiendo para lo que venga después; hoy no lo usa nadie. El 100 es un divisor de porcentaje y no una cifra fiscal: el porcentaje sale de `tipo_itbis` (D14).
 - **Signo de las líneas (F3-02):** el tipo lo decide. Una línea `Descuento` con importe positivo se rechaza con 409, y cualquier otro tipo con importe negativo también: restar es tener una línea de descuento, no poner un signo raro. El subtotal es por tanto la suma algebraica de las líneas.
 - **Borrador reescribible (F3-02):** una factura en borrador no tiene número, ni comprobante, ni deuda, así que se le cambian la cabecera y las líneas, y sus líneas se borran. Emitida, ninguna línea se toca: lo que hay es anular y emitir otra (F3-08).
-- **Saldo de factura (F3-07):** `Dominio/CalculoCobro.Calcular(total, retencion, cobrado, ajustado, vencimiento, hoy)` → record con `Cobrado`, `Ajustado`, `Pendiente`, `Estado`, `Vencida` y `DiasVencida`. **Pendiente = total − retenciones − cobrado − ajustado, acotado a cero**: un pendiente negativo significaría que se ha cobrado de más, y eso es saldo a favor (§3.10.1), que vive en otra tabla con otras reglas; devolverlo negativo haría que cualquier suma de pendientes de §3.13 descuadrara contra el dinero real. Estado = `Pagada` / `Parcial` / `Pendiente` (§3.8) y `Vencida` es **una bandera aparte** (pendiente > 0 y hoy > vencimiento), porque vencida no sustituye al estado: la vista de cuentas necesita las dos cosas. `cobrado` y `ajustado` salen de **dos consultas agregadas** sobre la página, no de una por factura, y **no se suman entre sí en la respuesta**: `cobrado` es dinero que entró en la caja y `ajustado` no lo es (§3.10.2); mezclarlos haría que un informe de caja dijera que entraron más dólares de los que entraron. Los dos juntos son los que cierran la factura. La retención entra por parámetro y hoy vale cero porque la columna es de F3-04; la prueba que heredará F3-04 está en `CobroCalculoTests`.
+- **Saldo de factura (F3-07):** `Dominio/CalculoCobro.Calcular(total, retencion, cobrado, ajustado, vencimiento, hoy)` → record con `Cobrado`, `Ajustado`, `Pendiente`, `Estado`, `Vencida` y `DiasVencida`. **Pendiente = total − retenciones − cobrado − ajustado, acotado a cero**: un pendiente negativo significaría que se ha cobrado de más, y eso es saldo a favor (§3.10.1), que vive en otra tabla con otras reglas; devolverlo negativo haría que cualquier suma de pendientes de §3.13 descuadrara contra el dinero real. Estado = `Pagada` / `Parcial` / `Pendiente` (§3.8) y `Vencida` es **una bandera aparte** (pendiente > 0 y hoy > vencimiento), porque vencida no sustituye al estado: la vista de cuentas necesita las dos cosas. `cobrado` y `ajustado` salen de **dos consultas agregadas** sobre la página, no de una por factura, y **no se suman entre sí en la respuesta**: `cobrado` es dinero que entró en la caja y `ajustado` no lo es (§3.10.2); mezclarlos haría que un informe de caja dijera que entraron más dólares de los que entraron. Los dos juntos son los que cierran la factura. La retención entra por parámetro con el valor real de `factura.retencion` desde F3-04; la prueba que heredó está en `CobroCalculoTests` y los casos nuevos, en `Retenciones/RetencionCalculoTests`.
   - **Nota para F3-10 (vista de cuentas y panel de cobro): para saber si una factura está cerrada hay que sumar `cobrado + retenciones + ajustado`.** `cobrado` a secas **no dice si la factura está saldada**, y usar `cobrado == total` como criterio daría por pagada una factura cerrada con retención o con un ajuste, y por no pagada una factura cuyo total baja por retención. Y al revés: un informe de caja **solo** puede sumar `cobrado`, porque `ajustado` no es dinero que entró. Son dos sumas distintas con dos propósitos distintos, y confundirlas es como se infla un informe de caja.
 - **Cobro (F3-06):** `cobro (moneda_recibida, importe_recibido, tipo_cambio_valor/tipo_cambio_fecha congelados)`; `cobro_asignacion (factura_id, importe en la moneda de la factura, vigente)`; `saldo_a_favor (contrato_id, moneda, importe)`. **FIFO dentro del contrato y de la moneda recibida**, por `FechaVencimiento`, luego `FechaEmision` y luego `Id` (desempate estable: sin él dos facturas del mismo día darían un orden que cambia entre dos llamadas). Un cobro parcial deja la siguiente a medias y no la salta. **Editable**: si quien cobra manda asignaciones, el servicio no propone nada; si no, propone la FIFO. `POST /simular` devuelve esa propuesta **sin escribir nada**. Excedente = `importe_recibido + saldo_favor_usado − Σ asignaciones`, y sin contrato se queda en la columna `excedente` del cobro sin generar crédito. **El crédito se gasta solo cuando quien cobra lo pide** (`usarSaldoAFavor`): §3.10.1 no dice a qué factura se descuenta, y aplicarlo por las reglas al emitir sería inventar la regla.
 - **Anular un cobro (F3-06):** una transacción — el cobro pasa a `Anulado` con motivo y fecha, sus asignaciones quedan con `vigente = false` **sin borrarse**, y el saldo a favor vuelve a como estaba antes (sale el excedente, vuelve el crédito consumido). Las facturas recupuran su pendiente porque sus asignaciones ya no cuentan.
@@ -164,6 +164,11 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - **Qué cambio se aplica:** por defecto el del día de la moneda recibida (`ServicioTiposCambio`), y el gerente puede mandar `tipoCambioAplicado` con el que se usó de verdad. El que va a cada asignación es el aplicado; **`cobro.tipo_cambio_valor` conserva el del día** aunque no coincidan (D9). No hay conversión al revés: convertir una factura en pesos con un cobro en dólares necesitaría el cambio del peso, y el cobro solo trae el de la moneda en que entra el dinero. En la FIFO esa factura se **salta** y sale en `deudaEnOtraMoneda`; en una asignación explícita es un 409 que lo explica.
   - **`deudaEnOtraMoneda` cambió de sentido:** ya no es «la deuda que el cobro ignora» sino **la que queda viva después de aplicarlo**. El nombre y el formato se conservan para no romper al front de F3-10.
 - **Ajuste por diferencia de cambio (F3-07, §3.10.2):** cierra el pendiente que dejó un cambio que no dividía exacto. **El importe lo calcula el servicio** (es el pendiente real) y solo lo acepta si cabe en la tolerancia; **no se pide** porque, si quien firma eligiera el importe, el mismo botón serviría para tapar un saldo de cualquier tamaño. **Sin tolerancia configurada el ajuste está desactivado** y sale en 409 diciendo que la fije el administrador en *Configuración → Ajustes generales* (§4.2): §3.10.2 marca esos importes como [Supuesto], y un ajuste que se permite sin que nadie haya escrito una cifra es una pérdida de dinero silenciosa. Con `pendiente > tolerancia` el 409 dice el importe, la tolerancia y las dos salidas de §3.10.2: que el cliente pague la diferencia en un cobro nuevo, o que se corrija el cambio del cobro anterior. Va con `cobro.registrar` —mueve el mismo saldo que el cobro— y **no** con un permiso nuevo.
+- **Retención (F3-04, §3.9, D14):** es **una línea de factura más**, de tipo `Retencion` y en negativo, pero **fuera del subtotal**: los totales son `Subtotal = Σ Importe` de las líneas que no son retención, `Itbis = Σ ItbisImporte`, `Total = Subtotal + Itbis`, `Retencion = −Σ Importe` de las líneas de retención (columna en positivo) y `NetoACobrar = Total − Retencion`. La razón de que no entre en el subtotal es que **retener no baja lo facturado**: lo que baja es el neto a cobrar. Si entrara, el cliente vería una factura más corta en vez de una factura con un netting en medio, y el total ya emitido no cuadraría con el papel que se le entregó.
+  - **El importe lo recalcula `RecalcularTotales` en dos pasadas**: primero suma las líneas de servicio y calcula subtotal, ITBIS y total; después aplica a cada línea de retención su porcentaje sobre esa base y vuelve a sumar. En una sola pasada la retención no tendría base, porque la base depende de las líneas y las líneas incluyen la retención. Por eso el importe de una línea de retención **no se congela** —a diferencia del porcentaje y la base, que sí—: cambia cada vez que se toca cualquier otra línea, y si no se recalculara, añadir una línea de renta después de retener dejaría el neto mal sin que nada se enterara.
+  - **La base la decide el tipo configurado** (`tipo_retencion.base`), no el servicio: `CalculoRetencion.Importe(base, subtotal, itbis, total, porcentaje)` no sabe cuál es la base correcta, solo la aplica. **El porcentaje y la base se congelan en la línea** (`porcentaje_retencion`, `base_retencion`), igual que el ITBIS de F3-02: la factura dice "esto lleva esta retención sobre esta base" aunque el tipo cambie mañana.
+  - **Solo a clientes agente de retención** (`cliente.agente_retencion`): una línea de retención a un cliente que no lo es se rechaza con **409** y un mensaje que dice dónde marcarlo. No se ignora ni se quita, porque aceptarla en silencio dejaría una factura que dice retener a un cliente al que no se le puede retener.
+  - **`cobrado` no incluye la retención.** La retención cierra el pendiente pero no es dinero que entró en caja, igual que el ajuste de F3-07. Ver la nota de F3-10 más arriba.
 - **Anular factura (una transacción):** factura y comprobante anulados; sus `cobro_asignacion` anuladas; cobros sin asignaciones vigentes → anulados; auditoría con la lista de afectados.
 - **Anticipo:** campos de nota en `reserva`; ninguna consulta económica los lee.
 
@@ -205,10 +210,10 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 | Endpoint | Acción | Notas |
 |---|---|---|
 | `GET /api/v1/facturas` | `factura.ver` | Listado paginado; filtros `estado`, `serieId`, `clienteId`, `unidadId`, `moneda`, `desde`/`hasta` (fechas de emisión) y orden `?sortBy=createdAt\|fechaEmision\|vencimiento\|total\|numero`. Cada fila trae también `cobrado`, `pendiente`, `estadoCobro` y `vencida`, resueltos con **una consulta agregada** sobre la página (§3.13). **Sin totales agregados**: son de §3.15 y solo gerente/admin los ven (F3-10). |
-| `GET /api/v1/facturas/{id}` | `factura.ver` | Factura con sus líneas y con `cobrado`, `pendiente`, `estadoCobro` y `vencida` derivados de los cobros (§3.8, F3-06). No expone retención (F3-04). |
+| `GET /api/v1/facturas/{id}` | `factura.ver` | Factura con sus líneas y con `cobrado`, `pendiente`, `estadoCobro` y `vencida` derivados de los cobros (§3.8, F3-06). Desde F3-04 también `retencion`, `netoACobrar` y `retencionSinComprobante` (§5 y §6.5). |
 | `POST /api/v1/facturas` | `factura.borrador` | Alta en borrador. Sin número y sin cambio: los dos los pone la emisión. Acepta `Idempotency-Key`. |
 | `PUT /api/v1/facturas/{id}` | `factura.borrador` | Edita la cabecera. 409 si ya no está en borrador. Acepta `Idempotency-Key`. |
-| `POST /api/v1/facturas/{id}/lineas` | `factura.borrador` | Alta de línea; recalcula los totales. `cantidad` × `precioUnitario` y el ITBIS los calcula la aplicación. Acepta `Idempotency-Key`. |
+| `POST /api/v1/facturas/{id}/lineas` | `factura.borrador` | Alta de línea; recalcula los totales. `cantidad` × `precioUnitario` y el ITBIS los calcula la aplicación. Con `tipo = Retencion` hace falta `tipoRetencionId` y **el precio se ignora**: el importe sale del porcentaje sobre la base (§3.9, F3-04), y solo la admite un cliente agente de retención. Acepta `Idempotency-Key`. |
 | `PUT /api/v1/facturas/{id}/lineas/{lineaId}` | `factura.borrador` | Edición de línea. 409 si la factura ya salió. Acepta `Idempotency-Key`. |
 | `DELETE /api/v1/facturas/{id}/lineas/{lineaId}` | `factura.borrador` | Baja de línea, **solo en borrador**. Acepta `Idempotency-Key`. |
 | `POST /api/v1/facturas/{id}/emitir` | `factura.emitir` | Emisión: número, fecha y cambio congelado, todo en una transacción. Acepta `Idempotency-Key`. |
@@ -305,6 +310,30 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   `motivo_anulacion` ya existen con su restricción (anulado = con las tres rellenadas), y
   `comprobante_fiscal` **no concede `DELETE`**: un comprobante emitido no se borra nunca (D28).
 
+### 6.5 Comprobante de retención (F3-04)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `PUT /api/v1/comprobantes-retencion/{id}/recibir` | `factura.emitir` | Cuerpo `{ numero, fechaRecepcion }`. Anota la recepción del papel y **resuelve** el aviso vivo, en la misma transacción. 409 si ya se había recibido. Acepta `Idempotency-Key`. |
+
+- **No hay endpoint de lectura.** El estado sale en la factura como `retencionSinComprobante`, que es lo
+  que la pantalla necesita para saber si tiene que pedir el papel; el detalle completo no lo lee nadie
+  todavía (F3-10).
+- **La factura expone `retencion`, `netoACobrar` y `retencionSinComprobante`** (§5). Los dos primeros
+  son columnas; el tercero es derivado y se resuelve con **una consulta agregada** sobre la página,
+  igual que el cobrado de F3-06. El indicador sale también en la respuesta de la emisión cuando la
+  factura retiene, porque el comprobante nace pendiente en esa misma transacción.
+- **Recibir no es validar.** El número se guarda tal cual llega: no hay conexión con la DGII y §3.9 no
+  pide más (D6, D14). Lo que sí hace es cerrar el aviso, y **un papel que no se guardó es un papel que
+  no ha llegado**, así que la resolución va dentro de la misma transacción que la recepción.
+- **Usa `factura.emitir` y no un permiso nuevo**: anotar lo que el cliente entregó es gestionar un
+  documento ya emitido, igual que la referencia de e-factura. El empleado no lo tiene y recibe 403, con
+  el intento en la auditoría.
+- **No se reescribe lo recibido.** Un segundo `recibir` es 409 que dice cuál se había recibido: si el
+  cliente entrega otro documento, lo que hay que anular es la factura (F3-08).
+- **`comprobante_retencion` no concede `DELETE`**, igual que `comprobante_fiscal`: es la prueba de que se
+  retuvo lo que dijo retener.
+
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
 - **Añadido para Atlas Rent (expuesta a internet):**
@@ -392,6 +421,7 @@ posteriores, que todavía no están escritos:
 | Fin de contrato por fecha efectiva | F2-09 | Hangfire | diario 07:00 AST | condición de fecha **y** 409 por estado |
 | Avisos de operación (§3.16) | F2-10 | Hangfire | diario 08:00 AST | dedupe por (tipo, entidad) |
 | Avisos del numerador de comprobante (§3.7) | F3-03 | Hangfire | diario 06:00 AST | clave estable por (serie, condición) |
+| Avisos de comprobante de retención (§3.9) | F3-04 | Hangfire | diario 06:00 AST | clave estable por factura |
 | Tipo de cambio | F3-01 | Hangfire | diario 05:00 AST ⚠️ | `UNIQUE (fecha, moneda)` |
 | Recordatorios | *previsto* | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha) |
 | Alertas de vencimiento de factura | *previsto* (F3) | Hangfire | cada hora | dedupe por (tipo, entidad) |
@@ -437,7 +467,7 @@ primeras facturas. Y lo mismo con los trabajos previstos de F3 y F4: las horas d
   trabajo dos veces no crea una segunda fila y no lanza.
 
 ### 8.1 Estado (F1-12)
-Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; y **avisos del numerador de comprobante** (06:00), de F3-03. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; **avisos del numerador de comprobante** (06:00), de F3-03; y **avisos de comprobante de retención** (06:00), de F3-04. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
 
 - **Avisos del numerador de comprobante (`TrabajoComprobantes`, 06:00 AST):** recorre los numeradores y
   levanta tres alertas de tipo `comprobante`, con clave estable por serie y condición —
@@ -461,6 +491,17 @@ Con el único de `clave`, una alerta cerrada bloqueaba su propia clave para siem
  identidad de un fallo es «de qué tipo y con qué clave»: dos tipos que coinciden en la clave son dos
  hechos.
 
+- **Avisos de comprobante de retención (`TrabajoRetenciones`, 06:00 AST, F3-04):** recorre los
+  `comprobante_retencion` en estado `Pendiente` —que es exactamente lo que cubre su índice— y levanta
+  una alerta de tipo `comprobante` por cada uno, con clave estable **por factura**
+  (`retencion:{facturaId}:sin-comprobante`). Comparte tipo y hora con los avisos del numerador de F3-03
+  porque son el mismo asunto: un comprobante que hay que pedir. **La clave no lleva fecha** porque el
+  aviso no es «hoy falta el papel» sino «falta el papel», así que dos días seguidos refrescan la misma
+  fila y suman repeticiones en vez de llenar la bandeja de copias. El mensaje lleva los días que lleva
+  pendiente, en días de negocio, que es lo que dice si esto es una chase de hoy o una factura que nadie
+  ha gestionado en semanas. **Se resuelve en la recepción, no aquí**: quien sabe que el papel llegó es
+  quien lo anotó, y resolverlo aquí obligaría al trabajo a enterarse por su cuenta. Con el único parcial
+  de BUG-008, una retención que vuelve a quedarse sin comprobante vuelve a levantar el aviso.
 - **Tipo de cambio (F3-01):** ExchangeRate-API, con `TipoCambio__Url` y `TipoCambio__ApiKey`
   opcionales; sin clave va al endpoint abierto y con clave al plan de pago, que devuelve la tabla en
   `conversion_rates` en vez de `rates` (el cliente entiende las dos). La columna `valor` es

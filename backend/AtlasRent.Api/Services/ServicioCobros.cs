@@ -193,13 +193,19 @@ public sealed class ServicioCobros(
     /// Situación de cobro de una factura con lo que hay cobrado hoy. Es la proyección de los cinco
     /// campos que el DTO de factura expone, y vive aquí para que la vista de cuentas (§3.13) y el
     /// panel de cobro no puedan discrepar sobre la misma factura.
+    /// <para>
+    /// La retención entra en el cálculo del pendiente y no en el de lo cobrado: retener es lo que se
+    /// le quita al cliente, no dinero que entró en caja (F3-04, §3.9, y lo mismo que hace el ajuste
+    /// por diferencia de cambio de F3-07).
+    /// </para>
     /// </summary>
     public SituacionCobroFactura SituacionDeFactura(
         decimal total,
+        decimal retencion,
         decimal cobrado,
         decimal ajustado,
         DateOnly vencimiento)
-        => CalculoCobro.Calcular(total, 0m, cobrado, ajustado, vencimiento, FechaDeNegocio());
+        => CalculoCobro.Calcular(total, retencion, cobrado, ajustado, vencimiento, FechaDeNegocio());
 
     // ---------------------------------------------------------------- simulación
 
@@ -612,7 +618,7 @@ public sealed class ServicioCobros(
 
         return CalculoCobro.Calcular(
             factura.Total,
-            0m,
+            factura.Retencion,
             cobrados.GetValueOrDefault(factura.Id),
             ajustados.GetValueOrDefault(factura.Id),
             factura.FechaVencimiento,
@@ -1102,12 +1108,13 @@ public sealed class ServicioCobros(
 
         return facturas.ToDictionary(
             f => f.Id,
-            // TODO(F3-04): la retención de la factura entra aquí en su día. Hoy es cero porque la
-            // columna no existe, y el cálculo ya está escrito para cuando llegue (§3.9, D14). El
-            // ajuste sí entra ya: es lo que cierra el pendiente de una diferencia de cambio (§3.10.2).
+            // La retención entra en el pendiente desde F3-04 (§3.9, D14) y no antes: cierra lo que
+            // falta cobrar, pero no es dinero cobrado. El ajuste por diferencia de cambio (F3-07,
+            // §3.10.2) entra por el mismo motivo y desde antes: es el céntimo que dejó el cambio,
+            // tampoco es dinero que entró en caja.
             f => CalculoCobro.Calcular(
                 f.Total,
-                0m,
+                f.Retencion,
                 cobrados.GetValueOrDefault(f.Id),
                 ajustados.GetValueOrDefault(f.Id),
                 f.FechaVencimiento,

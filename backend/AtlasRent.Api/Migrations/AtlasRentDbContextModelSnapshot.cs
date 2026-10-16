@@ -839,6 +839,98 @@ namespace AtlasRent.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ComprobanteRetencion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Base")
+                        .HasColumnType("integer")
+                        .HasColumnName("base");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<Guid>("FacturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("factura_id");
+
+                    b.Property<DateOnly?>("FechaRecepcion")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_recepcion");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe");
+
+                    b.Property<string>("Numero")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("numero");
+
+                    b.Property<decimal>("Porcentaje")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("porcentaje");
+
+                    b.Property<DateTimeOffset?>("RecibidoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recibido_at");
+
+                    b.Property<Guid?>("RecibidoPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recibido_por");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_comprobante_retencion");
+
+                    b.HasIndex("Estado")
+                        .HasDatabaseName("ix_comprobante_retencion_estado");
+
+                    b.HasIndex("FacturaId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_comprobante_retencion_factura_id");
+
+                    b.ToTable("comprobante_retencion", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_comprobante_retencion_importe", "importe > 0");
+
+                            t.HasCheckConstraint("ck_comprobante_retencion_porcentaje", "porcentaje >= 0");
+
+                            t.HasCheckConstraint("ck_comprobante_retencion_recibido_completo", "(estado = 1) = (numero IS NULL AND fecha_recepcion IS NULL AND recibido_at IS NULL AND recibido_por IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContactoCliente", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1196,7 +1288,7 @@ namespace AtlasRent.Api.Migrations
 
                     b.ToTable("contrato_incremento", null, t =>
                         {
-                            t.HasCheckConstraint("ck_contrato_incremento_tipo_valor", "(tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)\nOR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)");
+                            t.HasCheckConstraint("ck_contrato_incremento_tipo_valor", "(tipo = 1 AND porcentaje IS NOT NULL AND importe IS NULL)\r\nOR (tipo = 2 AND importe IS NOT NULL AND porcentaje IS NULL)");
                         });
                 });
 
@@ -1785,6 +1877,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("moneda");
 
+                    b.Property<decimal>("NetoACobrar")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("neto_a_cobrar");
+
                     b.Property<int?>("Numero")
                         .HasColumnType("integer")
                         .HasColumnName("numero");
@@ -1793,6 +1889,10 @@ namespace AtlasRent.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
                         .HasColumnName("referencia_efactura");
+
+                    b.Property<decimal>("Retencion")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("retencion");
 
                     b.Property<Guid>("SerieId")
                         .HasColumnType("uuid")
@@ -1863,7 +1963,11 @@ namespace AtlasRent.Api.Migrations
                         {
                             t.HasCheckConstraint("ck_factura_cambio_con_emision", "tipo_cambio_fecha IS NULL OR fecha_emision IS NOT NULL");
 
+                            t.HasCheckConstraint("ck_factura_neto_a_cobrar", "neto_a_cobrar = total - retencion");
+
                             t.HasCheckConstraint("ck_factura_numero_estado", "(estado = 1) = (numero IS NULL)");
+
+                            t.HasCheckConstraint("ck_factura_retencion_no_negativa", "retencion >= 0");
                         });
                 });
 
@@ -1873,6 +1977,10 @@ namespace AtlasRent.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<int?>("BaseRetencion")
+                        .HasColumnType("integer")
+                        .HasColumnName("base_retencion");
 
                     b.Property<decimal>("Cantidad")
                         .HasColumnType("numeric(18,4)")
@@ -1908,6 +2016,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("numeric(18,4)")
                         .HasColumnName("porcentaje_itbis");
 
+                    b.Property<decimal?>("PorcentajeRetencion")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("porcentaje_retencion");
+
                     b.Property<int>("Posicion")
                         .HasColumnType("integer")
                         .HasColumnName("posicion");
@@ -1923,6 +2035,10 @@ namespace AtlasRent.Api.Migrations
                     b.Property<Guid?>("TipoItbisId")
                         .HasColumnType("uuid")
                         .HasColumnName("tipo_itbis_id");
+
+                    b.Property<Guid?>("TipoRetencionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tipo_retencion_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1943,6 +2059,9 @@ namespace AtlasRent.Api.Migrations
 
                     b.HasIndex("TipoItbisId")
                         .HasDatabaseName("ix_factura_linea_tipo_itbis_id");
+
+                    b.HasIndex("TipoRetencionId")
+                        .HasDatabaseName("ix_factura_linea_tipo_retencion_id");
 
                     b.HasIndex("FacturaId", "Posicion")
                         .IsUnique()
@@ -4389,6 +4508,18 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Serie");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ComprobanteRetencion", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Factura", "Factura")
+                        .WithOne()
+                        .HasForeignKey("AtlasRent.Api.Data.ComprobanteRetencion", "FacturaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_comprobante_retencion_factura_factura_id");
+
+                    b.Navigation("Factura");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContactoCliente", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Cliente", "Cliente")
@@ -4637,9 +4768,17 @@ namespace AtlasRent.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_factura_linea_tipo_itbis_tipo_itbis_id");
 
+                    b.HasOne("AtlasRent.Api.Data.TipoRetencion", "TipoRetencion")
+                        .WithMany()
+                        .HasForeignKey("TipoRetencionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_factura_linea_tipo_retencion_tipo_retencion_id");
+
                     b.Navigation("Factura");
 
                     b.Navigation("TipoItbis");
+
+                    b.Navigation("TipoRetencion");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Inmueble", b =>

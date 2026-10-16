@@ -298,6 +298,13 @@ builder.Services.AddScoped<TrabajoComprobantes>();
 // administrador en Configuración → Ajustes generales (F1-04), y sin ella no hay ajuste.
 builder.Services.AddScoped<ServicioCobros>();
 
+// F3-04: comprobantes de retención (§3.9, D14). Lo usa ServicioFacturas, que crea la fila del
+// comprobante dentro de la transacción de emisión, y el trabajo diario, que avisa de las que siguen
+// pendientes. Los porcentajes y la base salen de tipo_retencion, no de aquí: este servicio solo
+// copia lo que la factura ya decidió.
+builder.Services.AddScoped<ServicioRetenciones>();
+builder.Services.AddScoped<TrabajoRetenciones>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

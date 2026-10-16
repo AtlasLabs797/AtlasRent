@@ -23,9 +23,16 @@ namespace AtlasRent.Api.Services;
 /// <b>La emisión es una sola transacción</b>: número, estado, fecha y tipo de cambio congelado salen
 /// o no salen juntos (D28). Si algo falla después de sacar el número, el número no se consume.
 /// </item>
+/// </item>
 /// <item>
 /// <b>Emitida, no se toca.</b> Una factura en borrador no tiene número, ni comprobante, ni deuda, así
 /// que se reescribe entera. Emitida, lo que hay es anular y emitir otra (F3-08).
+/// </item>
+/// <item>
+/// <b>La retención es una línea más</b> (F3-04, §3.9): va en negativo como el descuento pero
+/// <b>fuera</b> del subtotal, porque el total no baja por retener, lo que baja es el neto a cobrar.
+/// Solo la admiten los clientes agente de retención, y emitir una factura que retiene deja creado su
+/// comprobante pendiente.
 /// </item>
 /// </list>
 /// <para>
@@ -44,6 +51,7 @@ public sealed class ServicioFacturas(
     ServicioIdempotencia idempotencia,
     ServicioSeries series,
     ServicioComprobantes comprobantes,
+    ServicioRetenciones retenciones,
     ServicioTiposCambio tiposCambio,
     ServicioCobros cobros,
     IPolicyService politica,
@@ -134,12 +142,18 @@ public sealed class ServicioFacturas(
         var ajustados = await cobros.AjustadoPorFacturaAsync(
             [.. pagina.Data.Select(f => f.Id)], ct);
 
+        // El indicador de comprobante de retención (F3-04, §3.9) va en su propia consulta agregada
+        // por la misma razón que el cobrado: los comprobantes pendientes de la página, de una vez.
+        var sinComprobante = await retenciones.SinComprobanteAsync(
+            [.. pagina.Data.Select(f => f.Id)], ct);
+
         return pagina with
         {
             Data = [.. pagina.Data.Select(f => ConCobro(
                 f,
                 cobrados.GetValueOrDefault(f.Id),
-                ajustados.GetValueOrDefault(f.Id)))],
+                ajustados.GetValueOrDefault(f.Id),
+                sinComprobante.Contains(f.Id)))],
         };
     }
 
@@ -149,8 +163,13 @@ public sealed class ServicioFacturas(
 
         var cobrados = await cobros.CobradoPorFacturaAsync([factura.Id], ct);
         var ajustados = await cobros.AjustadoPorFacturaAsync([factura.Id], ct);
+        var sinComprobante = await retenciones.SinComprobanteAsync([factura.Id], ct);
 
-        return ConCobro(ARespuesta(factura), cobrados.GetValueOrDefault(factura.Id), ajustados.GetValueOrDefault(factura.Id));
+        return ConCobro(
+            ARespuesta(factura),
+            cobrados.GetValueOrDefault(factura.Id),
+            ajustados.GetValueOrDefault(factura.Id),
+            sinComprobante.Contains(factura.Id));
     }
 
     // ---------------------------------------------------------------- escritura de borrador
@@ -248,7 +267,14 @@ public sealed class ServicioFacturas(
         ExigirBorrador(factura);
 
         var tipoItbis = await CargarTipoItbisAsync(peticion.TipoItbisId, ct);
-        var linea = ConstruirLinea(factura, peticion, tipoItbis, usuario);
+        var tipoRetencion = await CargarTipoRetencionAsync(peticion.TipoRetencionId, peticion.Tipo, ct);
+
+        if (tipoRetencion is not null)
+        {
+            ExigirAgenteRetencion(factura);
+        }
+
+        var linea = ConstruirLinea(factura, peticion, tipoItbis, tipoRetencion, usuario);
 
         // La línea entra por el DbSet y no solo por la colección de la factura: con el
         // identificador ya puesto, EF deduce que la fila existe y la marca como modificada, que en
@@ -277,7 +303,14 @@ public sealed class ServicioFacturas(
             ?? throw new KeyNotFoundException($"La línea '{lineaId:D}' no está en la factura '{id:D}'.");
 
         var tipoItbis = await CargarTipoItbisAsync(peticion.TipoItbisId, ct);
-        AplicarLinea(linea, peticion, tipoItbis);
+        var tipoRetencion = await CargarTipoRetencionAsync(peticion.TipoRetencionId, peticion.Tipo, ct);
+
+        if (tipoRetencion is not null)
+        {
+            ExigirAgenteRetencion(factura);
+        }
+
+        AplicarLinea(linea, peticion, tipoItbis, tipoRetencion);
 
         return await GuardarLineasAsync(factura, "factura.linea_actualizada", usuario, ip, mutacion, () =>
         {
@@ -361,6 +394,11 @@ public sealed class ServicioFacturas(
     /// se saca el número de comprobante después, con su propio contador. Una serie fiscal sin
     /// numerador no emite: una factura sin comprobante no se puede declarar.
     /// </para>
+    /// <para>
+    /// El comprobante de retención de una factura que retiene (F3-04, §3.9) también va en la misma
+    /// transacción: sale con la factura o no sale. Y una factura sin retención no deja fila, que es
+    /// lo que hace la consulta del indicador barata.
+    /// </para>
     /// </summary>
     public async Task<FacturaRespuesta> EmitirAsync(
         Guid id,
@@ -419,7 +457,13 @@ public sealed class ServicioFacturas(
             usuario,
             ip,
             mutacion,
-            proyectar: ARespuesta,
+            proyectar: f => ARespuesta(f) with
+            {
+                // El comprobante de retención (F3-04, §3.9) nace pendiente en esta misma transacción,
+                // así que la respuesta de la emisión lo dice sin tener que ir a preguntarlo: si la
+                // factura retiene, hay que salir a buscar el papel.
+                RetencionSinComprobante = f.Retencion > 0m,
+            },
             datosAuditoria: c => DatosAuditoria(c, numeroComprobante),
             antesDeGuardar: async () =>
             {
@@ -437,6 +481,11 @@ public sealed class ServicioFacturas(
                 {
                     numeroComprobante = await comprobantes.ReservarAsync(serieId, factura.Id, usuario, hoy, ct);
                 }
+
+                // Y el comprobante de retención, si la factura retiene (F3-04). No hace falta su
+                // propio SaveChanges: lo añade al grafo y sale con el de la factura, que es
+                // justamente lo que hace que un fallo posterior lo deshaga con ella.
+                await retenciones.ReservarEnEmisionAsync(factura, usuario, ct);
             },
             enTransaccionDelLlamador: true,
             ct: ct);
@@ -516,6 +565,11 @@ public sealed class ServicioFacturas(
     /// <summary>
     /// La factura con sus líneas y lo que las alimenta. Sin <c>AsNoTracking</c>: la emisión cambia
     /// la fila que ha cargado y necesita que EF la vea marcada como modificada.
+    /// <para>
+    /// F3-04: de las líneas se incluye el tipo de retención, que es el que da el nombre que sale en el
+    /// detalle. El de ITBIS sigue sin incluirse —lo dejó así F3-02 y no es de esta tarea—, así que
+    /// <c>tipoItbisNombre</c> sale nulo en el detalle y no en la lista.
+    /// </para>
     /// </summary>
     private async Task<Factura> CargarAsync(Guid id, CancellationToken ct)
     {
@@ -524,6 +578,7 @@ public sealed class ServicioFacturas(
             .Include(f => f.Unidad)
             .Include(f => f.Serie)
             .Include(f => f.Lineas)
+            .ThenInclude(l => l.TipoRetencion)
             .SingleOrDefaultAsync(f => f.Id == id, ct);
 
         return factura is null
@@ -628,10 +683,73 @@ public sealed class ServicioFacturas(
         return tipo;
     }
 
+    /// <summary>
+    /// El tipo de retención tiene que existir y estar activo, y solo se admite en una línea de
+    /// retención: una línea de renta con un tipo de retención no significaría nada (§3.9, D14).
+    /// </summary>
+    private async Task<TipoRetencion?> CargarTipoRetencionAsync(
+        Guid? tipoRetencionId,
+        TipoLineaFactura tipo,
+        CancellationToken ct)
+    {
+        var esRetencion = tipo == TipoLineaFactura.Retencion;
+
+        if (tipoRetencionId is not { } id)
+        {
+            if (esRetencion)
+            {
+                throw new InvalidOperationException(
+                    "Una línea de retención necesita su tipo de retención: de ahí salen el porcentaje y "
+                        + "la base sobre la que se calcula (Configuración → Tipos de retención).");
+            }
+
+            return null;
+        }
+
+        if (!esRetencion)
+        {
+            throw new InvalidOperationException(
+                $"Una línea de tipo {tipo} no lleva tipo de retención. El tipo de retención solo va en "
+                    + "una línea de tipo Retencion.");
+        }
+
+        var tipoRetencion = await contexto.TipoRetencion.AsNoTracking()
+            .SingleOrDefaultAsync(t => t.Id == id, ct)
+            ?? throw new KeyNotFoundException($"El tipo de retención '{id:D}' no existe.");
+
+        if (!tipoRetencion.Activo)
+        {
+            throw new InvalidOperationException(
+                $"El tipo de retención '{tipoRetencion.Nombre}' está desactivado.");
+        }
+
+        return tipoRetencion;
+    }
+
+    /// <summary>
+    /// <b>Solo los clientes agente de retención admiten líneas de retención</b> (§3.9, D14).
+    /// <para>
+    /// No se ignoran ni se quitan: una factura con una línea de retención a un cliente que no es
+    /// agente se rechaza, porque aceptarla en silencio dejaría una factura que dice que retuvo y un
+    /// cliente al que no se le puede retener. El mensaje dice qué hacer, no solo que no.
+    /// </para>
+    /// </summary>
+    private static void ExigirAgenteRetencion(Factura factura)
+    {
+        if (factura.Cliente is { AgenteRetencion: false })
+        {
+            throw new InvalidOperationException(
+                $"El cliente '{factura.Cliente.Nombre}' no es agente de retención y su factura no admite "
+                    + "líneas de retención (Configuración → Clientes → Agente de retención). Si lo es, "
+                    + " márcalo allí antes de añadir la línea.");
+        }
+    }
+
     private static FacturaLinea ConstruirLinea(
         Factura factura,
         FacturaLineaPeticion peticion,
         TipoItbis? tipoItbis,
+        TipoRetencion? tipoRetencion,
         Guid usuario)
     {
         var linea = new FacturaLinea
@@ -645,20 +763,48 @@ public sealed class ServicioFacturas(
             CreatedBy = usuario,
         };
 
-        AplicarLinea(linea, peticion, tipoItbis);
+        AplicarLinea(linea, peticion, tipoItbis, tipoRetencion);
 
         return linea;
     }
 
-    private static void AplicarLinea(FacturaLinea linea, FacturaLineaPeticion peticion, TipoItbis? tipoItbis)
+    private static void AplicarLinea(
+        FacturaLinea linea,
+        FacturaLineaPeticion peticion,
+        TipoItbis? tipoItbis,
+        TipoRetencion? tipoRetencion)
     {
         linea.Tipo = peticion.Tipo;
         linea.Concepto = peticion.Concepto.Trim();
+        linea.TipoItbisId = tipoItbis?.Id;
+        linea.TipoRetencionId = tipoRetencion?.Id;
+
+        // El porcentaje y la base se congelan aquí (D14): a partir de este momento la factura dice
+        // "esto lleva esta retención sobre esta base", y cambiar el tipo mañana no la cambia a ella.
+        // El importe, en cambio, no se congela: sale de la base, que es un importe de la factura y
+        // cambia cuando se añaden o se quitan líneas. Lo recalcula RecalcularTotales.
+        linea.PorcentajeRetencion = tipoRetencion is null
+            ? null
+            : Redondeo.Porcentaje(tipoRetencion.Porcentaje);
+        linea.BaseRetencion = tipoRetencion?.Base;
+
+        if (tipoRetencion is not null)
+        {
+            // Una línea de retención no lleva cantidad ni precio: es «una retención de este tipo», y
+            // su importe sale del porcentaje sobre la base. La cantidad a uno es lo que hace que el
+            // importe de la línea sea el importe retenido en vez de un uno por uno de nada, y el
+            // precio lo pisa RecalcularTotales con el importe ya redondeado.
+            linea.Cantidad = 1m;
+            linea.PrecioUnitario = 0m;
+            linea.Importe = 0m;
+            linea.ItbisImporte = 0m;
+            return;
+        }
+
         // La cantidad vive en numeric(18,4) y el precio en numeric(18,2): se redondea a lo que
         // guarda la columna, para que el importe que se calcula y el que se lee sean el mismo.
         linea.Cantidad = Redondeo.Porcentaje(peticion.Cantidad);
         linea.PrecioUnitario = Redondeo.Importe(peticion.PrecioUnitario);
-        linea.TipoItbisId = tipoItbis?.Id;
 
         var calculo = CalculoImpuestosLinea.Calcular(
             linea.Cantidad,
@@ -680,6 +826,11 @@ public sealed class ServicioFacturas(
     /// El signo lo pone el tipo de la línea: un descuento resta y ninguna otra cosa lo hace. Sin
     /// esto, un descuento con cantidad positiva subiría la factura, que es justo el error que este
     /// dato no puede tener.
+    /// <para>
+    /// Una línea de retención (F3-04) nunca llega aquí: su importe no sale de cantidad por precio
+    /// sino del porcentaje sobre la base, así que lo escribe <see cref="RecalcularTotales"/> y no
+    /// quien la da de alta.
+    /// </para>
     /// </summary>
     private static void ExigirSigno(TipoLineaFactura tipo, decimal importe)
     {
@@ -706,15 +857,52 @@ public sealed class ServicioFacturas(
     /// Los totales de la cabecera son la suma de lo que ya está redondeado línea a línea: el ITBIS de
     /// la factura es <c>Σ ItbisImporte</c> y no el ITBIS del subtotal (D27, §3.8). El descuento es
     /// una línea negativa y el subtotal es la suma algebraica.
+    /// <para>
+    /// <b>Las líneas de retención quedan fuera del subtotal y del total</b> (F3-04, §3.9). Retener no
+    /// baja lo facturado: lo que baja es el neto a cobrar, que es <c>Total - Retencion</c>. Si la
+    /// retención entrara en el subtotal, el total bajaría también y el cliente vería una factura más
+    /// corta en vez de una factura con un netting en medio.
+    /// </para>
+    /// <para>
+    /// Por eso el cálculo va en dos pasadas. La primera suma las líneas de servicio y con ellas
+    /// calcula la base; la segunda aplica a cada línea de retención el porcentaje sobre esa base y
+    /// vuelve a sumar. En una sola pasada la retención no tendría base, porque la base depende de las
+    /// líneas y las líneas incluyen la retención. Y como el importe retenido cambia cada vez que se
+    /// toca cualquier línea, esto se recalcula siempre y no solo al añadir la retención: si después
+    /// se añade una línea de renta, la retención anterior deja de estar bien calculada y hay que
+    /// rehacerla.
+    /// </para>
     /// </summary>
     private static void RecalcularTotales(Factura factura)
     {
-        var subtotal = Redondeo.Importe(factura.Lineas.Sum(l => l.Importe));
-        var itbis = Redondeo.Importe(factura.Lineas.Sum(l => l.ItbisImporte));
+        var lineasServicio = factura.Lineas.Where(l => l.Tipo != TipoLineaFactura.Retencion).ToList();
+        var retenciones = factura.Lineas.Where(l => l.Tipo == TipoLineaFactura.Retencion).ToList();
+
+        var subtotal = Redondeo.Importe(lineasServicio.Sum(l => l.Importe));
+        var itbis = Redondeo.Importe(lineasServicio.Sum(l => l.ItbisImporte));
+        var total = Redondeo.Importe(subtotal + itbis);
+
+        foreach (var linea in retenciones)
+        {
+            // El precio unitario se pone al importe ya redondeado para que la línea siga cuadrando
+            // con la fórmula que usa todo lo demás (cantidad por precio, D27), y el importe sale en
+            // negativo porque es lo que se le resta al cliente.
+            var importe = -CalculoRetencion.Importe(
+                linea.BaseRetencion ?? BaseRetencion.Total,
+                subtotal,
+                itbis,
+                total,
+                linea.PorcentajeRetencion ?? 0m);
+
+            linea.Importe = importe;
+            linea.PrecioUnitario = Redondeo.Importe(importe);
+        }
 
         factura.Subtotal = subtotal;
         factura.Itbis = itbis;
-        factura.Total = Redondeo.Importe(subtotal + itbis);
+        factura.Total = total;
+        factura.Retencion = Redondeo.Importe(retenciones.Sum(l => -l.Importe));
+        factura.NetoACobrar = Redondeo.Importe(total - factura.Retencion);
     }
 
     /// <summary>
@@ -755,12 +943,14 @@ public sealed class ServicioFacturas(
     /// asignaciones y qué ajustes cuentan: un cobro anulado no cuenta, y eso no lo puede saber un
     /// lector de facturas por su cuenta.
     /// <para>
-    /// La retención va a cero porque la columna es de F3-04; el cálculo ya la tiene en cuenta.
+    /// La retención va con su propio campo y <b>tampoco se suma dentro de <c>Cobrado</c></b>: retener
+    /// no es que el cliente haya puesto dinero, es que se le quita. Lo que sí hace es cerrar el
+    /// pendiente, y por eso el cálculo de estado la cuenta (F3-04, §3.9).
     /// </para>
     /// </summary>
-    private FacturaResumen ConCobro(FacturaResumen f, decimal cobrado, decimal ajustado)
+    private FacturaResumen ConCobro(FacturaResumen f, decimal cobrado, decimal ajustado, bool retencionSinComprobante)
     {
-        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, ajustado, f.FechaVencimiento);
+        var situacion = cobros.SituacionDeFactura(f.Total, f.Retencion, cobrado, ajustado, f.FechaVencimiento);
 
         return f with
         {
@@ -769,13 +959,14 @@ public sealed class ServicioFacturas(
             Pendiente = situacion.Pendiente,
             EstadoCobro = situacion.Estado,
             Vencida = situacion.Vencida,
+            RetencionSinComprobante = retencionSinComprobante,
         };
     }
 
-    /// <summary>Igual que <see cref="ConCobro(FacturaResumen, decimal, decimal)"/>, para el detalle.</summary>
-    private FacturaRespuesta ConCobro(FacturaRespuesta f, decimal cobrado, decimal ajustado)
+    /// <summary>Igual que <see cref="ConCobro(FacturaResumen, decimal, decimal, bool)"/>, para el detalle.</summary>
+    private FacturaRespuesta ConCobro(FacturaRespuesta f, decimal cobrado, decimal ajustado, bool retencionSinComprobante)
     {
-        var situacion = cobros.SituacionDeFactura(f.Total, cobrado, ajustado, f.FechaVencimiento);
+        var situacion = cobros.SituacionDeFactura(f.Total, f.Retencion, cobrado, ajustado, f.FechaVencimiento);
 
         return f with
         {
@@ -784,6 +975,7 @@ public sealed class ServicioFacturas(
             Pendiente = situacion.Pendiente,
             EstadoCobro = situacion.Estado,
             Vencida = situacion.Vencida,
+            RetencionSinComprobante = retencionSinComprobante,
         };
     }
 
@@ -817,6 +1009,8 @@ public sealed class ServicioFacturas(
         f.Subtotal,
         f.Itbis,
         f.Total,
+        f.Retencion,
+        f.NetoACobrar,
         f.Lineas.Count,
         f.CreatedAt)
     {
@@ -854,6 +1048,8 @@ public sealed class ServicioFacturas(
         f.Subtotal,
         f.Itbis,
         f.Total,
+        f.Retencion,
+        f.NetoACobrar,
         f.TipoCambioValor,
         f.TipoCambioFecha,
         f.TipoCambioId,
@@ -875,7 +1071,11 @@ public sealed class ServicioFacturas(
         l.TipoItbisId,
         l.TipoItbis?.Nombre,
         l.PorcentajeItbis,
-        l.ItbisImporte);
+        l.ItbisImporte,
+        l.TipoRetencionId,
+        l.TipoRetencion?.Nombre,
+        l.PorcentajeRetencion,
+        l.BaseRetencion);
 
     /// <summary>
     /// Lo que va en la auditoría firmada. Ni el tipo de cambio ajeno ni nada que el documento no
@@ -903,6 +1103,8 @@ public sealed class ServicioFacturas(
         f.Subtotal,
         f.Itbis,
         f.Total,
+        f.Retencion,
+        f.NetoACobrar,
         Lineas = f.Lineas.Count,
     };
 }

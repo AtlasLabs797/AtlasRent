@@ -43,6 +43,10 @@ public sealed class CifrasFiscalesEnCodigoTests
     private static readonly HashSet<string> Permitidos = new(StringComparer.Ordinal)
     {
         "0", "1", "2", "3", "4", "0.0", "1.0", "0.00", "1.00",
+        // F3-04: el ordinal de TipoLineaFactura.Retencion (§3.9). Es el siguiente valor libre de la
+        // enumeración, no un tipo de impuesto: los valores de enumeración nunca se renumeran y por eso
+        // no pueden derivarse de nada que este test pueda cambiar.
+        "8",
     };
 
     /// <summary>

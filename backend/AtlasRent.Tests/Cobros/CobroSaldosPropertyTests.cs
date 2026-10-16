@@ -115,6 +115,11 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
                         Subtotal = total,
                         Itbis = 0m,
                         Total = total,
+                        // Estas facturas se escriben a mano y no las calcula `RecalcularTotales`
+                        // (F3-04), así que hay que cumplir la identidad que la base exige: sin
+                        // retención, el neto a cobrar es el total. Lo mismo que haría el servicio.
+                        Retencion = 0m,
+                        NetoACobrar = total,
                         TipoCambioValor = 1m,
                         TipoCambioFecha = hoy,
                         CreatedAt = DateTimeOffset.UtcNow,
@@ -178,8 +183,9 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
 
     /// <summary>
     /// La identidad que tiene que dar siempre: <b>Σ pendientes = Σ totales − Σ retenciones − Σ
-    /// cobrado</b>. Las retenciones son cero porque la columna es de F3-04, y el término está escrito
-    /// para que su día baste con restar lo mismo que ya se resta.
+    /// cobrado</b>. Las retenciones siguen siendo cero en este property test porque sus facturas se
+    /// generan aquí sin líneas de retención, pero el término ya está escrito: desde F3-04 la columna
+    /// existe y lo que se resta es lo mismo que ya se resta.
     /// </summary>
     private static void ComprobarInvariantes(List<SituacionFactura> situaciones)
     {

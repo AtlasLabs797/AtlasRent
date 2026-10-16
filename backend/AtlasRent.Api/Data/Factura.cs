@@ -84,6 +84,20 @@ public sealed class Factura : IEntidadTrazada
     public decimal Total { get; set; }
 
     /// <summary>
+    /// Suma de las líneas de retención, en positivo (§3.9, D14, F3-04). <b>No baja el total</b>: es
+    /// el total menos esta columna lo que el cliente debe. Se guarda en positivo porque «lo retenido»
+    /// es una cantidad que se le resta a lo facturado; el signo negativo vive en la línea.
+    /// </summary>
+    public decimal Retencion { get; set; }
+
+    /// <summary>
+    /// Lo que hay que cobrar de verdad: total menos retención (F3-04). Es la cifra contra la que se
+    /// comparan los cobros, y por eso la retención entra en el estado de cobro aunque no sea dinero
+    /// cobrado.
+    /// </summary>
+    public decimal NetoACobrar { get; set; }
+
+    /// <summary>
     /// Tipo de cambio congelado al emitir, <c>numeric(18,6)</c>. Solo para informes consolidados
     /// (D9): no convierte ni un solo importe de esta factura.
     /// <para>
@@ -118,13 +132,17 @@ public sealed class Factura : IEntidadTrazada
     /// </summary>
     public List<FacturaLinea> Lineas { get; set; } = [];
 
-    // TODO(F3-04): aquí van la retención y las líneas de retención (§3.9, D14). El neto a cobrar es
-    // total menos retenciones, y hasta que F3-04 exista no se puede exponer un neto que no existe.
+    // F3-04: las líneas de retención son líneas de más, con Tipo = TipoLineaFactura.Retencion y en
+    // negativo, y su suma es la columna Retencion de arriba. No hay tabla de retenciones por factura:
+    // la línea ya guarda el concepto, el importe, el porcentaje y el tipo configurado del que salió
+    // (§3.9, D14). El neto a cobrar es Total - Retencion y vive en columna porque una factura
+    // emitida no vuelve a calcularse salvo que se duplique (F3-08) o se anule (F3-08).
 
     // F3-06: cobrado, pendiente y estado de cobro derivado (Pendiente / Parcial / Pagada, §3.8) ya
     // salen en el DTO y los calcula Dominio/CalculoCobro a partir de las asignaciones vivas de
     // cobro_asignacion. No son columnas: dependen de los cobros, que cambian aunque la factura no
-    // se toque. La retención (F3-04) entra en ese mismo cálculo y hoy vale cero.
+    // se toque. La retención entra en ese mismo cálculo desde F3-04, aunque no sea dinero cobrado:
+    // cierra el pendiente, pero no cuenta como cobrada.
 
     /// <inheritdoc />
     public DateTimeOffset CreatedAt { get; set; }

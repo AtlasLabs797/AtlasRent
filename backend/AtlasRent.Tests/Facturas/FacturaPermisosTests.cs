@@ -129,6 +129,13 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
             var auditoria = new AuditoriaService(contexto);
             var idempotencia = new ServicioIdempotencia(contexto, api.Reloj);
             var tiposCambio = ConstruirTiposCambio(contexto, auditoria, idempotencia, api.Reloj);
+            var retenciones = new ServicioRetenciones(
+                contexto,
+                auditoria,
+                idempotencia,
+                new PoliticaSinEmitir(),
+                new ServicioAlertas(contexto, api.Reloj),
+                api.Reloj);
             var servicio = new ServicioFacturas(
                 contexto,
                 auditoria,
@@ -137,6 +144,9 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
                 // F3-03: numerador del comprobante fiscal. Esta serie no lo genera, así que aquí solo
                 // hace falta que exista.
                 new ServicioComprobantes(contexto, api.Reloj),
+                // F3-04: comprobantes de retención. La factura de esta prueba no retiene, así que solo
+                // hace falta que exista.
+                retenciones,
                 tiposCambio,
                 // F3-06: ServicioFacturas lo usa para resolver cobrado, pendiente y estado de cobro
                 // de la factura en la lectura. En esta prueba solo hace falta que exista.

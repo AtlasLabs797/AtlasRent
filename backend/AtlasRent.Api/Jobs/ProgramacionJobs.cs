@@ -60,6 +60,7 @@ public static class ProgramacionJobs
     public const string RutaAvisosOperacion = "avisos-operacion";
     public const string RutaTipoCambio = "tipo-cambio";
     public const string RutaComprobantes = "comprobantes-fiscales";
+    public const string RutaRetenciones = "comprobantes-retencion";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
@@ -177,6 +178,20 @@ public static class ProgramacionJobs
             CronDiarioEnUtc(6),
             typeof(TrabajoComprobantes),
             nameof(TrabajoComprobantes.EjecutarAsync),
+            6),
+        // F3-04: el aviso de las facturas que retienen y que no han recibido su comprobante (§3.9).
+        // A las 06:00, la misma hora que los otros dos avisos de comprobante y por el mismo motivo
+        // (§8): escribe en `alerta`, así que quiere la copia de la madrugada por delante, y antes del
+        // fin y de los avisos de operación, que siguen siendo los últimos. Comparte hora con la
+        // renovación y con el numerador fiscal porque los tres son cortos e independientes y ninguno
+        // espera al otro. Podría ir a las 07:00 igual que el fin de contratos, pero antes es mejor:
+        // el papel que hay que pedir al cliente depende de él, y a las 06:00 ya está pedido cuando
+        // empieza el día.
+        new(
+            RutaRetenciones,
+            CronDiarioEnUtc(6),
+            typeof(TrabajoRetenciones),
+            nameof(TrabajoRetenciones.EjecutarAsync),
             6),
     ];
 
