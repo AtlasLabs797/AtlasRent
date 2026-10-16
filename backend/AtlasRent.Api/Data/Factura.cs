@@ -105,6 +105,14 @@ public sealed class Factura : IEntidadTrazada
     public TipoCambio? TipoCambio { get; set; }
 
     /// <summary>
+    /// Referencia de la e-factura externa (D5, §3.7). <b>Texto tecleado a mano por gerente o
+    /// administrador</b>: la aplicación usa comprobante fiscal normal y si una factura necesita
+    /// e-factura se emite en otra aplicación y aquí se apunta su número. Sin validación, sin
+    /// normalizar y sin lógica: lo que se escribe es lo que después imprime el PDF.
+    /// </summary>
+    public string? ReferenciaEfactura { get; set; }
+
+    /// <summary>
     /// Líneas del documento. Se reemplazan enteras mientras la factura está en borrador; en cuanto
     /// se emite quedan congeladas.
     /// </summary>

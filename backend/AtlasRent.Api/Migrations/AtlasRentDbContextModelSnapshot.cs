@@ -749,6 +749,95 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("codigo_recuperacion", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ComprobanteFiscal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AnuladoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anulado_at");
+
+                    b.Property<Guid?>("AnuladoPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("anulado_por");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<Guid>("FacturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("factura_id");
+
+                    b.Property<string>("MotivoAnulacion")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo_anulacion");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero");
+
+                    b.Property<DateTimeOffset>("RegistradoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("registrado_at");
+
+                    b.Property<Guid>("RegistradoPor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("registrado_por");
+
+                    b.Property<Guid>("SerieId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("serie_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_comprobante_fiscal");
+
+                    b.HasIndex("FacturaId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_comprobante_fiscal_factura_id");
+
+                    b.HasIndex("SerieId", "Numero")
+                        .IsUnique()
+                        .HasDatabaseName("ix_comprobante_fiscal_serie_id_numero");
+
+                    b.ToTable("comprobante_fiscal", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_comprobante_fiscal_anulacion_completa", "estado = 1 OR (anulado_at IS NOT NULL AND anulado_por IS NOT NULL AND motivo_anulacion IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContactoCliente", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1699,6 +1788,11 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("numero");
 
+                    b.Property<string>("ReferenciaEfactura")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("referencia_efactura");
+
                     b.Property<Guid>("SerieId")
                         .HasColumnType("uuid")
                         .HasColumnName("serie_id");
@@ -2219,6 +2313,82 @@ namespace AtlasRent.Api.Migrations
                         .HasName("pk_unidad_modalidad");
 
                     b.ToTable("unidad_modalidad", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.NumeradorFiscal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("FechaVencimiento")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_vencimiento");
+
+                    b.Property<int>("RangoDesde")
+                        .HasColumnType("integer")
+                        .HasColumnName("rango_desde");
+
+                    b.Property<int>("RangoHasta")
+                        .HasColumnType("integer")
+                        .HasColumnName("rango_hasta");
+
+                    b.Property<Guid>("SerieId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("serie_id");
+
+                    b.Property<int>("SiguienteNumero")
+                        .HasColumnType("integer")
+                        .HasColumnName("siguiente_numero");
+
+                    b.Property<string>("TipoPrefijo")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("tipo_prefijo");
+
+                    b.Property<int>("UmbralAlerta")
+                        .HasColumnType("integer")
+                        .HasColumnName("umbral_alerta");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_numerador_fiscal");
+
+                    b.HasIndex("SerieId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_numerador_fiscal_serie_id");
+
+                    b.ToTable("numerador_fiscal", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_numerador_fiscal_rango", "rango_desde <= rango_hasta");
+
+                            t.HasCheckConstraint("ck_numerador_fiscal_siguiente_en_rango", "siguiente_numero >= rango_desde AND siguiente_numero <= rango_hasta + 1");
+
+                            t.HasCheckConstraint("ck_numerador_fiscal_umbral", "umbral_alerta > 0");
+                        });
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.NumeroSerie", b =>
@@ -4197,6 +4367,27 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.ComprobanteFiscal", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Factura", "Factura")
+                        .WithOne()
+                        .HasForeignKey("AtlasRent.Api.Data.ComprobanteFiscal", "FacturaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_comprobante_fiscal_factura_factura_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Serie", "Serie")
+                        .WithMany()
+                        .HasForeignKey("SerieId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_comprobante_fiscal_serie_serie_id");
+
+                    b.Navigation("Factura");
+
+                    b.Navigation("Serie");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.ContactoCliente", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Cliente", "Cliente")
@@ -4502,6 +4693,18 @@ namespace AtlasRent.Api.Migrations
                         .HasConstraintName("fk_unidad_modalidad_unidad_unidad_id");
 
                     b.Navigation("Unidad");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.NumeradorFiscal", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Serie", "Serie")
+                        .WithOne()
+                        .HasForeignKey("AtlasRent.Api.Data.NumeradorFiscal", "SerieId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_numerador_fiscal_serie_serie_id");
+
+                    b.Navigation("Serie");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.OcupacionDia", b =>

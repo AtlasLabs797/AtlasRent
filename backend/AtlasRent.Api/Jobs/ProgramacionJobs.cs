@@ -59,6 +59,7 @@ public static class ProgramacionJobs
     public const string RutaFinContratos = "fin-contratos";
     public const string RutaAvisosOperacion = "avisos-operacion";
     public const string RutaTipoCambio = "tipo-cambio";
+    public const string RutaComprobantes = "comprobantes-fiscales";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
@@ -162,6 +163,21 @@ public static class ProgramacionJobs
             typeof(TrabajoTipoCambio),
             nameof(TrabajoTipoCambio.EjecutarAsync),
             5),
+        // F3-03: los avisos del numerador de comprobante fiscal (§3.7): por números restantes, por
+        // vencimiento y por agotado. A las 06:00, la primera hora libre que cumple las dos
+        // condiciones que la §8 exige a un trabajo que escribe en `alerta`: después de la copia de
+        // las 02:00, de la integridad y de la vigilancia —si el servidor se apagó, la copia falta y
+        // avisar sobre un estado que nadie ha verificado sería avisar de algo que puede que ya no sea
+        // cierto—, y antes del fin y de los avisos de operación, que siguen siendo los últimos por
+        // lo mismo que él. Comparte hora con la renovación de contratos: los dos son cortos e
+        // independientes, y 06:00 deja más margen del día por delante que las 08:00 para lo que
+        // este aviso pide, que es pedir un rango nuevo al organismo que autoriza los comprobantes.
+        new(
+            RutaComprobantes,
+            CronDiarioEnUtc(6),
+            typeof(TrabajoComprobantes),
+            nameof(TrabajoComprobantes.EjecutarAsync),
+            6),
     ];
 
     /// <summary>

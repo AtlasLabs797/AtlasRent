@@ -36,6 +36,21 @@ public sealed class ServicioConfiguracion(
             ["siguiente"] = (q, desc) => desc ? q.OrderByDescending(s => s.Siguiente) : q.OrderBy(s => s.Siguiente),
         };
 
+    private static readonly Dictionary<string, Func<IQueryable<NumeradorFiscal>, bool, IOrderedQueryable<NumeradorFiscal>>>
+        OrdenesNumerador = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Los que quedan primero: es el orden en el que hay que revisar la pantalla.
+            ["restantes"] = (q, desc) => desc
+                ? q.OrderByDescending(n => n.RangoHasta - n.SiguienteNumero + 1)
+                : q.OrderBy(n => n.RangoHasta - n.SiguienteNumero + 1),
+            ["vencimiento"] = (q, desc) => desc
+                ? q.OrderByDescending(n => n.FechaVencimiento)
+                : q.OrderBy(n => n.FechaVencimiento),
+            ["actualizado"] = (q, desc) => desc
+                ? q.OrderByDescending(n => n.UpdatedAt)
+                : q.OrderBy(n => n.UpdatedAt),
+        };
+
     private static readonly Dictionary<string, Func<IQueryable<TipoItbis>, bool, IOrderedQueryable<TipoItbis>>>
         OrdenesItbis = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -124,10 +139,28 @@ public sealed class ServicioConfiguracion(
 
         await ExigirNumeroYPrefijoLibresAsync(peticion.Numero, peticion.Prefijo, id, ct);
 
+        var antes = new SerieRespuesta(
+            serie.Id, serie.Numero, serie.Prefijo, serie.Moneda, serie.Tipo, serie.PlantillaPdf,
+            serie.SumaAFacturado, serie.SumaASaldos, serie.GeneraComprobante, serie.Siguiente, serie.Activa);
+
         // El contador no lo toca la edición: solo lo mueve la emisión (docs/DOC_TECNICA.md §4.3).
         var siguiente = serie.Siguiente;
         Aplicar(serie, peticion);
         serie.Siguiente = siguiente;
+
+        // §3.7: "no se puede cambiar genera comprobante en una serie con facturas emitidas". La razón
+        // es que las facturas ya salieron con o sin comprobante y esa decisión ya está en el
+        // histórico: pasarla por debajo dejaría facturas de una serie fiscal sin comprobante, que es
+        // justo el documento que no se puede declarar. La salida es crear una serie nueva.
+        if (serie.GeneraComprobante != antes.GeneraComprobante
+            && await contexto.Factura.AsNoTracking().AnyAsync(f => f.SerieId == id, ct))
+        {
+            throw new InvalidOperationException(
+                $"La serie {serie.Numero} ya tiene facturas emitidas y no admite cambiar «genera "
+                    + $"comprobante» (de {(antes.GeneraComprobante ? "sí" : "no")} a "
+                    + $"{(serie.GeneraComprobante ? "sí" : "no")}). Crea una serie nueva.");
+        }
+
         return await GuardarAsync(
             contexto.Serie,
             serie,
@@ -151,11 +184,6 @@ public sealed class ServicioConfiguracion(
 
     /// <summary>
     /// Da de baja una serie. No se borra: tiene números emitidos que hay que poder leer siempre.
-    /// <para>
-    /// TODO(A#): la especificación §3.7 dice que "genera comprobante" no se puede cambiar en una
-    /// serie que ya tiene facturas emitidas. Esa comprobación va en la tarea de facturas, cuando
-    /// exista la tabla; hoy no hay facturas que la puedan activar.
-    /// </para>
     /// </summary>
     public Task DesactivarSerieAsync(
         Guid id,
@@ -173,6 +201,128 @@ public sealed class ServicioConfiguracion(
             ip,
             mutacion,
             ct);
+
+    // ---------------------------------------------------- numeradores de comprobante
+
+    /// <summary>
+    /// Numeradores de comprobante fiscal (F3-03, docs/ESPECIFICACION.md §3.7). El orden por defecto
+    /// es por números que quedan, de menos a más: la pantalla se abre con lo que se está agotando
+    /// arriba, que es lo que hay que mirar primero.
+    /// </summary>
+    public Task<Pagina<NumeradorFiscalRespuesta>> ListarNumeradoresAsync(ConsultaLista paginacion, CancellationToken ct) =>
+        ConsultaPaginada.PaginarAsync(
+            contexto.NumeradorFiscal.AsNoTracking().Include(n => n.Serie),
+            OrdenesNumerador,
+            "restantes",
+            paginacion,
+            n => ANumerador(n),
+            ct);
+
+    public async Task<NumeradorFiscalRespuesta> LeerNumeradorAsync(Guid serieId, CancellationToken ct) =>
+        ANumerador(await CargarNumeradorAsync(serieId, ct));
+
+    /// <summary>
+    /// Guarda el numerador de una serie fiscal. Es de alta o de cambio según ya exista, y por eso la
+    /// auditoría lleva el valor anterior y el nuevo: quién cambió el rango de una serie y de qué rango
+    /// a cuál es la pregunta que se hace cuando falta un comprobante.
+    /// <para>
+    /// Los valores del rango y del umbral no se inventan aquí: los escribe el administrador. El
+    /// servicio solo comprueba que sean coherentes entre sí.
+    /// </para>
+    /// </summary>
+    public async Task<NumeradorFiscalRespuesta> GuardarNumeradorAsync(
+        Guid serieId,
+        NumeradorFiscalPeticion peticion,
+        Guid admin,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var serie = await contexto.Serie.AsNoTracking().SingleOrDefaultAsync(s => s.Id == serieId, ct)
+            ?? throw new KeyNotFoundException($"La serie '{serieId:D}' no existe.");
+
+        ExigirNumeradorCoherente(peticion);
+
+        var existente = await contexto.NumeradorFiscal
+            .SingleOrDefaultAsync(n => n.SerieId == serieId, ct);
+        var esAlta = existente is null;
+
+        var anterior = esAlta ? null : ANumerador(existente!);
+
+        var numerador = existente ?? new NumeradorFiscal { SerieId = serieId };
+        numerador.TipoPrefijo = peticion.TipoPrefijo.Trim();
+        numerador.RangoDesde = peticion.RangoDesde;
+        numerador.RangoHasta = peticion.RangoHasta;
+        numerador.FechaVencimiento = peticion.FechaVencimiento;
+        numerador.SiguienteNumero = peticion.SiguienteNumero;
+        numerador.UmbralAlerta = peticion.UmbralAlerta;
+
+        var guardado = await GuardarAsync(
+            contexto.NumeradorFiscal,
+            numerador,
+            n => ANumerador(n, serie.Numero),
+            esAlta,
+            esAlta ? "numerador_fiscal.creado" : "numerador_fiscal.actualizado",
+            "numerador_fiscal",
+            admin,
+            ip,
+            mutacion,
+            datos => JsonSerializer.Serialize(new { Anterior = anterior, Nuevo = ANumerador(numerador, serie.Numero) }),
+            antesDeGuardar: null,
+            ct);
+
+        return guardado;
+    }
+
+    /// <summary>
+    /// Coherencia del rango. Vive en el servicio y no en la base porque una regla depende del valor
+    /// que acaba de escribir quien guarda, y la restricción de la base no puede mirar una fila que
+    /// todavía no existe.
+    /// </summary>
+    private static void ExigirNumeradorCoherente(NumeradorFiscalPeticion peticion)
+    {
+        if (peticion.RangoDesde > peticion.RangoHasta)
+        {
+            throw new InvalidOperationException(
+                $"El rango no puede empezar ({peticion.RangoDesde}) más arriba de donde acaba "
+                    + $"({peticion.RangoHasta}).");
+        }
+
+        // RangoHasta + 1 es lo que declara agotado un rango terminado, y es lo que puede dejar el
+        // administrador al guardar después de haberlo gastado entero. Más allá ya no se puede volver.
+        if (peticion.SiguienteNumero < peticion.RangoDesde || peticion.SiguienteNumero > peticion.RangoHasta + 1)
+        {
+            throw new InvalidOperationException(
+                $"El siguiente número ({peticion.SiguienteNumero}) tiene que estar dentro del rango "
+                    + $"({peticion.RangoDesde}..{peticion.RangoHasta}) o una posición más allá para "
+                    + "declararlo agotado.");
+        }
+
+        if (peticion.UmbralAlerta <= 0)
+        {
+            throw new InvalidOperationException(
+                "El umbral de aviso tiene que ser un número de números mayor que cero.");
+        }
+    }
+
+    private async Task<NumeradorFiscal> CargarNumeradorAsync(Guid serieId, CancellationToken ct) =>
+        await contexto.NumeradorFiscal.AsNoTracking().SingleOrDefaultAsync(n => n.SerieId == serieId, ct)
+        ?? throw new KeyNotFoundException(
+            $"La serie '{serieId:D}' no tiene numerador de comprobante fiscal configurado.");
+
+    private static NumeradorFiscalRespuesta ANumerador(NumeradorFiscal n, int? serieNumero = null) => new(
+        n.Id,
+        n.SerieId,
+        serieNumero ?? n.Serie?.Numero ?? 0,
+        n.TipoPrefijo,
+        n.RangoDesde,
+        n.RangoHasta,
+        n.FechaVencimiento,
+        n.SiguienteNumero,
+        n.UmbralAlerta)
+    {
+        Restantes = n.RangoHasta - n.SiguienteNumero + 1,
+    };
 
     // ------------------------------------------------------- ITBIS y retenciones
 

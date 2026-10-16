@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
@@ -42,6 +43,7 @@ public sealed class ServicioFacturas(
     AuditoriaService auditoria,
     ServicioIdempotencia idempotencia,
     ServicioSeries series,
+    ServicioComprobantes comprobantes,
     ServicioTiposCambio tiposCambio,
     ServicioCobros cobros,
     IPolicyService politica,
@@ -353,6 +355,12 @@ public sealed class ServicioFacturas(
     /// informes consolidan la factura en dólares (D9); emitir sin él dejaría un documento que no se
     /// puede consolidar. La salida es la carga manual de §3.12, y el 409 la dice.
     /// </para>
+    /// <para>
+    /// <b>El comprobante fiscal va en la misma transacción que la factura</b> (F3-03, §3.7): si la
+    /// serie genera comprobante, se comprueba el numerador antes de gastar el número de la factura y
+    /// se saca el número de comprobante después, con su propio contador. Una serie fiscal sin
+    /// numerador no emite: una factura sin comprobante no se puede declarar.
+    /// </para>
     /// </summary>
     public async Task<FacturaRespuesta> EmitirAsync(
         Guid id,
@@ -390,8 +398,17 @@ public sealed class ServicioFacturas(
         var hoy = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
         var cambio = await tiposCambio.ActualAsync(factura.Moneda, hoy, ct);
 
+        // Y el numerador del comprobante se comprueba antes que el número de factura, por el mismo
+        // motivo y por el del criterio de aceptación del plan: una serie fiscal cuyo numerador está
+        // agotado o vencido rechaza la emisión y no gasta el número de la factura (F3-03, §3.7).
+        if (serie.GeneraComprobante)
+        {
+            await comprobantes.ExigirUtilizableAsync(serie.Id, serie.Numero, hoy, ct);
+        }
+
         var serieId = factura.SerieId;
         int numero = 0;
+        int? numeroComprobante = null;
 
         var respuesta = await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -403,7 +420,7 @@ public sealed class ServicioFacturas(
             ip,
             mutacion,
             proyectar: ARespuesta,
-            datosAuditoria: c => DatosAuditoria(c),
+            datosAuditoria: c => DatosAuditoria(c, numeroComprobante),
             antesDeGuardar: async () =>
             {
                 numero = await series.ReservarNumeroAsync(serieId, usuario, ct);
@@ -413,11 +430,83 @@ public sealed class ServicioFacturas(
                 factura.TipoCambioValor = Redondeo.TipoCambio(cambio.Valor);
                 factura.TipoCambioFecha = cambio.Fecha;
                 factura.TipoCambioId = cambio.Id;
+
+                // El comprobante sale después del número de factura y en la misma transacción: si
+                // esto falla, se deshace el número también.
+                if (serie.GeneraComprobante)
+                {
+                    numeroComprobante = await comprobantes.ReservarAsync(serieId, factura.Id, usuario, hoy, ct);
+                }
             },
             enTransaccionDelLlamador: true,
             ct: ct);
 
         await transaccion.CommitAsync(ct);
+
+        return respuesta;
+    }
+
+    // ---------------------------------------------------------------- referencia e-factura
+
+    /// <summary>
+    /// Anota la factura con la referencia de su e-factura externa (D5, §3.7).
+    /// <para>
+    /// <b>Texto y nada más</b>: la aplicación no emite e-facturas, así que no hay nada que validar ni
+    /// contra qué comprobar. Es el número de un documento emitido en otra aplicación, y lo único que
+    /// se hace con él es guardarlo y imprimirlo en el PDF.
+    /// </para>
+    /// <para>
+    /// Se puede cambiar mientras la factura no esté anulada. En una anulada no: lo que salió no se
+    /// reescribe, y una referencia escrita sobre un documento anulado daría una factura con dos
+    /// documentos fiscales detrás. Anular y emitir otra es el camino (F3-08).
+    /// </para>
+    /// </summary>
+    public async Task<FacturaRespuesta> ReferenciaEfacturaAsync(
+        Guid id,
+        ReferenciaEfacturaPeticion peticion,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.FacturaEmitir, $"factura/{id:D}", usuario, ct);
+
+        var referencia = string.IsNullOrWhiteSpace(peticion.Referencia)
+            ? null
+            : peticion.Referencia.Trim();
+
+        var factura = await CargarAsync(id, ct);
+
+        if (factura.Estado == EstadoFactura.Anulada)
+        {
+            throw new InvalidOperationException(
+                $"La factura '{id:D}' está anulada y no admite referencia de e-factura: lo que salió "
+                    + "no se reescribe.");
+        }
+
+        var anterior = factura.ReferenciaEfactura;
+        factura.ReferenciaEfactura = referencia;
+
+        var respuesta = await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Factura, factura,
+            esAlta: false,
+            accion: "factura.referencia_efactura",
+            entidad: "factura",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: ARespuesta,
+            // El valor anterior va en la auditoría: cambiar la referencia de un documento ya
+            // emitido es justo el caso en el que hace falta saber cuál estaba antes.
+            datosAuditoria: c => JsonSerializer.Serialize(new
+            {
+                Factura = c.Id.ToString("D"),
+                Anterior = anterior,
+                Nueva = referencia,
+            }),
+            enTransaccionDelLlamador: false,
+            ct: ct);
 
         return respuesta;
     }
@@ -729,7 +818,12 @@ public sealed class ServicioFacturas(
         f.Itbis,
         f.Total,
         f.Lineas.Count,
-        f.CreatedAt);
+        f.CreatedAt)
+    {
+        // La referencia de e-factura (D5) va en la lista porque quien mira una factura emitida
+        // necesita ver de un vistazo si tiene documento fiscal externo detrás.
+        ReferenciaEfactura = f.ReferenciaEfactura,
+    };
 
     /// <summary>
     /// Detalle de la factura con sus líneas.
@@ -765,7 +859,10 @@ public sealed class ServicioFacturas(
         f.TipoCambioId,
         f.CreatedAt,
         f.UpdatedAt,
-        [.. f.Lineas.OrderBy(l => l.Posicion).Select(ALinea)]);
+        [.. f.Lineas.OrderBy(l => l.Posicion).Select(ALinea)])
+    {
+        ReferenciaEfactura = f.ReferenciaEfactura,
+    };
 
     private static FacturaLineaRespuesta ALinea(FacturaLinea l) => new(
         l.Id,
@@ -783,8 +880,13 @@ public sealed class ServicioFacturas(
     /// <summary>
     /// Lo que va en la auditoría firmada. Ni el tipo de cambio ajeno ni nada que el documento no
     /// lleva: la firma cubre esto, y una copia congelada de la línea no aporta nada.
+    /// <para>
+    /// El comprobante va con su número porque la emisión de F3-03 los saca a los dos en la misma
+    /// transacción: una auditoría que dice "se emitió el número 7" y otra que dice "el comprobante 4
+    /// salió con ella" tienen que poder leerse juntas.
+    /// </para>
     /// </summary>
-    private static object DatosAuditoria(Factura f) => new
+    private static object DatosAuditoria(Factura f, int? numeroComprobante = null) => new
     {
         f.Id,
         Cliente = f.ClienteId.ToString("D"),
@@ -792,6 +894,7 @@ public sealed class ServicioFacturas(
         Contrato = f.ContratoId?.ToString("D"),
         Serie = f.SerieId.ToString("D"),
         f.Numero,
+        NumeroComprobante = numeroComprobante,
         Estado = f.Estado.ToString(),
         Moneda = f.Moneda.ToString(),
         Emision = f.FechaEmision?.ToString("yyyy-MM-dd"),

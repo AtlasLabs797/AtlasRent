@@ -181,6 +181,30 @@ public sealed class FacturasController(
             id, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
     }
 
+    /// <summary>
+    /// Referencia de la e-factura externa (D5, §3.7): un texto que teclea gerente o administrador y
+    /// que luego se imprime en el PDF. Usa <c>factura.emitir</c> y no uno nuevo: es lo mismo que
+    /// emitir —tocar el documento fiscal de una factura— y tocar la matriz de permisos por un campo
+    /// de texto sería desproporcionado.
+    /// </summary>
+    [HttpPut("{id:guid}/referencia-efactura")]
+    [Accion(Acciones.FacturaEmitir)]
+    public async Task<IActionResult> ReferenciaEfactura(
+        Guid id,
+        ReferenciaEfacturaPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/facturas/{id:D}/referencia-efactura");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => facturas.ReferenciaEfacturaAsync(
+            id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
     // ---------------------------------------------------------------- internos
 
     /// <summary>

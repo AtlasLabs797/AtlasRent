@@ -284,6 +284,12 @@ builder.Services.AddScoped<TrabajoTipoCambio>();
 // su cuenta porque F3-05 emite desde un trabajo sin sesión HTTP.
 builder.Services.AddScoped<ServicioFacturas>();
 
+// F3-03: numerador de comprobante fiscal. Lleva su propio contador, independiente del de la serie, y
+// lo usa ServicioFacturas dentro de la transacción de emisión. Sin él, una serie fiscal no emite:
+// una factura de serie fiscal sin comprobante no se puede declarar (§3.7).
+builder.Services.AddScoped<ServicioComprobantes>();
+builder.Services.AddScoped<TrabajoComprobantes>();
+
 // F3-06: cobros, asignaciones FIFO y saldo a favor. Va después de ServicioFacturas porque el
 // registro de un cobro comprueba las facturas del contrato, y el servicio de facturas lo usa para
 // resolver cobrado, pendiente y estado de cobro sin una consulta por fila (§3.13).

@@ -131,7 +131,48 @@ public sealed class ProgramacionJobsTests
                 typeof(TrabajoFinContratos),
                 typeof(TrabajoAvisosOperacion),
                 typeof(TrabajoTipoCambio),
+                typeof(TrabajoComprobantes),
             ]);
+    }
+
+    /// <summary>
+    /// F3-03: los avisos del numerador de comprobante van a las 06:00.
+    /// <para>
+    /// Escribe en <c>alerta</c>, así que cumple la misma regla que el resto de los trabajos que
+    /// escriben ahí (fin por fecha efectiva, avisos de operación): ir <b>detrás</b> de la copia de las
+    /// 02:00, la integridad y la vigilancia, porque si el servidor se apagó esa madrugada la copia
+    /// falta y avisar sobre un estado que nadie ha verificado sería avisar de algo que puede que ya
+    /// no sea cierto. Y por delante del fin y de los avisos de operación, que son los últimos.
+    /// </para>
+    /// <para>
+    /// Comparte hora con la renovación de contratos a propósito, igual que hace el tipo de cambio
+    /// con el aviso de reservas: son cortos e independientes, y a las 06:00 todavía queda la
+    /// mañana por delante para lo que este aviso pide, que es pedir un rango nuevo al organismo que
+    /// autoriza los comprobantes.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void LosAvisosDelNumeradorVanALas06DetrasDeLaVigilanciaYDelanteDelFin()
+    {
+        var numerador = Trabajo(ProgramacionJobs.RutaComprobantes);
+
+        numerador.HoraLocal.Should().Be(6);
+        numerador.Tipo.Should().Be(typeof(TrabajoComprobantes));
+        numerador.Metodo.Should().Be(nameof(TrabajoComprobantes.EjecutarAsync));
+
+        // Las 06:00 de Santo Domingo (UTC−4) son las 10:00 UTC.
+        TimeZoneInfo.ConvertTime(PrimerDisparo(numerador.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 6, 0, 0));
+
+        numerador.HoraLocal.Should().BeGreaterThan(
+            Trabajo(ProgramacionJobs.RutaVigilanciaCopia).HoraLocal,
+            "escribe en alerta, así que va detrás de la copia, la integridad y la vigilancia");
+        numerador.HoraLocal.Should().BeLessThan(
+            Trabajo(ProgramacionJobs.RutaFinContratos).HoraLocal,
+            "el fin y los avisos de operación siguen siendo los últimos de la madrugada");
+        numerador.HoraLocal.Should().Be(
+            Trabajo(ProgramacionJobs.RutaRenovacionContratos).HoraLocal,
+            "comparte hora con la renovación: los dos son cortos e independientes");
     }
 
     /// <summary>
@@ -299,6 +340,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaFinContratos,
                 ProgramacionJobs.RutaAvisosOperacion,
                 ProgramacionJobs.RutaTipoCambio,
+                ProgramacionJobs.RutaComprobantes,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

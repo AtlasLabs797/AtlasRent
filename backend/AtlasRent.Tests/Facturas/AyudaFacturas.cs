@@ -62,7 +62,8 @@ internal static class AyudaFacturas
         SesionCliente sesion,
         TipoSerie tipo,
         Moneda? moneda,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool generaComprobante = false)
     {
         var creada = await sesion.PostAsync(
             "/api/v1/config/series",
@@ -74,7 +75,7 @@ internal static class AyudaFacturas
                 moneda = moneda?.ToString(),
                 sumaAFacturado = true,
                 sumaASaldos = true,
-                generaComprobante = false,
+                generaComprobante,
                 activa = true,
             },
             ct);

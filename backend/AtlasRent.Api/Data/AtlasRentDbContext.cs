@@ -47,6 +47,10 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<NumeroSerie> NumeroSerie => Set<NumeroSerie>();
 
+    public DbSet<NumeradorFiscal> NumeradorFiscal => Set<NumeradorFiscal>();
+
+    public DbSet<ComprobanteFiscal> ComprobanteFiscal => Set<ComprobanteFiscal>();
+
     public DbSet<TipoItbis> TipoItbis => Set<TipoItbis>();
 
     public DbSet<TipoRetencion> TipoRetencion => Set<TipoRetencion>();
@@ -400,6 +404,67 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             // simultáneas salieran con el mismo número, la segunda no llegaría a commitear.
             entidad.HasIndex(e => new { e.SerieId, e.Numero }).IsUnique();
             entidad.HasIndex(e => e.SerieId);
+        });
+
+        // F3-03: el numerador del comprobante fiscal (docs/ESPECIFICACION.md §3.7). Es 1:1 con la
+        // serie, y su contador es otro contador: lo mueve ServicioComprobantes con su propio
+        // UPDATE ... RETURNING, dentro de la misma transacción de emisión, y nunca MAX() + 1.
+        modelBuilder.Entity<NumeradorFiscal>(entidad =>
+        {
+            entidad.ToTable("numerador_fiscal", tabla =>
+            {
+                // Un rango autorizado es un intervalo, y el umbral es un número de números: si
+                // admitieran valores que no lo son, la comprobación de "agotado" y "pocos" dejaría de
+                // tener sentido. La coherencia del rango (que SiguienteNumero caiga dentro) la
+                // comprueba el servicio al guardar, porque depende del valor anterior.
+                tabla.HasCheckConstraint("ck_numerador_fiscal_rango", "rango_desde <= rango_hasta");
+                tabla.HasCheckConstraint(
+                    "ck_numerador_fiscal_siguiente_en_rango",
+                    "siguiente_numero >= rango_desde AND siguiente_numero <= rango_hasta + 1");
+                tabla.HasCheckConstraint("ck_numerador_fiscal_umbral", "umbral_alerta > 0");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.TipoPrefijo).HasMaxLength(16).IsRequired();
+            // Un numerador por serie: dos numeradores para la misma serie harían que el número de
+            // comprobante saliera de dos contadores distintos y el índice único de comprobante_fiscal
+            // lo convertiría en un fallo en vez de en una decisión.
+            entidad.HasIndex(e => e.SerieId).IsUnique();
+            entidad.HasOne(e => e.Serie)
+                .WithOne()
+                .HasForeignKey<NumeradorFiscal>(e => e.SerieId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F3-03: el comprobante que sale con cada factura de serie fiscal. No se borra nunca (D28),
+        // así que la tabla no lleva DELETE en los permisos.
+        modelBuilder.Entity<ComprobanteFiscal>(entidad =>
+        {
+            entidad.ToTable("comprobante_fiscal", tabla =>
+            {
+                // Anulado o emitido, y siempre con motivo y con quién: una anulación sin explicación
+                // no dice nada. Las columnas las rellena F3-08.
+                tabla.HasCheckConstraint(
+                    "ck_comprobante_fiscal_anulacion_completa",
+                    "estado = 1 OR (anulado_at IS NOT NULL AND anulado_por IS NOT NULL AND motivo_anulacion IS NOT NULL)");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Tipo).HasMaxLength(16).IsRequired();
+            entidad.Property(e => e.MotivoAnulacion).HasMaxLength(500);
+            entidad.Property(e => e.RegistradoAt).IsRequired();
+            // Una factura, un comprobante.
+            entidad.HasIndex(e => e.FacturaId).IsUnique();
+            // La red de seguridad del contador, igual que (serie_id, numero) en numero_serie: si dos
+            // emisiones simultáneas sacaran el mismo número de comprobante, la segunda no llega a
+            // commitear.
+            entidad.HasIndex(e => new { e.SerieId, e.Numero }).IsUnique();
+            entidad.HasOne(e => e.Factura)
+                .WithOne()
+                .HasForeignKey<ComprobanteFiscal>(e => e.FacturaId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Serie)
+                .WithMany()
+                .HasForeignKey(e => e.SerieId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // F1-08: D14. Los porcentajes son datos y van con cuatro decimales, que es lo que
@@ -1079,6 +1144,9 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.Concepto).HasMaxLength(300).IsRequired();
             entidad.Property(e => e.CreatedAt).IsRequired();
+            // La referencia de e-factura es texto libre que alguien teclea (D5): se limita la
+            // longitud para que no quepa un documento entero dentro de una factura.
+            entidad.Property(e => e.ReferenciaEfactura).HasMaxLength(120);
             // El tipo de cambio congelado es el único decimal de la tabla que no es dinero:
             // numeric(18,6), como en la fila de F3-01 de la que salió.
             entidad.Property(e => e.TipoCambioValor).HasColumnType("numeric(18,6)");

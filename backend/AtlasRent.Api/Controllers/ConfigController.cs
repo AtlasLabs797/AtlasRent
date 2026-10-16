@@ -111,6 +111,73 @@ public sealed class ConfigController(
         }
     }
 
+    // ------------------------------------------------------- numeradores de comprobante
+
+    /// <summary>
+    /// Numeradores de comprobante fiscal (F3-03, §3.7). Son de configuración y no un recurso de
+    /// negocio: los escribe el administrador, con el rango que le autoriza el organismo de los
+    /// comprobantes, y no hay ninguno sembrado.
+    /// </summary>
+    [HttpGet("numeradores-fiscales")]
+    [Accion(Acciones.ConfiguracionEditar)]
+    public async Task<IActionResult> ListarNumeradores(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortDir,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(configuracion.ListarNumeradoresAsync(
+            Paginacion(page, pageSize, sortBy, sortDir), ct));
+
+    [HttpGet("numeradores-fiscales/{serieId:guid}")]
+    [Accion(Acciones.ConfiguracionEditar)]
+    public async Task<IActionResult> LeerNumerador(Guid serieId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await configuracion.LeerNumeradorAsync(serieId, ct));
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+    }
+
+    /// <summary>
+    /// Guarda el numerador de la serie: lo crea si no existe y lo cambia si ya está. Un solo
+    /// endpoint para las dos cosas porque son la misma decisión —qué rango autorizado tiene esta serie—
+    /// y separarlos obligaría a la pantalla a preguntar antes de escribir.
+    /// </summary>
+    [HttpPut("numeradores-fiscales/{serieId:guid}")]
+    [Accion(Acciones.ConfiguracionEditar)]
+    public async Task<IActionResult> GuardarNumerador(
+        Guid serieId,
+        NumeradorFiscalPeticion peticion,
+        CancellationToken ct)
+    {
+        var ruta = $"/api/v1/config/numeradores-fiscales/{serieId:D}";
+        var mutacion = Mutar(peticion, ruta);
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        try
+        {
+            return Ok(await configuracion.GuardarNumeradorAsync(
+                serieId, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (Exception e) when (e is InvalidOperationException or DbUpdateConcurrencyException or DbUpdateException)
+        {
+            return Conflicto(e.Message);
+        }
+    }
+
     // ---------------------------------------------------------------- ITBIS
 
     [HttpGet("tipos-itbis")]

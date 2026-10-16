@@ -134,6 +134,9 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
                 auditoria,
                 idempotencia,
                 new ServicioSeries(contexto, auditoria, api.Reloj),
+                // F3-03: numerador del comprobante fiscal. Esta serie no lo genera, así que aquí solo
+                // hace falta que exista.
+                new ServicioComprobantes(contexto, api.Reloj),
                 tiposCambio,
                 // F3-06: ServicioFacturas lo usa para resolver cobrado, pendiente y estado de cobro
                 // de la factura en la lectura. En esta prueba solo hace falta que exista.

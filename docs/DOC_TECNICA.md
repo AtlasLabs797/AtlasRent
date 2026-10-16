@@ -130,7 +130,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Capas de bloqueo (decidido en F2-01):** la disponibilidad no se guarda en `contrato` ni en `reserva`, sino en dos tablas que los escriben esos servicios en su propia transacción. Motivo: una restricción de exclusión no puede abarcar dos tablas, así que con una por tabla un contrato y una reserva mensual del mismo rango se solaparían sin que nada lo detecte, y la especificación (§3.4) exige comprobar la disponibilidad en la base sin carreras. `ocupacion_rango` es el bloqueo por rango (contrato, reserva mensual) y `ocupacion_dia` el bloqueo por día suelto (reserva corta, mantenimiento); un trigger en cada tabla comprueba el otro lado, para que un rango no tape días reservados ni al revés. Liberar es `bloquea = false`, nunca borrar.
 - **Contador de serie:** `UPDATE serie SET siguiente = siguiente + 1 WHERE id = @id RETURNING siguiente - 1`; `UNIQUE (serie_id, numero)`.
 - **Contador de serie en la factura (F3-02):** la emisión llama a `ServicioSeries.ReservarNumeroAsync` **dentro de la transacción de la factura**, y esa llamada reutiliza la transacción abierta si la hay. Por eso un fallo posterior (un choque de índice, un cliente que ya no está) deshace el número junto con la factura: no hay número consumido sin factura detrás (D28). La red que lo hace inevitable si dos emisiones se colaran es doble: `UNIQUE (serie_id, numero)` en `factura` (índice parcial `WHERE numero IS NOT NULL`, porque un borrador no tiene número) y `UNIQUE (serie_id, numero)` en `numero_serie`.
-- **Comprobante:** `UPDATE secuencia_comprobante SET siguiente = siguiente + 1 WHERE serie_id = @id AND siguiente <= rango_hasta AND vence >= current_date RETURNING siguiente - 1`; sin fila → excepción "Comprobantes agotados o vencidos" y rollback completo.
+- **Comprobante fiscal (F3-03):** `UPDATE numerador_fiscal SET siguiente_numero = siguiente_numero + 1 WHERE serie_id = @id AND siguiente_numero <= rango_hasta RETURNING siguiente_numero - 1`, **dentro de la transacción de la factura** y reutilizando la que ya está abierta; sin fila → 409 y rollback completo. Es un contador **distinto** del de la serie (`serie.siguiente` numera facturas; `numerador_fiscal.siguiente_numero` numera comprobantes) y vive en su propia fila, 1:1 con la serie, con `UNIQUE (serie_id)` en `numerador_fiscal` y `UNIQUE (serie_id, numero)` en `comprobante_fiscal`. El `WHERE … siguiente_numero <= rango_hasta` es lo que hace el bloqueo de agotado íntegro bajo carrera; el de vencimiento va antes, en el servicio, porque es una comparación de fechas. **Ningún rango, tipo ni umbral está sembrado ni en el código**: los configura el administrador en `PUT /api/v1/config/numeradores-fiscales/{serieId}`.
 - **Periódica:** índice único parcial `(contrato_id, periodo, concepto) WHERE estado <> 'anulada'`.
 - **Auditoría:** append-only (`db/scripts/03_auditoria_append_only.sql`) + **firma de registros** (hash encadenado SHA-256 por fila) y job diario de verificación de integridad.
 - **RLS:** activado en `documento_inmueble` (solo gerente/admin) y `auditoria` (lectura solo admin/gerente), con variable de sesión (`set_config('app.usuario_id', …, true)` y `app.rol`) fijada por la API al abrir cada transacción mediante un interceptor de EF Core.
@@ -151,7 +151,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Tipos base** (`backend/AtlasRent.Api/Dominio/`): `Dinero` (decimal + `Moneda`), `Redondeo`, `Prorrateo`, `TiempoNegocio`. `Dinero` redondea al construirse y **no** convierte entre monedas: mezclar USD y DOP lanza `MonedaDistintaException` (D7). El redondeo del sistema es half-up explícito (`MidpointRounding.AwayFromZero`) porque el de `decimal` en .NET es half-even y `0,005` se quedaría en `0,00`.
 - **Saldo de factura** = total − Σ retenciones − Σ asignaciones vigentes (moneda de la factura) − Σ ajustes de diferencia de cambio. Pagada / Parcial / Pendiente derivados. Vencida = saldo > 0 y hoy (Santo Domingo) > vencimiento.
 - **Prorrateo:** `Math.Round(renta / díasDelMes × díasFacturables, 2, MidpointRounding.AwayFromZero)`, días inclusivos.
-- **Emisión (una transacción):** validar → número de serie → comprobante (si fiscal) → congelar `cambio_informe` → Emitida → auditoría → outbox.
+- **Emisión (una transacción):** validar → **numerador del comprobante utilizable (si la serie es fiscal)** → número de serie → comprobante (si fiscal) → congelar `cambio_informe` → Emitida → auditoría → outbox. El numerador se comprueba **antes** del número de serie a propósito: si está agotado o vencido, la emisión se rechaza y **no se gasta número de factura** (criterio de aceptación de `docs/PLAN.md`).
 - **ITBIS de la factura (F3-02):** es **por línea** (§3.8), no sobre el total. `CalculoImpuestosLinea.Calcular(cantidad, precio, porcentaje)` redondea una vez el importe (`cantidad × precio`) y una vez su impuesto (`importe × porcentaje / 100`), y los totales de la cabecera son `Subtotal = Σ Importe`, `Itbis = Σ ItbisImporte` y `Total = Subtotal + Itbis`. No es lo mismo que redondear el subtotal entero: dos líneas al 18 % de 100,01 y 0,30 dan 18,00 + 0,05 = **18,05**, mientras que 100,31 × 18 % redondeado da **18,06**. El céntimo se pierde si el impuesto se calcula sobre el total. `CalculoImpuestos.Calcular` (de factura completa, con retenciones) sigue existiendo para lo que venga después; hoy no lo usa nadie. El 100 es un divisor de porcentaje y no una cifra fiscal: el porcentaje sale de `tipo_itbis` (D14).
 - **Signo de las líneas (F3-02):** el tipo lo decide. Una línea `Descuento` con importe positivo se rechaza con 409, y cualquier otro tipo con importe negativo también: restar es tener una línea de descuento, no poner un signo raro. El subtotal es por tanto la suma algebraica de las líneas.
 - **Borrador reescribible (F3-02):** una factura en borrador no tiene número, ni comprobante, ni deuda, así que se le cambian la cabecera y las líneas, y sus líneas se borran. Emitida, ninguna línea se toca: lo que hay es anular y emitir otra (F3-08).
@@ -271,6 +271,39 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   serie. **No hay endpoint que devuelva un PDF provisional**: un recibo de dinero provisional es un
   documento que alguien puede imprimir y archivar.
 
+### 6.4 Comprobante fiscal (F3-03)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/config/numeradores-fiscales` | `configuracion.editar` | Lista paginada de los numeradores; orden por defecto **por números que quedan**, de menos a más, que es como se revisa la pantalla. `?sortBy=restantes\|vencimiento\|actualizado`. |
+| `GET /api/v1/config/numeradores-fiscales/{serieId}` | `configuracion.editar` | El numerador de una serie. 404 si esa serie no lo tiene, que es el estado en el que está la serie 3 recién migrada. |
+| `PUT /api/v1/config/numeradores-fiscales/{serieId}` | `configuracion.editar` | Crea o cambia el numerador de la serie. Cuerpo `{ tipoPrefijo, rangoDesde, rangoHasta, fechaVencimiento, siguienteNumero, umbralAlerta }`. Un solo endpoint para las dos cosas porque son la misma decisión. |
+| `PUT /api/v1/facturas/{id}/referencia-efactura` | `factura.emitir` | Referencia de la e-factura externa (D5). Cuerpo `{ referencia }`; vacía la borra. Devuelve la factura entera. |
+
+- **El numerador es configuración, no un recurso de negocio**: lo escribe el administrador con el rango
+  que le autoriza el organismo de los comprobantes. **No hay ninguno sembrado** —ni en la migración ni
+  en la serie 3—, porque un rango escrito en el código sería una autorización fiscal inventada por la
+  aplicación (D14 y el criterio de aceptación de `docs/PLAN.md`).
+- **Sin numerador no se emite.** Una serie fiscal cuyo numerador no existe, está vencido o se agotó
+  devuelve 409 con el motivo y **sin gastar número de factura**. No es una degradación: una factura de
+  serie fiscal sin comprobante es un documento que no se puede declarar (§3.7).
+- **`siguienteNumero` puede quedar una posición fuera del rango** (`rangoHasta + 1`) y eso es lo que
+  declara agotado un rango ya gastado. Dos posiciones o más ya no se pueden volver a guardar.
+- **El tipo se copia a cada comprobante emitido.** Si mañana el administrador cambia `tipoPrefijo`, los
+  comprobantes que ya salieron siguen diciendo el que tenían: un documento no cambia de tipo porque
+  alguien reconfiguró el rango.
+- **La auditoría del numerador lleva el valor anterior y el nuevo** (`numerador_fiscal.creado` /
+  `numerador_fiscal.actualizado`), y la de la emisión lleva el número de comprobante junto al de la
+  factura (`factura.emitida`), porque los dos salen en la misma transacción.
+- **La referencia de e-factura usa `factura.emitir` y no un permiso nuevo**: es lo mismo que emitir —
+  tocar el documento fiscal de una factura—, y tocar la matriz de permisos por un campo de texto sería
+  desproporcionado. **Sin validación ni lógica** (D5): es un texto que luego se imprime en el PDF.
+  Se puede cambiar mientras la factura no esté anulada; en una anulada es 409, porque lo que salió no se
+  reescribe.
+- **Anular el comprobante es de F3-08.** El estado `Anulado` y las columnas `anulado_at`, `anulado_por` y
+  `motivo_anulacion` ya existen con su restricción (anulado = con las tres rellenadas), y
+  `comprobante_fiscal` **no concede `DELETE`**: un comprobante emitido no se borra nunca (D28).
+
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
 - **Añadido para Atlas Rent (expuesta a internet):**
@@ -357,6 +390,7 @@ posteriores, que todavía no están escritos:
 | Renovaciones e incrementos de renta | F2-06 | Hangfire | diario 06:00 AST | por (contrato, bloque) **y** fecha de vencimiento |
 | Fin de contrato por fecha efectiva | F2-09 | Hangfire | diario 07:00 AST | condición de fecha **y** 409 por estado |
 | Avisos de operación (§3.16) | F2-10 | Hangfire | diario 08:00 AST | dedupe por (tipo, entidad) |
+| Avisos del numerador de comprobante (§3.7) | F3-03 | Hangfire | diario 06:00 AST | clave estable por (serie, condición) |
 | Tipo de cambio | F3-01 | Hangfire | diario 05:00 AST ⚠️ | `UNIQUE (fecha, moneda)` |
 | Recordatorios | *previsto* | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha) |
 | Alertas de vencimiento de factura | *previsto* (F3) | Hangfire | cada hora | dedupe por (tipo, entidad) |
@@ -402,7 +436,26 @@ primeras facturas. Y lo mismo con los trabajos previstos de F3 y F4: las horas d
   trabajo dos veces no crea una segunda fila y no lanza.
 
 ### 8.1 Estado (F1-12)
-Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; y **tipo de cambio** (05:00), de F3-01. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; y **avisos del numerador de comprobante** (06:00), de F3-03. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+
+- **Avisos del numerador de comprobante (`TrabajoComprobantes`, 06:00 AST):** recorre los numeradores y
+  levanta tres alertas de tipo `comprobante`, con clave estable por serie y condición —
+  `numerador:{serieId}:pocos` (los números que quedan son ≤ `umbral_alerta`), `:vencido` (hoy ya pasó
+  `fecha_vencimiento`) y `:agotado` (no queda ninguno) — y **resuelve cada una cuando deja de aplicar**.
+ Escribe en `alerta`, así que cumple la misma regla que el fin por fecha efectiva y los avisos de
+ operación: **detrás** de la copia de las 02:00, la integridad y la vigilancia, y **delante** del fin y
+ de los avisos de operación, que siguen siendo los últimos. Comparte hora con la renovación de
+ contratos, igual que hace el tipo de cambio con el aviso de reservas: son cortos e independientes, y
+ a las 06:00 todavía queda la mañana por delante para lo que este aviso pide, que es **pedir un rango
+ nuevo al organismo que autoriza los comprobantes**. Es persistente sin duplicar, como las de F2-09:
+ la clave no lleva fecha porque el aviso no es «hoy quedan pocos» sino «quedan pocos». **«Agotado»
+ suprime «pocos»**: cuando no queda ningún número, el aviso que exige una acción es el que dice que
+ hay que pedir rango, y los dos juntos serían dos alertas para el mismo hecho.
+ **Límite heredado, no de esta tarea:** `alerta.clave` es única, así que cuando el
+ `ON CONFLICT … DO UPDATE … WHERE resuelta_at IS NULL` choca con una alerta ya cerrada no inserta ni
+ revive nada, y un numerador que vuelve a quedarse corto después de haber sido ampliado **no vuelve a
+ avisar**. Afecta igual a las alertas de F2-09; arreglarlo es un índice único parcial sobre las alertas
+ vivas y no forma parte de F3-03.
 
 - **Tipo de cambio (F3-01):** ExchangeRate-API, con `TipoCambio__Url` y `TipoCambio__ApiKey`
   opcionales; sin clave va al endpoint abierto y con clave al plan de pago, que devuelve la tabla en

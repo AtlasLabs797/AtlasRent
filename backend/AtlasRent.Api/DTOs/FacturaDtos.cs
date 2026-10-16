@@ -83,6 +83,21 @@ public sealed class FacturaLineaPeticion
 }
 
 /// <summary>
+/// Referencia de la e-factura externa que se teclea a mano (D5, docs/ESPECIFICACION.md §3.7).
+/// <para>
+/// Sin validación ni lógica: es un texto que luego se imprime en el PDF. Se acepta vacía para
+/// borrarla, y eso no es un caso raro sino el normal de una factura que no tiene e-factura.
+/// </para>
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class ReferenciaEfacturaPeticion
+{
+    /// <summary>Referencia tecleada. Vacía o ausente deja la factura sin referencia.</summary>
+    [StringLength(120)]
+    public string? Referencia { get; init; }
+}
+
+/// <summary>
 /// Fila de la lista: la cabecera y los totales, sin las líneas. La lista se pagina y traerlas
 /// todas en cada fila no sirve de nada.
 /// <para>
@@ -139,6 +154,12 @@ public sealed record FacturaResumen(
 
     /// <summary>Pendiente mayor que cero con el vencimiento ya pasado (día de negocio de Santo Domingo).</summary>
     public bool Vencida { get; init; }
+
+    /// <summary>
+    /// Referencia de la e-factura externa tecleada a mano (D5). Nula en la mayoría de las facturas:
+    /// solo la lleva la que alguien ha enlazado a una e-factura emitida fuera.
+    /// </summary>
+    public string? ReferenciaEfactura { get; init; }
 }
 
 /// <summary>
@@ -196,6 +217,12 @@ public sealed record FacturaRespuesta(
 
     /// <summary>Pendiente mayor que cero con el vencimiento ya pasado (día de negocio de Santo Domingo).</summary>
     public bool Vencida { get; init; }
+
+    /// <summary>
+    /// Referencia de la e-factura externa tecleada a mano (D5). Nula en la mayoría de las facturas:
+    /// solo la lleva la que alguien ha enlazado a una e-factura emitida fuera.
+    /// </summary>
+    public string? ReferenciaEfactura { get; init; }
 }
 
 /// <summary>

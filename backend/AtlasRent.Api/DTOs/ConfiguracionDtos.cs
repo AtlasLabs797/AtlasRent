@@ -35,6 +35,73 @@ public sealed class SeriePeticion
     public bool Activa { get; init; } = true;
 }
 
+/// <summary>
+/// Alta o cambio del numerador de comprobante fiscal de una serie (F3-03,
+/// docs/ESPECIFICACION.md §3.7).
+/// <para>
+/// Los valores los escribe el administrador y no hay ninguno por defecto en el código: un rango de
+/// comprobantes es una autorización externa, no un dato que la aplicación pueda inventar.
+/// </para>
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class NumeradorFiscalPeticion
+{
+    /// <summary>
+    /// Tipo o prefijo del comprobante que autoriza este numerador. Se copia a cada comprobante
+    /// emitido, así que cambiarlo aquí no reescribe los ya emitidos.
+    /// </summary>
+    [Required]
+    [StringLength(16, MinimumLength = 1)]
+    public required string TipoPrefijo { get; init; }
+
+    /// <summary>Primer número autorizado del rango.</summary>
+    [Required]
+    public required int RangoDesde { get; init; }
+
+    /// <summary>Último número autorizado del rango.</summary>
+    [Required]
+    public required int RangoHasta { get; init; }
+
+    /// <summary>Día en que el rango deja de valer. En ese día todavía vale.</summary>
+    [Required]
+    public required DateOnly FechaVencimiento { get; init; }
+
+    /// <summary>
+    /// Número de comprobante que se emite a continuación. Se permite correrlo hasta
+    /// <c>RangoHasta + 1</c> porque así se declara agotado un rango que ya se terminó; correrlo más
+    /// allá rompe la emisión entera.
+    /// </summary>
+    [Required]
+    public required int SiguienteNumero { get; init; }
+
+    /// <summary>A partir de cuántos números restantes salta el aviso.</summary>
+    [Required]
+    public int UmbralAlerta { get; init; }
+}
+
+/// <summary>
+/// Numerador de una serie fiscal, tal y como queda guardado. Los números que quedan son
+/// <c>RangoHasta - SiguienteNumero + 1</c>, y van calculados porque es lo que decide el aviso y el
+/// bloqueo: que quien lo lee no tenga que reconstruirlos.
+/// </summary>
+public sealed record NumeradorFiscalRespuesta(
+    Guid Id,
+    Guid SerieId,
+    int SerieNumero,
+    string TipoPrefijo,
+    int RangoDesde,
+    int RangoHasta,
+    DateOnly FechaVencimiento,
+    int SiguienteNumero,
+    int UmbralAlerta)
+{
+    /// <summary>
+    /// Números que quedan por sacar (<c>RangoHasta - SiguienteNumero + 1</c>). Cero significa
+    /// agotado, y es lo que decide el aviso y el bloqueo de la emisión.
+    /// </summary>
+    public int Restantes { get; init; }
+}
+
 /// <summary>Fila de la lista y respuesta de una serie.</summary>
 public sealed record SerieRespuesta(
     Guid Id,
