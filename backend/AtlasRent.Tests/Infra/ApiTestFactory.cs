@@ -188,9 +188,7 @@ public sealed class IpFija(string ip) : IResolutorIpPeticion
 /// Antes el contador daba la última cifra de <c>198.51.100.0/24</c>: a partir de la instancia 254
 /// volvía a empezar, y como las pruebas de bloqueo dejan filas en <c>bloqueo_ip</c>, una instancia
 /// que reutilizaba la IP de otra convertía en <c>403</c> los logins de la que la estaba usando. Se
-/// reparten ahora por los dos últimos octetos de <c>198.51.0.0/16</c>, de donde sale el rango de
-/// pruebas que usan las pruebas, dejando fuera <c>198.51.100.0/24</c> porque hay pruebas que
-/// escriben a mano <c>198.51.100.201</c> y <c>198.51.100.250</c>.
+/// reparten ahora por los dos últimos octetos de <c>198.51.0.0/16</c>, evitando la red 100.
 /// </para>
 /// </summary>
 internal static class ContadorInstancias
@@ -201,14 +199,21 @@ internal static class ContadorInstancias
 
     /// <summary>
     /// Dirección de la instancia siguiente, repartida por los dos últimos octetos de
-    /// <c>198.51.0.0/16</c>. Da unas 50.000 direcciones distintas, de las que quedan fuera
-    /// <c>198.51.100.0/24</c> (pruebas que escriben <c>198.51.100.201</c> y
-    /// <c>198.51.100.250</c> a mano) y la red que usan las pruebas (RFC 5737).
+    /// <c>198.51.0.0/16</c> (RFC 5737, rango reservado para pruebas): unas 49.000 direcciones
+    /// distintas.
+    /// <para>
+    /// Se salta a propósito la red <c>100</c>: hay pruebas que escriben a mano
+    /// <c>198.51.100.201</c> (<c>Seguridad/IpNuevaTests.cs</c>) y <c>198.51.100.250</c> (la lista
+    /// blanca de <see cref="ApiTestFactory"/>), y una instancia que cayera ahí se encontraría con
+    /// filas de <c>bloqueo_ip</c> que no son suyas. Sin el salto, la red 100 salía igual en la
+    /// instancia número 25.386; era alcanzable, solo que improbable.
+    /// </para>
     /// </summary>
     public static string IpSiguiente()
     {
         var n = Next();
-        var red = 1 + (n / 254) % 200;
+        var indice = (n / 254) % 199; // 199 bloques de 254 = 50.546, menos uno por la red 100.
+        var red = indice >= 100 ? indice + 2 : indice + 1;
         var host = 1 + n % 254;
         return $"198.51.{red}.{host}";
     }

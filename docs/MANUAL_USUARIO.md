@@ -83,11 +83,81 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - **Anular** (gerente): pide motivo. **Los cobros de esa factura también se anulan.** Si un cobro pagaba varias facturas, solo se anula la parte de esta. La pantalla te muestra qué cobros se verán afectados antes de confirmar.
 
 ## 10. Cuentas y cobros (pantalla principal) ⬜
-- Tabla con facturas y fianzas. Filtros por año, cliente, unidad, estado, vencidas, no enviadas…
-- **Registrar cobro** (gerente): selecciona filas → panel lateral → importe, moneda recibida, forma de pago → *Registrar*. La app aplica el dinero a la deuda más antigua; puedes cambiarlo.
-- **Pago en la otra moneda:** si la factura es en USD y el cliente paga en pesos, escribe los pesos recibidos y el cambio aplicado. La app calcula el equivalente y salda la factura en USD. **Ya no hace falta duplicar la factura.** Si queda una diferencia pequeña por el cambio, puedes cerrarla con *Ajustar diferencia de cambio*.
-- Si el cliente paga de más, queda como **saldo a favor** de ese contrato.
-- **Retenciones:** si el cliente es agente de retención, la factura queda pagada cuando cobro + retención = total. Después registra el comprobante de retención.
+
+Es la pantalla que sustituye a Factusol: **una sola tabla con todo lo que se debe y lo que se ha
+pagado**, y desde ahí se cobra. Todavía no hay pantalla; lo que hay es la API que la alimentará.
+
+### Qué se ve
+
+Una fila por documento, con una **insignia de tipo**: `Factura`, `Proforma` o `Fianza`. Las fianzas
+salen en la misma tabla que las facturas porque son dinero: quien cobra necesita ver la deuda y la
+fianza del mismo contrato sin cambiar de pantalla.
+
+Columnas:
+
+| Columna | Qué es |
+|---|---|
+| Serie y número | La serie y el número del documento. Las fianzas no tienen. |
+| Comprobante | Tipo y número del comprobante fiscal, si la serie genera comprobantes. |
+| Fecha | De emisión. En una fianza, la del día en que se dio de alta. |
+| Cliente, unidad | De quién es y en qué unidad. En una fianza, los de su contrato. |
+| Concepto | El que lleva el documento. En una fianza, cuántas fianzas son. |
+| Moneda, total | En dólares o en pesos. En una fianza, el total es **lo exigido**. |
+| Retención | Lo retenido, si el cliente es agente de retención. |
+| Cobrado | **Dinero real cobrado.** No incluye la retención ni los ajustes por cambio. |
+| Pendiente | En una factura, lo que falta por cobrar. En una fianza, **lo que falta por exigir**. |
+| Saldo a devolver | Solo en fianzas: lo que se le tiene que devolver al cliente. |
+| Vencimiento, días vencida, vencida | Cuándo se debía y cuántos días lleva de retraso. Las fianzas no vencen. |
+| Estado | *Pendiente*, *Parcial*, *Pagada* o *Anulada* en facturas; el estado de la fianza en fianzas. |
+| Estado de envío | **Vacío todavía**: se llena cuando existan los envíos (F4-01). |
+
+- **Lo que no aplica en una fila sale vacío, nunca en cero.** Una proforma no tiene cobrado ni
+  pendiente porque no es una deuda; que pone «0» se leería como una deuda que no existe.
+- **En una fianza, «pendiente» y «saldo a devolver» son dos cosas distintas.** El pendiente es lo que
+  aún no se le ha exigido al cliente y el saldo es lo que hay que devolverle. Una fianza recién dada de
+  alta tiene pendiente > 0 y saldo 0, y se ven las dos columnas para que nadie las confunda.
+- Las **proformas no salen** salvo que filtres por ellas: son presupuestos, no cuentas.
+
+### Filtros
+
+Año, serie, moneda, estado del documento, estado de cobro, cliente, unidad, **vencidas** (lo que tiene
+pendiente y su vencimiento ya pasó), **modificadas** (tocadas después de emitirse), y los interruptores
+de incluir proformas y fianzas.
+
+- **«No enviadas» y «envío fallido» todavía no están**: dependen de saber si un documento se envió y con
+  qué resultado, que es lo que trae el bloque de envíos (F4-01). Cuando llegue, se añaden aquí.
+- Un filtro que una fianza no puede tener (serie, estado, vencidas, modificadas) **deja las fianzas
+  fuera** en vez de mostrarlas sin filtrar.
+- El orden es por fecha y se puede invertir. Es el único criterio de orden: el pendiente y los días de
+  mora son cuentas, no columnas, así que no se puede ordenar por ellos.
+- El estado del filtro vive en la barra de direcciones: se puede compartir un enlace con la vista ya
+  filtrada.
+
+### Totales al pie
+
+**Solo el gerente y el administrador los ven**, y **por moneda**: una línea por moneda, con el total, lo
+retenido, lo cobrado y lo pendiente de **todo** lo que hay filtrado, no solo de la página que se está
+viendo. **Nunca se convierten entre monedas**: consolidar en dólares es cosa de los informes.
+
+El empleado ve la misma lista de filas, **pero sin el pie de totales**: no recibe la cifra, y no la
+recibe como «todo cero», que también es una cifra.
+
+### Registrar un cobro
+
+1. Marca una o varias filas de facturas.
+2. Se abre el panel lateral con la propuesta: **si has marcado filas, la propuesta es para esas y no
+   propone ninguna otra**; si no has marcado nada, es la FIFO de siempre (la deuda más antigua primero).
+3. Escribes el importe recibido, la moneda, la forma de pago y la cuenta.
+4. *Registrar*. Puedes cambiar la propuesta antes de confirmar; la pantalla de cobro sigue teniendo lo
+   de siempre.
+
+Al marcar filas que superan el importe del cobro, la propuesta recorta la última marcada y lo que sobra
+queda como excedente o saldo a favor, como en cualquier otro cobro.
+
+### Lo que se puede hacer desde una fila
+
+Ver, duplicar, modificar (si no tiene comprobante), anular, el PDF y el envío. **Cada acción es la de su
+propio documento**: la vista no modifica nada por su cuenta, solo lleva a la pantalla que sí lo hace.
 
 ## 11. Fianzas ⬜
 En la misma tabla de cobros. Al terminar el contrato, el gerente la devuelve entera o en parte; si descuenta algo, indica motivo e importe.

@@ -320,6 +320,11 @@ builder.Services.AddScoped<TrabajoPeriodosSinFacturar>();
 builder.Services.AddScoped<ServicioFianzas>();
 builder.Services.AddScoped<TrabajoFianzas>();
 
+// La vista única de cuentas y cobros (F3-10, §3.13): facturas, proformas y fianzas en una sola lista
+// con sus filtros y los totales por moneda. Solo lectura; el cobro se sigue registrando por
+// POST /api/v1/cobros.
+builder.Services.AddScoped<ServicioCuentas>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

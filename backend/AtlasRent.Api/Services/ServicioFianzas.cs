@@ -523,8 +523,12 @@ public sealed class ServicioFianzas(
     /// Las asignaciones de un cobro anulado no cuentan, que es lo mismo que haberlas borrado sin
     /// borrarlas.
     /// </para>
+    /// <para>
+    /// Desde F3-10 es <b>pública</b>: la vista única de cuentas (§3.13) mete fianzas y facturas en la
+    /// misma respuesta y necesita estas mismas cifras para no volver a sumar los cobros por su cuenta.
+    /// </para>
     /// </summary>
-    private async Task<Dictionary<Guid, Cifras>> CifrasAsync(
+    public async Task<Dictionary<Guid, Cifras>> CifrasAsync(
         IReadOnlyCollection<Guid> fianzaIds,
         CancellationToken ct)
     {
@@ -649,7 +653,7 @@ public sealed class ServicioFianzas(
     /// <see cref="CifrasAsync"/> se devuelven juntos y en la respuesta se usan juntos: separarlos
     /// sería el momento en que uno se cambia y los otros dos no.
     /// </summary>
-    private sealed record Cifras(decimal Cobrado, decimal Devuelto, decimal Descontado)
+    public sealed record Cifras(decimal Cobrado, decimal Devuelto, decimal Descontado)
     {
         /// <summary>Lo que queda por devolver. Nunca negativo porque el servicio no lo deja bajar de cero.</summary>
         public decimal Saldo => CalculoFianza.Saldo(Cobrado, Devuelto, Descontado);

@@ -435,6 +435,88 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   descontado o sin motivo es 400**, que es el criterio de aceptación de la tarea.
 - **`fianza` y `fianza_devolucion` no conceden `DELETE`**, y `fianza` es única por `(contrato_id, moneda)`.
 
+### 6.7 Vista única de cuentas y cobros (F3-10)
+
+La pantalla principal del día a día (§3.13): **una sola lista paginada con facturas, proformas y
+fianzas**, con una insignia de tipo en cada fila, y los totales al pie **por moneda**.
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/cuentas` | `factura.ver` | Filtros `anio`, `serieId`, `moneda`, `estado`, `estadoCobro`, `clienteId`, `unidadId`, `vencidas`, `modificadas`, `incluirProformas` (por defecto **false**) e `incluirFianzas` (por defecto **true**). Paginación obligatoria; solo se admite `sortBy=fecha`, con `sortDir` (por defecto ascendente, como el resto de la API). |
+| `POST /api/v1/cobros/simular` | `cobro.registrar` | Además de lo de F3-06, acepta `facturasSeleccionadas` (lista de `facturaId`). Con ellas la propuesta es para esas facturas y **no propone ninguna otra**; sin ellas sigue siendo la FIFO. |
+
+#### Columnas de la fila y de dónde sale cada una
+
+| Columna | Factura | Proforma | Fianza |
+|---|---|---|---|
+| `tipo` | `Factura` | `Proforma` | `Fianza` |
+| `id` | id de la factura | id de la factura | id de la fianza |
+| `serieId`, `serieNumero`, `numero` | serie y número del documento | ídem | `null`: una fianza no tiene serie |
+| `comprobanteTipo`, `comprobanteNumero` | `comprobante_fiscal` (F3-03); `null` si la serie no lo genera | `null` (nunca hay comprobante) | `null` |
+| `fecha` | `fecha_emision` | `fecha_emision` | `CreatedAt` de la fianza, en zona de negocio: es la fecha del alta |
+| `clienteId`, `cliente` | los de la factura | ídem | los del **contrato** de la fianza |
+| `unidadId`, `unidad` | los de la factura | ídem | los del contrato de la fianza |
+| `contratoId` | el de la factura o `null` | ídem | el de la fianza |
+| `concepto` | el de la factura | ídem | `Fianza de N fianzas` |
+| `moneda` | la de la factura | ídem | la de la fianza |
+| `total` | `Redondeo.Importe(total)` | ídem | **importe exigido**, que es lo que se pidió |
+| `retencion` | `Redondeo.Importe(retencion)` | `null` | `null`: una fianza no retiene |
+| `cobrado` | `CalculoCobro` (F3-06) | `null` | `CifrasAsync` de F3-09 |
+| `pendiente` | `CalculoCobro`: `neto − cobrado − retenciones − ajustado` | `null`: no genera deuda | **exigido − cobrado**, lo que falta por exigir (`CalculoFianza.PendienteDeCobro`) |
+| `saldo_a_devolver` | `null` | `null` | `cobrado − devuelto − descontado` (`CalculoFianza.Saldo`) |
+| `vencimiento`, `dias_vencida`, `vencida` | de la factura | `null` | `null`: una fianza no vence |
+| `estado` | estado de **cobro** (`CalculoCobro`), y el del documento en una proforma | estado del documento | estado de la fianza (`CalculoFianza.Estado`) |
+| `modificada` | `modificada_at` (F3-08) | ídem | `null` |
+| `tiene_reserva_con_anticipo` | `true` si su reserva tiene anticipo anotado (§3.13) | `false` | `false` |
+| `estado_envio` | `null` hasta que exista F4-01 | `null` | `null` |
+| `cobrable` | pendiente > 0 y no anulada | `false`: un presupuesto no se cobra | pendiente > 0 y estado cobrable |
+
+- **Lo que no aplica viene en `null` y no en cero.** Cero es un dato («esta factura está pagada») y un
+  cero donde no hay dato se lee como una deuda que no existe o como una retención que no se retuvo.
+- **`pending` y `saldo_a_devolver` de una fianza son dos preguntas distintas**: lo pendiente se pide y el
+  saldo se devuelve. Una fianza recién dada de alta tiene pendiente > 0 y saldo 0.
+- **`tiene_reserva_con_anticipo` se resuelve por el concepto, no por una clave ajena.** F3-05 no dejó
+  columna: el concepto de la factura de una reserva corta es `Reserva corta {reservaId}` porque es lo
+  único que la distingue (no tiene contrato). `TODO(A#)`: si el icono tiene que ser un dato, la salida
+  es `factura.reserva_id`; hasta entonces, una factura tecleada a mano con ese concepto y un
+  identificador que exista en `reserva` mostraría el icono sin ser su factura.
+
+#### Filtros: los que existen y los que no
+
+| Filtro | Estado | Notas |
+|---|---|---|
+| `anio` | **Sí** | Año de la fecha de emisión; en las fianzas, el del alta. |
+| `serieId` | **Sí** | Solo facturas: una fianza no tiene serie. |
+| `moneda` | **Sí** | Aplica a los dos tipos. |
+| `estado` | **Sí** | Estado del **documento** (`EstadoFactura`), que es columna. |
+| `estadoCobro` | **Sí** | Estado derivado (`Pendiente`, `Parcial`, `Pagada`, `Anulada`), filtrado en la base con la cuenta de `CalculoCobro` como subconsulta correlacionada. |
+| `clienteId`, `unidadId` | **Sí** | En las fianzas, los del contrato. |
+| `vencidas` | **Sí** | Pendiente > 0 y vencimiento pasado. El vencimiento del mismo día no está vencido (§3.8). |
+| `modificadas` | **Sí** | `modificada_at IS NOT NULL`. |
+| `incluirProformas` | **Sí** | Por defecto `false`: §3.13 pone las proformas «con filtro». |
+| `incluirFianzas` | **Sí** | Por defecto `true`: en esta vista son filas normales de dinero. |
+| `noEnviadas`, `envioFallido`, `modificadasTrasEnvio` | **No** | Son de **F4-01**, que es quien sabrá si un documento se envió y con qué resultado. No se aceptan: un filtro que se acepta y no se aplica devuelve filas que parecen filtradas, y alguien las persigue. `estado_envio` viene `null` por lo mismo. |
+
+- **Un filtro que una fianza no puede expresar la deja fuera** (`serieId`, `estado`, `estadoCobro`,
+  `vencidas`, `modificadas`): devolverla «por si acaso» sería una fila que el filtro no tocó.
+- **Los totales se calculan sobre todo el conjunto filtrado**, no sobre la página, y con la misma cuenta
+  que las filas, para que el pie cuadre con lo que hay arriba.
+- **Paginación por mezcla.** Cada tipo se trae hasta el final de la página pedida (`page × pageSize`) y
+  la ventana se corta de la unión. Traer solo `pageSize` de cada uno perdería filas: una fianza puede
+  desplazar la última factura de la página 2 a la 3, y entonces no saldría nunca. La clave de orden es
+  fecha y, a igualdad de fecha, identificador, que es lo que hace la paginación estable.
+
+#### Totales
+
+- Vienen en `totales` **por moneda**, cada moneda sumada consigo misma y **sin convertir**: consolidar
+  en dólares es de F5-01 con el tipo de cambio congelado de cada documento (D9). Cuatro sumas por
+  moneda: `total`, `retencion`, `cobrado` y `pendiente`; los nulos suman cero, así que el pie cuadra con
+  lo que se ve en pantalla.
+- **El permiso es `informe.ver` (gerente y administrador). Para el empleado `totales` es `null`**, no un
+  objeto con ceros: cero es un total que se puede sumar, imprimir y archivar. Es el criterio de
+  aceptación de la tarea.
+- El `saldo_a_devolver` de las fianzas **no se suma** en el pie: es dinero que se devuelve, no deuda.
+
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
 - **Añadido para Atlas Rent (expuesta a internet):**

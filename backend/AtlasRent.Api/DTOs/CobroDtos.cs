@@ -79,6 +79,22 @@ public sealed class CobroPeticion
     public IReadOnlyList<CobroAsignacionPeticion>? Asignaciones { get; init; }
 
     /// <summary>
+    /// Filas marcadas en la vista de cuentas (F3-10, §3.13 «seleccionar filas → panel lateral»).
+    /// <para>
+    /// <b>No es una asignación.</b> Aquí solo van los identificadores, sin importes: quien marca
+    /// facturas en la tabla está diciendo a cuáles va el dinero, no repartiéndolo. El servicio propone
+    /// el importe de cada una —su pendiente, hasta donde alcance el cobro— y quien lo registra puede
+    /// corregirlo con <see cref="Asignaciones"/>, que manda sobre esto.
+    /// </para>
+    /// <para>
+    /// Solo se acepta con <c>contratoId</c>: sin contrato no hay deuda que saldar (§3.10.1). Una
+    /// factura que no sea del contrato, o que ya esté pagada, es un 409 que la dice por su nombre, que
+    /// es lo mismo que hace una asignación explícita.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Guid>? FacturasSeleccionadas { get; init; }
+
+    /// <summary>
     /// Tipo de cambio <b>realmente aplicado</b> en este cobro (F3-07, §3.10.2, D8).
     /// <para>
     /// Si no viene, se usa el cambio del día de la moneda recibida, que es lo que guarda

@@ -175,6 +175,10 @@ internal static class AyudaFacturas
     /// Nulo es lo normal. Solo las pruebas de cobro (F3-06) lo pasan, porque un cobro con
     /// asignaciones explícitas necesita un contrato al que moverle el dinero.
     /// </param>
+    /// <param name="unidadId">
+    /// Nulo es lo normal. Desde F3-10 lo pasan las pruebas de la vista única, que muestran la unidad
+    /// de la fila y la filtran, y el alta de la factura no la exige.
+    /// </param>
     public static async Task<Guid> CrearFacturaAsync(
         SesionCliente sesion,
         Guid clienteId,
@@ -182,7 +186,8 @@ internal static class AyudaFacturas
         Moneda moneda,
         DateOnly vencimiento,
         CancellationToken ct,
-        Guid? contratoId = null)
+        Guid? contratoId = null,
+        Guid? unidadId = null)
     {
         var creada = await sesion.PostAsync(
             "/api/v1/facturas",
@@ -190,6 +195,7 @@ internal static class AyudaFacturas
             {
                 clienteId,
                 contratoId,
+                unidadId,
                 serieId,
                 moneda = moneda.ToString(),
                 fechaVencimiento = vencimiento.ToString("yyyy-MM-dd"),

@@ -54,8 +54,13 @@ internal static class AyudaCobros
     /// compartida al punto de partida, y eso solo lo puede hacer la conexión de superusuario.
     /// </para>
     /// <para>
-    /// Solo toca los documentos de <b>esta</b> prueba, que ya no se vuelven a mirar: el borrado va al
-    /// cambio del día indicado y los documentos que lo referencian.
+    /// Toca <b>todos</b> los documentos que referencien el cambio de ese día y ese tipo de moneda,
+    /// no solo los de la prueba: el SQL no filtra por documento porque no hay forma de saber
+    /// cuáles son «de esta prueba». Hoy es inocuo porque las clases de la colección se ejecutan en
+    /// serie y cada una se limpia al terminar, y porque dejar esas referencias a <c>NULL</c> no
+    /// rompe nada (la columna es nula por diseño y la emisión la vuelve a poner). Si alguna vez se
+    /// paraleliza la colección, este helper tiene que pasar a filtrar por los documentos que la
+    /// prueba creó.
     /// </para>
     /// </summary>
     public static IAsyncDisposable SinRastroDeCambio(ContenedorBdFixture bd, DateOnly fecha, Moneda moneda)
@@ -148,6 +153,11 @@ internal static class AyudaCobros
     /// porque el número y el congelado del tipo de cambio los saca el contador transaccional de
     /// §3.7, y una factura emitida sin pasar por ahí no es una factura emitida.
     /// </summary>
+    /// <param name="unidadId">
+    /// Nulo es lo normal. Desde F3-10 se pasa cuando la prueba necesita la columna de unidad o el
+    /// filtro por unidad de la vista única: la factura puede no tenerla porque el alta no la exige, y
+    /// una vista de cuentas sin unidad no se puede filtrar por ella.
+    /// </param>
     public static async Task<Guid> EmitidaAsync(
         SesionCliente sesion,
         Guid clienteId,
@@ -156,7 +166,8 @@ internal static class AyudaCobros
         Moneda moneda,
         DateOnly vencimiento,
         decimal total,
-        CancellationToken ct)
+        CancellationToken ct,
+        Guid? unidadId = null)
     {
         var creada = await sesion.PostAsync(
             "/api/v1/facturas",
@@ -164,6 +175,7 @@ internal static class AyudaCobros
             {
                 clienteId,
                 contratoId,
+                unidadId,
                 serieId,
                 moneda = moneda.ToString(),
                 fechaVencimiento = vencimiento.ToString("yyyy-MM-dd"),
@@ -187,6 +199,10 @@ internal static class AyudaCobros
     /// F3-07 (§3.10.2): el cambio que el gerente dice que se usó de verdad. Nulo es lo normal y lo que
     /// quiere la mayoría de las pruebas: entonces se usa el del día.
     /// </param>
+    /// <param name="facturasSeleccionadas">
+    /// F3-10 (§3.13): los identificadores de las filas marcadas en la vista de cuentas, para que la
+    /// propuesta sea para esas y no para la FIFO. Nulo es lo normal.
+    /// </param>
     public static object Peticion(
         Guid clienteId,
         Guid? contratoId,
@@ -198,7 +214,8 @@ internal static class AyudaCobros
         decimal usarSaldoAFavor = 0m,
         string? referencia = null,
         object? asignaciones = null,
-        decimal? tipoCambioAplicado = null) =>
+        decimal? tipoCambioAplicado = null,
+        object? facturasSeleccionadas = null) =>
         new
         {
             clienteId,
@@ -212,6 +229,7 @@ internal static class AyudaCobros
             usarSaldoAFavor,
             asignaciones,
             tipoCambioAplicado,
+            facturasSeleccionadas,
         };
 
     /// <summary>

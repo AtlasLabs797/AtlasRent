@@ -740,7 +740,7 @@ public sealed class ServicioCobros(
             // pagar justo las facturas que este cobro viene a pagar.
             (candidatas, pendientes) = await DeudasDelContratoAsync(contratoConDeuda, ct);
         }
-        else if (peticion.Asignaciones is { Count: > 0 })
+        else if (peticion.Asignaciones is { Count: > 0 } || peticion.FacturasSeleccionadas is { Count: > 0 })
         {
             // TODO(A#): sin contrato no hay a qué facturas del cliente aplicar el importe ni dónde
             // dejar el excedente, así que un cobro suelto no admite asignaciones. La especificación no
@@ -754,7 +754,9 @@ public sealed class ServicioCobros(
 
         var lineas = peticion.Asignaciones is { Count: > 0 } pedidas
             ? await LineasExplícitasAsync(pedidas, peticion, cambioAplicado, pendientes, disponible, ct)
-            : LineasFifo(candidatas, pendientes, disponible, peticion.MonedaRecibida, cambioAplicado);
+            : peticion.FacturasSeleccionadas is { Count: > 0 } marcadas
+                ? await LineasDeSeleccionAsync(marcadas, peticion, cambioAplicado, pendientes, disponible, ct)
+                : LineasFifo(candidatas, pendientes, disponible, peticion.MonedaRecibida, cambioAplicado);
 
         var totalAsignado = Redondeo.Importe(lineas.Sum(l => l.Importe));
         var totalRecibidoAsignado = Redondeo.Importe(lineas.Sum(l => l.Consumido));
@@ -929,6 +931,74 @@ public sealed class ServicioCobros(
     /// manda las dos, o ninguna, está diciendo algo que no se puede hacer.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Propuesta de cobro para las filas marcadas en la vista de cuentas (F3-10, §3.13
+    /// «seleccionar filas → panel lateral»).
+    /// <para>
+    /// <b>No es una asignación.</b> Llegan identificadores y el importe de cada uno lo pone aquí: su
+    /// pendiente, recortado por lo que queda del cobro. Encadena la misma línea y las mismas
+    /// validaciones que <see cref="LineasExplícitasAsync"/> —la factura tiene que ser del contrato, estar
+    /// emitida y su moneda se convierte por §3.10.2—, de modo que marcar filas y teclear la asignación
+    /// den el mismo resultado y no haya dos reglas de las que una se pueda desincronizar.
+    /// </para>
+    /// <para>
+    /// El recorte va en la moneda recibida, que es en la que se consume el cobro
+    /// (<see cref="LineaPlan.Consumido"/>), y por eso una factura en la otra moneda entra entera o
+    /// recortada según lo que quede después de las anteriores. El orden es el de la selección.
+    /// </para>
+    /// </summary>
+    private async Task<List<LineaPlan>> LineasDeSeleccionAsync(
+        IReadOnlyList<Guid> marcadas,
+        CobroPeticion peticion,
+        decimal cambioAplicado,
+        Dictionary<Guid, decimal> pendientes,
+        decimal disponible,
+        CancellationToken ct)
+    {
+        var encontradas = await contexto.Factura
+            .AsNoTracking()
+            .Include(f => f.Serie)
+            .Where(f => marcadas.Contains(f.Id))
+            .ToDictionaryAsync(f => f.Id, ct);
+
+        var lineas = new List<LineaPlan>();
+        var restante = disponible;
+
+        foreach (var facturaId in marcadas.Distinct())
+        {
+            if (restante <= 0m)
+            {
+                break;
+            }
+
+            if (!pendientes.TryGetValue(facturaId, out var pendiente))
+            {
+                if (!encontradas.TryGetValue(facturaId, out var ausente))
+                {
+                    throw new KeyNotFoundException($"La factura '{facturaId:D}' no existe.");
+                }
+
+                throw new InvalidOperationException(
+                    $"La factura {NumeroDe(ausente)} no tiene nada pendiente: no es del contrato del cobro o ya "
+                        + "está pagada. Solo se cobra lo que se debe.");
+            }
+
+            var importe = Redondeo.Importe(Math.Min(pendiente, restante));
+            var linea = LineaFactura(
+                new CobroAsignacionPeticion { FacturaId = facturaId, Importe = importe },
+                peticion,
+                cambioAplicado,
+                pendientes,
+                encontradas,
+                importe);
+
+            restante = Redondeo.Importe(restante - linea.Consumido);
+            lineas.Add(linea);
+        }
+
+        return lineas;
+    }
+
     private async Task<List<LineaPlan>> LineasExplícitasAsync(
         IReadOnlyList<CobroAsignacionPeticion> pedidas,
         CobroPeticion peticion,

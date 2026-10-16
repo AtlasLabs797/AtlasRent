@@ -96,8 +96,8 @@ public sealed class ReservaMensualTests(ContenedorBdFixture bd, ApiTestFactory a
 
         // La cancelada no sale en la lista de activas, pero sí si se piden las dadas de baja.
         (await sesion.GetAsync($"/api/v1/reservas/{id:D}", ct)).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await ListarIdsAsync(sesion, incluirInactivas: false, ct)).Should().NotContain(id);
-        (await ListarIdsAsync(sesion, incluirInactivas: true, ct)).Should().Contain(id);
+        (await ListarIdsAsync(sesion, clienteId, incluirInactivas: false, ct)).Should().NotContain(id);
+        (await ListarIdsAsync(sesion, clienteId, incluirInactivas: true, ct)).Should().Contain(id);
     }
 
     /// <summary>
@@ -135,13 +135,23 @@ public sealed class ReservaMensualTests(ContenedorBdFixture bd, ApiTestFactory a
             ct)).StatusCode.Should().Be(HttpStatusCode.Conflict, "una reserva cancelada ya no se toca");
     }
 
+    /// <summary>
+    /// Lista **solo las reservas del cliente** de la prueba.
+    /// <para>
+    /// Fijar el cliente no es un detalle: el listado sale paginado y la base es compartida, así que
+    /// sin filtrar esta aserción solo pasaba mientras el bloque entero hadn't creado más reservas
+    /// que las que caben en una página. Con el filtro, la afirmación va de la cancelada y de las
+    /// suyas, que es lo que dice comprobar (BUG-011).
+    /// </para>
+    /// </summary>
     private static async Task<List<Guid>> ListarIdsAsync(
         SesionCliente sesion,
+        Guid clienteId,
         bool incluirInactivas,
         CancellationToken ct)
     {
         var respuesta = await sesion.GetAsync(
-            $"/api/v1/reservas?incluirInactivas={incluirInactivas}", ct);
+            $"/api/v1/reservas?clienteId={clienteId:D}&incluirInactivas={incluirInactivas}", ct);
         respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
 
         return [.. (await AyudaReserva.Json(respuesta, ct))

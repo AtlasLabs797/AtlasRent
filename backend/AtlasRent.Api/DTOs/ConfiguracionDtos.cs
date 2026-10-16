@@ -74,9 +74,17 @@ public sealed class NumeradorFiscalPeticion
     [Required]
     public required int SiguienteNumero { get; init; }
 
-    /// <summary>A partir de cuántos números restantes salta el aviso.</summary>
+    /// <summary>
+    /// A partir de cuántos números restantes salta el aviso.
+    /// <para>
+    /// Es <c>required</c> y no solo <c>[Required]</c> porque, al ser un <c>int</c> no anulable, sin
+    /// <c>required</c> la deserialización de System.Text.Json no exige que venga en la petición:
+    /// una petición que lo omita se materializaría como 0 y el servicio respondería con un 409 de
+    /// negocio en lugar del 400 que corresponde a una petición incompleta (BUG-012).
+    /// </para>
+    /// </summary>
     [Required]
-    public int UmbralAlerta { get; init; }
+    public required int UmbralAlerta { get; init; }
 }
 
 /// <summary>

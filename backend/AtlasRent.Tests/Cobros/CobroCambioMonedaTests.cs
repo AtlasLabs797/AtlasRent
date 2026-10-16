@@ -196,8 +196,11 @@ public sealed class CobroCambioMonedaTests(ContenedorBdFixture bd, ApiTestFactor
         asignacion.ImporteRecibido.Should().Be(60_000m, "todo el cobro se aplicó a la factura: el resto es pendiente");
 
         // La conversión hacia atrás, con los mismos números guardados, tiene que dar lo que se aplicó:
-        // si no cuadrara, la fila guardaría dos cifras que no se cuentan.
-        var equivalente = Math.Round(asignacion.ImporteRecibido!.Value / asignacion.TipoCambioValor!.Value, 2);
+        // si no cuadrara, la fila guardaría dos cifras que no se cuentan. Se redondea con
+        // `Redondeo.Importe` y no con `Math.Round` porque el sistema entero usa half-up (D27) y
+        // `Math.Round` va a half-even: con estos números no hay diferencia, pero ante un medio
+        // céntimo esta aserción fallaría por una regla que la aplicación no aplica.
+        var equivalente = Redondeo.Importe(asignacion.ImporteRecibido!.Value / asignacion.TipoCambioValor!.Value);
         equivalente.Should().Be(asignacion.Importe, "lo recibido dividido por el cambio es lo aplicado a la factura");
 
         var pendiente = 1_000m - asignacion.Importe;
