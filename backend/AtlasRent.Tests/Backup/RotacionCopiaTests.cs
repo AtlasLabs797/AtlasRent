@@ -92,7 +92,7 @@ public sealed class RotacionCopiaTests : IDisposable
     public async Task UnaCopiaQueFallaDejaAlertaConLaFechaDelDia()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var alertas = new AlertaEnMemo([]);
         var servicio = Crear(new VolcadoFalso(null), reloj, alertas);
 
@@ -114,7 +114,7 @@ public sealed class RotacionCopiaTests : IDisposable
     {
         var ct = TestContext.Current.CancellationToken;
         var alertas = new AlertaEnMemo([]);
-        var servicio = Crear(new VolcadoFalso(DumpConDatos), new RelojPrueba(), alertas);
+        var servicio = Crear(new VolcadoFalso(DumpConDatos), new RelojPrueba(RelojPrueba.InicioDelDia), alertas);
 
         await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
 
@@ -129,7 +129,7 @@ public sealed class RotacionCopiaTests : IDisposable
     public async Task LaRotacionDejaSoloLasCuatroMasRecientes()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var servicio = Crear(new VolcadoFalso(DumpConDatos), reloj);
 
         var fechas = new List<string>();
@@ -155,7 +155,7 @@ public sealed class RotacionCopiaTests : IDisposable
     public async Task DosEjecucionesDelMismoDiaSonIdempotentes()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var servicio = Crear(new VolcadoFalso(DumpConDatos), reloj);
 
         var primera = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
@@ -179,7 +179,7 @@ public sealed class RotacionCopiaTests : IDisposable
     public async Task UnaCopiaQueFallaNoRotaNiBorraNada()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
 
         // Tres días buenos, para tener con qué rottenar.
         var bueno = Crear(new VolcadoFalso(DumpConDatos), reloj);
@@ -212,7 +212,7 @@ public sealed class RotacionCopiaTests : IDisposable
     {
         var ct = TestContext.Current.CancellationToken;
         var soloEsquema = "COPY public.cliente (id, nombre) FROM stdin;\n\\.\n";
-        var servicio = Crear(new VolcadoFalso(soloEsquema), new RelojPrueba());
+        var servicio = Crear(new VolcadoFalso(soloEsquema), new RelojPrueba(RelojPrueba.InicioDelDia));
 
         var accion = () => servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
         await accion.Should().ThrowAsync<CopiaSeguridadFallidaException>();
@@ -229,7 +229,7 @@ public sealed class RotacionCopiaTests : IDisposable
     public async Task UnaCopiaIlegibleNoCuentaComoValida()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var servicio = Crear(new VolcadoFalso(DumpConDatos), reloj);
         var resultado = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
 
@@ -249,7 +249,7 @@ public sealed class RotacionCopiaTests : IDisposable
     public async Task UnaCopiaRenombradaConLaFechaDeHoyNoCuentaComoLaCopiaDeHoy()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var servicio = Crear(new VolcadoFalso(DumpConDatos), reloj);
 
         reloj.Avanzar(TimeSpan.FromDays(1));
@@ -284,7 +284,7 @@ public sealed class RotacionCopiaTests : IDisposable
         documentos.AsegurarCarpeta();
         await File.WriteAllBytesAsync(documentos.RutaDe("abc123.pdf"), "%PDF-1.7 titulo"u8.ToArray(), ct);
 
-        var servicio = Crear(new VolcadoFalso(DumpConDatos), new RelojPrueba());
+        var servicio = Crear(new VolcadoFalso(DumpConDatos), new RelojPrueba(RelojPrueba.InicioDelDia));
         var resultado = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
 
         resultado.Documentos.Should().Be(1);

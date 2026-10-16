@@ -246,9 +246,19 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
                 .HasForeignKey(e => e.UsuarioId);
         });
 
-        // F1-12: registro de lo que falló y que hay que mirar. La clave es única porque el criterio
+        // F1-12: registro de lo que falló y que hay que mirar. La unicidad está porque el criterio
         // de aceptación de F1-12 es "fallo → alerta" sin duplicar: si el backup falla cada hora, sin
         // esa restricción la tabla crece y la señal desaparece.
+        //
+        // BUG-008: la unicidad es **parcial y sobre (tipo, clave)**, no sobre `clave` a secas. Con un
+        // único único por `clave`, una alerta cerrada bloqueaba su propia clave para siempre y el
+        // `ON CONFLICT ... WHERE resuelta_at IS NULL` no insertaba ni resucitaba nada: un problema que
+        // aparecía, se cerraba y volvía a aparecer no volvía a avisar, al revés de "alerta
+        // persistente" (§3.16) y de AGENTS.md §6. Filtrando a `resuelta_at IS NULL` la restricción
+        // solo rige las alertas vivas —que es lo único que no puede duplicarse— y deja que la misma
+        // clave vuelva a levantarse una vez resuelta. Va con `tipo` delante porque la identidad de un
+        // fallo es «de qué tipo y con qué clave»: dos tipos distintos que coinciden en la clave son
+        // dos hechos, no uno (prueba `FallosDeTiposDistintosSonAlertasDistintas`).
         modelBuilder.Entity<Alerta>(entidad =>
         {
             entidad.ToTable("alerta");
@@ -257,7 +267,9 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.Property(e => e.Tipo).IsRequired();
             entidad.Property(e => e.Mensaje).IsRequired();
             entidad.Property(e => e.OcurridoAt).IsRequired();
-            entidad.HasIndex(e => e.Clave).IsUnique();
+            entidad.HasIndex(e => new { e.Tipo, e.Clave })
+                .IsUnique()
+                .HasFilter("resuelta_at IS NULL");
             entidad.HasIndex(e => new { e.Tipo, e.OcurridoAt });
         });
 

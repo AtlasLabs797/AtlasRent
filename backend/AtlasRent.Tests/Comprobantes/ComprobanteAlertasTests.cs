@@ -14,8 +14,8 @@ namespace AtlasRent.Tests.Comprobantes;
 /// <para>
 /// Se prueba <b>el trabajo contra la base de datos real</b>, no el servicio de alertas con un doble:
 /// lo que importa de un aviso no es a qué método se llama, sino que la fila quede viva mientras el
-/// problema siga y se cierre cuando deje. Eso solo se ve leyendo <c>alerta</c> después de que el
-/// trabajo haya pasado.
+/// problema siga, se cierre cuando deje y <b>vuelva a levantarse si el problema regresa</b> (BUG-008).
+/// Eso solo se ve leyendo <c>alerta</c> después de que el trabajo haya pasado.
 /// </para>
 /// </summary>
 [Collection(nameof(ColeccionBd))]
@@ -99,16 +99,22 @@ public sealed class ComprobanteAlertasTests(ContenedorBdFixture bd, ApiTestFacto
     /// saca al numerador de debajo de él, que es justo lo que el aviso está diciendo.
     /// </para>
     /// <para>
-    /// Y lo que se deja por escrito aquí es un límite de <see cref="ServicioAlertas"/>, no de este
-    /// trabajo: <c>alerta.clave</c> es única, así que cuando la alerta ya está cerrada el
-    /// <c>ON CONFLICT … DO UPDATE … WHERE resuelta_at IS NULL</c> no inserta nada ni la revive. Es
-    /// decir, <b>un numerador que vuelve a quedarse corto no vuelve a avisar con esa clave</b>. Está
-    /// igual para todas las alertas del sistema (las de F2-09 entre ellas), así que arreglarlo es
-    /// decisión de otro y esta prueba deja constancia de cómo está hoy.
+    /// Y lo que viene después es la otra mitad (BUG-008): volver a quedarse corto <b>vuelve a
+    /// levantar el aviso</b>. Con el único de <c>alerta.clave</c> a secas, una alerta cerrada
+    /// bloqueaba su clave para siempre y el <c>ON CONFLICT … DO UPDATE … WHERE resuelta_at IS NULL</c>
+    /// no insertaba nada ni la resucitaba: un numerador que se quedaba corto, se ampliaba y volvía a
+    /// quedarse corto se quedaba sin avisar, que es lo contrario de "alerta persistente" (§3.16) y de
+    /// AGENTS.md §6. Ahora el único es parcial sobre las alertas vivas, así que la fila se reabre.
+    /// </para>
+    /// <para>
+    /// Se reabre <b>la misma fila</b>, no una nueva: la clave es la identidad del asunto, no el número
+    /// de un aviso, y el contador de repeticiones es lo que dice "lleva tres días con estos números".
+    /// Reabrir no borra el rastro: lo que se conserva es que pasó y cuántas veces se ha visto, y
+    /// <c>ocurrido_at</c> pasa a apuntar a esta última vez.
     /// </para>
     /// </summary>
     [Fact]
-    public async Task AlAmpliarElRangoElAvisoSeResuelveYLaFilaCerradaNoSeRevive()
+    public async Task AlAmpliarElRangoElAvisoSeResuelveYAlVolverASeQuedarCortoSeReabre()
     {
         var ct = TestContext.Current.CancellationToken;
         var serieId = await SerieConNumeradorAsync(ct, umbralAlerta: 10);
@@ -128,18 +134,15 @@ public sealed class ComprobanteAlertasTests(ContenedorBdFixture bd, ApiTestFacto
         resuelta.Id.Should().Be(abierta!.Id, "cerrar no es borrar: la fila sigue ahí diciendo que pasó");
         resuelta.Repeticiones.Should().Be(abierta.Repeticiones, "cerrada no se refresca");
 
-        // Volver a quedarse corto deja la fila cerrada y no crea otra: clave única más el WHERE del
-        // ON CONFLICT. Es lo que hay hoy en el sistema entero, y por eso esta prueba lo dice.
+        // Volver a quedarse corto tiene que volver a avisar: es el defecto que F3-03 se encontró.
         await ReducirRangoAsync(serieId, ct);
         await EjecutarTrabajoAsync(ct);
 
-        var trasVolver = await AyudaComprobante.AlertaAsync(bd, clave, ct, otra: true);
-        trasVolver!.Id.Should().Be(abierta.Id);
-        trasVolver.ResueltaAt.Should().NotBeNull();
-        trasVolver.Repeticiones.Should().Be(abierta.Repeticiones);
-
-        (await AyudaComprobante.AlertaAsync(bd, clave, ct))
-            .Should().BeNull("y no hay ninguna viva con esa clave: el aviso no volvió a levantarse");
+        var reabierta = await AyudaComprobante.AlertaAsync(bd, clave, ct);
+        reabierta.Should().NotBeNull("el numerador vuelve a estar por debajo del umbral: tiene que avisar");
+        reabierta!.Id.Should().Be(abierta.Id, "es el mismo asunto, así que la misma fila");
+        reabierta.ResueltaAt.Should().BeNull("vuelve a estar abierta");
+        reabierta.Repeticiones.Should().Be(abierta.Repeticiones + 1, "el contador sigue acumulando");
     }
 
     // ---------------------------------------------------------------- apoyo

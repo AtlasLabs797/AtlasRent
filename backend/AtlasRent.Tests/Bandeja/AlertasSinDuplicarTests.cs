@@ -14,14 +14,20 @@ namespace AtlasRent.Tests.Bandeja;
 /// <para>
 /// La forma en que se rompe es siempre la misma y nunca es visible en los datos: correr el trabajo
 /// dos veces deja dos filas iguales, o una fila que se refresca dos veces, y el contador de
-/// repeticiones dice "lo vio dos veces" el primer día. Con la clave única de <c>alerta.clave</c> y
-/// el <c>ON CONFLICT ... WHERE resuelta_at IS NULL</c> de <see cref="ServicioAlertas"/> eso no puede
-/// pasar: lo que hay es una fila, y cada pasada la actualiza.
+/// repeticiones dice "lo vio dos veces" el primer día. Con el índice único parcial de
+/// <c>(tipo, clave)</c> filtrado a las no resueltas y el <c>ON CONFLICT</c> sobre él de
+/// <see cref="ServicioAlertas"/> eso no puede pasar: lo que hay es una fila, y cada pasada la
+/// actualiza.
 /// </para>
 /// <para>
 /// Y como la condición de fecha es "exactamente dentro de X días", la segunda pasada del mismo día
 /// encuentra lo mismo. Las dos garantías juntas son las que hacen que relanzar el trabajo a mano, o
 /// que el servidor se reinicie a media ejecución, no dejen un panel con treinta filas repetidas.
+/// </para>
+/// <para>
+/// Que la unicidad sea <b>solo entre las alertas vivas</b> es lo que permite, a la vez, que un aviso
+/// cerrado vuelva a encenderse si el problema regresa (BUG-008) sin que se pierda ninguno de los
+/// anteriores.
 /// </para>
 /// </summary>
 [Collection(nameof(ColeccionBd))]
@@ -160,6 +166,60 @@ public sealed class AlertasSinDuplicarTests(ContenedorBdFixture bd, ApiTestFacto
     }
 
     /// <summary>
+    /// El equivalente de F2-09 al defecto de F3-03 (BUG-008): una baja que se anula y se vuelve a
+    /// programar tiene que <b>volver a avisar</b>.
+    /// <para>
+    /// Con el único de <c>alerta.clave</c> a secas, la fila cerrada bloqueaba su propia clave y el
+    /// aviso no volvía a levantarse: el mismo fallo, dos días después y con el mismo cliente
+    /// esperando, se quedaba sin decir nada. Y no es un caso raro, es el normal —un aviso que se
+    /// anula y al mes se vuelve a dar es justo el que más caro sale si nadie lo ve.
+    /// </para>
+    /// <para>
+    /// Se reabre <b>la misma fila</b>, porque la clave es la identidad del asunto y no el número de un
+    /// aviso: dos filas obligarían a leerlas todas para saber si hay algo vivo, y el contador se
+    /// partiría. El contador sigue acumulando, así que la fila acaba diciendo "lo hemos visto seis
+    /// veces, la última el martes" sin haber perdido ninguna de las anteriores.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ElAvisoSeVuelveALevantarSiLaBajaVuelveADarse()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var contratoId = await ContratoActivoAsync(empleado, gerente, bd, 75, ct);
+        await DarDeBajaEnLaVentanaAsync(bd, gerente, contratoId, ct);
+
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
+        var clave = ServicioAvisosOperacion.ClaveBajaProgramada(contratoId);
+
+        var abierta = await AyudaBandeja.AlertasDeAsync(bd, clave, ct);
+        abierta.Should().ContainSingle();
+        var repeticionesIniciales = abierta[0].Repeticiones;
+
+        // Se anula la baja: el aviso deja de aplicar y se cierra.
+        await AyudaContrato.AceptarAsync(gerente, contratoId, "anular-baja", null, ct);
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
+
+        var cerrada = await AyudaBandeja.AlertasDeAsync(bd, clave, ct);
+        cerrada.Should().ContainSingle();
+        cerrada[0].ResueltaAt.Should().NotBeNull();
+
+        // Y vuelve a programarse dentro de la ventana de aviso: tiene que volver a encenderse.
+        await DarDeBajaEnLaVentanaAsync(bd, gerente, contratoId, ct);
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
+
+        var reabierta = await AyudaBandeja.AlertasDeAsync(bd, clave, ct);
+        reabierta.Should().ContainSingle("es el mismo asunto: la misma fila, no una copia");
+        reabierta[0].Id.Should().Be(cerrada[0].Id);
+        reabierta[0].ResueltaAt.Should().BeNull("vuelve a estar abierta");
+        reabierta[0].Repeticiones.Should().Be(
+            repeticionesIniciales + 1,
+            "el contador sigue acumulando sobre la misma fila");
+    }
+
+    /// <summary>
     /// Un bloqueo de IP que expira deja de avisar, por el mismo motivo que la baja anulada. Sin esto,
     /// cada bloqueo de la historia seguiría encendido en el panel.
     /// </summary>
@@ -191,8 +251,8 @@ public sealed class AlertasSinDuplicarTests(ContenedorBdFixture bd, ApiTestFacto
         var filas = await AyudaBandeja.AlertasDeAsync(bd, clave, ct);
 
         filas.Should().ContainSingle(
-            $"«{clave}» identifica una sola entidad y la clave es única: correr el trabajo dos veces no "
-            + "puede dejar dos filas");
+            $"«{clave}» identifica una sola entidad y no puede haber dos alertas vivas con ella: correr "
+            + "el trabajo dos veces no puede dejar dos filas");
         filas[0].ResueltaAt.Should().BeNull("la entidad sigue en la condición que motivó el aviso");
     }
 

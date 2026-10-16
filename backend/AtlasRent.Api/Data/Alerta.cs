@@ -11,13 +11,16 @@ namespace AtlasRent.Api.Data;
 /// <para>
 /// <see cref="Clave"/> es lo que evita el duplicado: dos fallos del mismo tipo el mismo día dejan una
 /// sola alerta. Sin eso, un job que reintenta cada hora genera veinticuatro filas idénticas y la
-/// alerta deja de ser una señal.
+/// alerta deja de ser una señal. La unicidad es <b>parcial</b>: solo se aplica a las alertas sin
+/// resolver, sobre <c>(tipo, clave)</c> —el par, porque la identidad de un fallo es de qué tipo es y
+/// con qué clave, y dos tipos que coinciden en la clave son dos hechos (BUG-008)—.
 /// </para>
 /// <para>
 /// <see cref="ResueltaAt"/> es la otra mitad de lo mismo (F2-09): una alerta persistente se mantiene
 /// viva mientras el problema siga vivo y se cierra cuando deja de estarlo. Nula significa "abierta".
-/// Cerrar no es borrar —la fila dice que pasó, cuándo y cuántas veces se vio— y una alerta cerrada no
-/// vuelve a abrirse con el refresco diario: si el problema regresa, se inserta una fila nueva.
+/// Cerrar no es borrar —la fila dice que pasó, cuándo y cuántas veces se vio— y una alerta cerrada
+/// <b>vuelve a abrirse en la misma fila</b> si el problema regresa, porque para eso el índice no la
+/// cubre: es lo que quiere decir "alerta persistente" en §3.16 y en AGENTS.md §6.
 /// </para>
 /// </summary>
 public sealed class Alerta
@@ -25,8 +28,9 @@ public sealed class Alerta
     public Guid Id { get; set; }
 
     /// <summary>
-    /// Identidad estable de la alerta dentro de su tipo, por ejemplo <c>backup:2026-10-10</c>. Única:
-    /// es la que impide que el mismo fallo se registre una y otra vez.
+    /// Identidad estable de la alerta dentro de su tipo, por ejemplo <c>backup:2026-10-10</c>. Junto al
+    /// <see cref="Tipo"/> es única entre las alertas no resueltas: es la que impide que el mismo fallo
+    /// se registre una y otra vez.
     /// </summary>
     public string Clave { get; set; } = string.Empty;
 

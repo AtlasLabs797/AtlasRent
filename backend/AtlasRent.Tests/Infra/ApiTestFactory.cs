@@ -248,7 +248,22 @@ public sealed class ApiTestFactoryBloqueos(ContenedorBdFixture bd) : ApiTestFact
 /// <summary>Reloj con el que se puede viajar en el tiempo sin esperar.</summary>
 public sealed class RelojPrueba : TimeProvider
 {
-    private DateTimeOffset _ahora = DateTimeOffset.UtcNow;
+    /// <summary>
+    /// Instante de partida para las pruebas que dependen del día: las 09:00 de Santo Domingo
+    /// (UTC-4, sin cambio de hora) del día de hoy.
+    /// <para>
+    /// Importa porque el día de negocio va por salto de día, no por reloj: una prueba que arranca
+    /// "a las 20:30" y avanza seis horas cruza medianoche y su segunda ejecución cae en otro día.
+    /// Con el reloj arrancando a media mañana, avanzar horas nunca cambia de día y la prueba
+    /// comprueba lo que dice comprobar, no la hora a la que se ejecutó (BUG-009).
+    /// </para>
+    /// </summary>
+    public static DateTimeOffset InicioDelDia =>
+        new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).AddHours(13);
+
+    private DateTimeOffset _ahora;
+
+    public RelojPrueba(DateTimeOffset? inicio = null) => _ahora = inicio ?? DateTimeOffset.UtcNow;
 
     public override DateTimeOffset GetUtcNow() => _ahora;
 

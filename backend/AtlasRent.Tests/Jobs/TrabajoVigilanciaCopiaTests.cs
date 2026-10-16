@@ -87,7 +87,7 @@ public sealed class TrabajoVigilanciaCopiaTests : IDisposable
     public async Task ConLaCopiaDelDiaEnVerdeNoSeRegistraNingunaAlerta()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var alertas = new AlertaEnMemo();
         var copias = CrearServicio(reloj);
 
@@ -107,7 +107,7 @@ public sealed class TrabajoVigilanciaCopiaTests : IDisposable
     {
         var ct = TestContext.Current.CancellationToken;
         var alertas = new AlertaEnMemo();
-        var vigilancia = new TrabajoVigilanciaCopia(CrearServicio(new RelojPrueba()), alertas);
+        var vigilancia = new TrabajoVigilanciaCopia(CrearServicio(new RelojPrueba(RelojPrueba.InicioDelDia)), alertas);
 
         await vigilancia.EjecutarAsync(ct);
 
@@ -127,7 +127,7 @@ public sealed class TrabajoVigilanciaCopiaTests : IDisposable
     public async Task UnaCopiaQueExistePeroNoVerificaSeDistingueDeLaQueNoExiste()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var alertas = new AlertaEnMemo();
         var copias = CrearServicio(reloj);
 
@@ -150,7 +150,7 @@ public sealed class TrabajoVigilanciaCopiaTests : IDisposable
     public async Task LaClaveDeLaAlertaLlevaLaFechaDelDia()
     {
         var ct = TestContext.Current.CancellationToken;
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
         var alertas = new AlertaEnMemo();
         var copias = CrearServicio(reloj);
 

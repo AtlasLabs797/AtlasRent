@@ -269,9 +269,10 @@ namespace AtlasRent.Api.Migrations
                     b.HasKey("Id")
                         .HasName("pk_alerta");
 
-                    b.HasIndex("Clave")
+                    b.HasIndex("Tipo", "Clave")
                         .IsUnique()
-                        .HasDatabaseName("ix_alerta_clave");
+                        .HasDatabaseName("ix_alerta_tipo_clave")
+                        .HasFilter("resuelta_at IS NULL");
 
                     b.HasIndex("Tipo", "OcurridoAt")
                         .HasDatabaseName("ix_alerta_tipo_ocurrido_at");

@@ -26,12 +26,11 @@ namespace AtlasRent.Api.Jobs;
 /// vez al día sin mirar ninguna factura.
 /// </para>
 /// <para>
-/// <b>Límite heredado de <see cref="IRegistroAlertas"/>.</b> <c>alerta.clave</c> es única, así que
-/// cuando el <c>ON CONFLICT … DO UPDATE … WHERE resuelta_at IS NULL</c> choca con una alerta ya
-/// cerrada no inserta ni revive nada: un numerador que vuelve a quedarse corto después de haber sido
-/// ampliado <b>no vuelve a levantar aviso</b>. Es así en todas las alertas del sistema (las de F2-09
-/// entre ellas); cambiarlo es un índice único parcial sobre las alertas vivas, y queda fuera de esta
-/// tarea.
+/// <b>Límite que se quitó (BUG-008).</b> Con el único de <c>alerta.clave</c> a secas, una alerta
+/// cerrada bloqueaba su clave para siempre: un numerador que volvía a quedarse corto después de
+/// haberse ampliado no levantaba aviso. Ahora el único es parcial, sobre <c>(tipo, clave)</c> y
+/// filtrado a las no resueltas, así que este trabajo —y todos los demás— vuelve a avisar cuando el
+/// problema vuelve a darse.
 /// </para>
 /// </summary>
 public sealed class TrabajoComprobantes(
