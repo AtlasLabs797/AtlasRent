@@ -2,7 +2,20 @@ namespace AtlasRent.Api.Data;
 
 /// <summary>
 /// Aplicación de un cobro a una factura (F3-06, docs/ESPECIFICACION.md §3.10.1; F3-07 añade el pago
-/// en otra moneda, §3.10.2 y D8).
+/// en otra moneda, §3.10.2 y D8), o a una fianza (F3-09, §3.11).
+/// <para>
+/// <b>Desde F3-09 la fila tiene dos destinos y son excluyentes.</b> <see cref="FacturaId"/> y
+/// <see cref="FianzaId"/> son nulos uno de los dos, nunca los dos y nunca ninguno: lo exige el
+/// <c>CHECK ck_cobro_asignacion_destino_unico</c> de la tabla. No es una comodidad del modelo, es la
+/// razón por la que cobrar una fianza es el mismo camino que cobrar una factura —un cobro con una
+/// asignación— y por lo tanto aparece en los informes de caja (F5) y en la vista de cuentas (§3.13)
+/// sin un segundo camino que mantener.
+/// </para>
+/// <para>
+/// <b>Una asignación a una fianza no es deuda de factura y no toca ninguna factura.</b> Por eso ni el
+/// pendiente de una factura ni su estado de cobro se enteran, y por eso la FIFO de F3-06 —que reparte
+/// entre facturas del contrato— no propone fianzas: quien paga una fianza la señala.
+/// </para>
 /// <para>
 /// <b>El importe va en la moneda de la factura</b>, que es la deuda que salda, y
 /// <see cref="ImporteRecibido"/> es lo que salió de la caja en la moneda del cobro. Los dos se
@@ -31,14 +44,26 @@ public sealed class CobroAsignacion : IEntidadTrazada
 
     public Cobro? Cobro { get; set; }
 
-    /// <summary>Factura a la que se aplica este importe. Obligatoria en esta fase.</summary>
-    public Guid FacturaId { get; set; }
+    /// <summary>
+    /// Factura a la que se aplica este importe. <b>Nulo desde F3-09</b> cuando lo que se paga es una
+    /// fianza; ver <see cref="FianzaId"/>. Exacto uno de los dos, siempre.
+    /// </summary>
+    public Guid? FacturaId { get; set; }
 
     public Factura? Factura { get; set; }
 
     /// <summary>
-    /// Importe aplicado a la factura, en la moneda de la factura. Nunca supera lo pendiente de esa
-    /// factura, y el servicio lo comprueba contra el pendiente real, no contra el total.
+    /// Fianza a la que se aplica este importe (F3-09, §3.11). Nulo cuando lo que se paga es una factura.
+    /// Exacto uno de los dos, siempre.
+    /// </summary>
+    public Guid? FianzaId { get; set; }
+
+    public Fianza? Fianza { get; set; }
+
+    /// <summary>
+    /// Importe aplicado a la factura o a la fianza, en la moneda de ese destino. Nunca supera lo
+    /// pendiente de la factura (F3-06) ni el saldo de la fianza (F3-09), y el servicio lo comprueba
+    /// contra el pendiente real, no contra el total.
     /// </summary>
     public decimal Importe { get; set; }
 

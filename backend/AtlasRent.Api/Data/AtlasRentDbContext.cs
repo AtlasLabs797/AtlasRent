@@ -168,6 +168,15 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
     // por eso nunca se suma dentro de «cobrado».
     public DbSet<AjusteDiferenciaCambio> AjusteDiferenciaCambio => Set<AjusteDiferenciaCambio>();
 
+    // F3-09: fianzas (docs/ESPECIFICACION.md §3.11). El cobro de una fianza no es tabla propia: es una
+    // asignación de `cobro_asignacion` que apunta aquí en vez de a una factura, para que el dinero que
+    // entra tenga un solo camino. `fianza` guarda lo que el contrato exige y la decisión que se tomó
+    // sobre ella; lo cobrado y lo que queda se calculan desde `cobro_asignacion` y `fianza_devolucion`
+    // para que ningún importe de la tabla pueda desincronizarse del movimiento que lo produjo.
+    public DbSet<Fianza> Fianza => Set<Fianza>();
+
+    public DbSet<FianzaDevolucion> FianzaDevolucion => Set<FianzaDevolucion>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -1371,6 +1380,13 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
                 tabla.HasCheckConstraint(
                     "ck_cobro_asignacion_conversion_positiva",
                     "(importe_recibido IS NULL OR importe_recibido > 0) AND (tipo_cambio_valor IS NULL OR tipo_cambio_valor > 0)");
+                // F3-09 (§3.11): el cobro se aplica a una factura o a una fianza, y exactamente a una.
+                // Sin esta restricción, una asignación sin destino no aplicaría nada y alguien la
+                // leería como dinero cobrado sin saber a qué; y una con los dos destinos contaría el
+                // mismo importe dos veces, una al cerrar la factura y otra al cerrar la fianza.
+                tabla.HasCheckConstraint(
+                    "ck_cobro_asignacion_destino_unico",
+                    "(factura_id IS NULL) <> (fianza_id IS NULL)");
             });
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.CreatedAt).IsRequired();
@@ -1383,6 +1399,26 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             // El índice por factura es el que resuelve la suma de lo cobrado de una página de
             // facturas en una sola consulta, sin N+1 (§3.13).
             entidad.HasIndex(e => e.FacturaId);
+            // Desde F3-09 hay además unicidad, y es **por cobro y destino, no por destino**: dos cobros
+            // distintos pueden pagar la misma factura —terminar una factura a medias con el segundo
+            // cobro es el caso normal de §3.10.1— y de lo mismo una fianza se puede ir cobrando por
+            // partes. Lo que no puede repetirse es la misma línea dos veces dentro del mismo cobro.
+            //
+            // Y el índice es **parcial sobre `vigente`**: anular un cobro y volver a cobrar lo mismo es
+            // el camino de §3.10.2 para corregir un cambio equivocado, y la fila anulada no se borra
+            // (AGENTS.md §6), así que la unicidad tiene que regir solo entre las líneas que cuentan.
+            entidad.HasIndex(e => new { e.CobroId, e.FacturaId })
+                .IsUnique()
+                .HasFilter("factura_id IS NOT NULL AND vigente")
+                .HasDatabaseName("ux_cobro_asignacion_cobro_factura");
+            // El reflejo del anterior para la fianza. Son dos índices parciales y no uno compuesto por
+            // las dos columnas de destino porque el destino conocido es uno solo: con la otra fila a
+            // null, un único índice sobre las cuatro columnas no serviría para ninguna de las dos
+            // consultas.
+            entidad.HasIndex(e => new { e.CobroId, e.FianzaId })
+                .IsUnique()
+                .HasFilter("fianza_id IS NOT NULL AND vigente")
+                .HasDatabaseName("ux_cobro_asignacion_cobro_fianza");
             entidad.HasIndex(e => e.CobroId);
             entidad.HasOne(e => e.Cobro)
                 .WithMany(c => c.Asignaciones)
@@ -1391,6 +1427,76 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasOne(e => e.Factura)
                 .WithMany()
                 .HasForeignKey(e => e.FacturaId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Fianza)
+                .WithMany()
+                .HasForeignKey(e => e.FianzaId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F3-09: la fianza (§3.11) y sus devoluciones. Lo cobrado y el saldo no son columnas: salen de
+        // `cobro_asignacion` y de `fianza_devolucion`, y por eso la tabla solo guarda lo exigido, la
+        // moneda y la decisión que se tomó.
+        modelBuilder.Entity<Fianza>(entidad =>
+        {
+            entidad.ToTable("fianza", tabla =>
+            {
+                tabla.HasCheckConstraint("ck_fianza_importe_positivo", "importe_exigido > 0");
+                // El número de fianzas es un entero de negocio, no un decimal, y no puede ser cero: un
+                // contrato sin fianzas no tiene fila aquí, se entiende con la ausencia de la fila.
+                tabla.HasCheckConstraint("ck_fianza_numero_positivo", "numero_fianzas > 0");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            // El motivo lo escribe quien decide devolver y lo lee quien audita el dinero que no se
+            // devolvió, así que tiene la misma longitud que el del cobro y el de la factura. El estado
+            // y la moneda no llevan nada aquí: los enums van en integer por defecto (AGENTS.md §6) y por
+            // eso <c>EstadoFianza</c> fija sus valores en el enum y no los toma de la posición.
+            // Una fianza por contrato y moneda. Es lo que hace legible el saldo: dos fianzas del mismo
+            // contrato y la misma moneda serían dos números que hay que sumar a mano para responder lo
+            // único que el cliente pregunta, cuánto le queda.
+            entidad.HasIndex(e => new { e.ContratoId, e.Moneda })
+                .IsUnique()
+                .HasDatabaseName("ix_fianza_contrato_moneda");
+            entidad.HasIndex(e => e.ContratoId);
+            entidad.HasOne(e => e.Contrato)
+                .WithMany()
+                .HasForeignKey(e => e.ContratoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F3-09: la devolución es un movimiento de salida con su parte devuelta y su parte retenida
+        // (§3.6). Las dos sumas, y no una sola, porque el saldo de la fianza baja por las dos.
+        modelBuilder.Entity<FianzaDevolucion>(entidad =>
+        {
+            entidad.ToTable("fianza_devolucion", tabla =>
+            {
+                // Una devolución negativa no es una devolución: es una devolución al revés, y lo que
+                // hace falta para eso es cobrar, que es un cobro asignado a la fianza.
+                tabla.HasCheckConstraint(
+                    "ck_fianza_devolucion_importe_no_negativo",
+                    "importe >= 0 AND importe_descontado >= 0");
+                // O se devuelve algo, o se retiene algo, o las dos cosas. Una devolución de cero y de
+                // cero no devuelve nada: sería una fila que cuadra y no dice nada.
+                tabla.HasCheckConstraint(
+                    "ck_fianza_devolucion_importe_al_menos_uno",
+                    "importe > 0 OR importe_descontado > 0");
+                // El motivo no vive en un CHECK porque depende de si la devolución deja la fianza a
+                // cero, y eso no se sabe dentro de esta tabla: lo comprueba el servicio contra el saldo
+                // real antes de insertar (§3.11 y el criterio de aceptación de F3-09).
+                tabla.HasCheckConstraint(
+                    "ck_fianza_devolucion_descontado_con_motivo",
+                    "importe_descontado = 0 OR motivo IS NOT NULL");
+            });
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.Motivo).HasMaxLength(500);
+            // El índice que resuelve "cuánto se ha devuelto de esta fianza" en una consulta agrupada,
+            // sin N+1, igual que el de factura de `cobro_asignacion` (§3.13).
+            entidad.HasIndex(e => e.FianzaId);
+            entidad.HasOne(e => e.Fianza)
+                .WithMany(f => f.Devoluciones)
+                .HasForeignKey(e => e.FianzaId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

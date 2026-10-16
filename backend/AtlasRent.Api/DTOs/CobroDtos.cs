@@ -162,15 +162,29 @@ public sealed record AjusteDiferenciaCambioRespuesta(
     Guid? AnuladoPor,
     string? MotivoAnulacion);
 
-/// <summary>Aplicación de un cobro a una factura concreta.</summary>
+/// <summary>
+/// Aplicación de un cobro a una factura concreta (F3-06) o a una fianza (F3-09, §3.11).
+/// <para>
+/// <b>Desde F3-09 exactamente uno de los dos destinos</b>, y el servicio lo comprueba: los dos, ninguno
+/// o una factura repetida son 409. No son <c>[Required]</c> porque la regla depende del otro campo, y
+/// un <c>[Required]</c> aquí daría un 400 que blames a la factura cuando lo que falta es la fianza.
+/// </para>
+/// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed class CobroAsignacionPeticion
 {
-    /// <summary>Factura a la que se aplica este importe.</summary>
-    [Required]
-    public required Guid FacturaId { get; init; }
+    /// <summary>Factura a la que se aplica este importe. Nulo cuando es una fianza.</summary>
+    public Guid? FacturaId { get; init; }
 
-    /// <summary>Importe aplicado, en la moneda de la factura. Tiene que ser mayor que cero.</summary>
+    /// <summary>
+    /// Fianza a la que se aplica este importe (F3-09, §3.11). Nulo cuando es una factura.
+    /// </summary>
+    public Guid? FianzaId { get; init; }
+
+    /// <summary>
+    /// Importe aplicado, en la moneda del destino (la de la factura o la de la fianza). Tiene que ser
+    /// mayor que cero.
+    /// </summary>
     [Required]
     public required decimal Importe { get; init; }
 }
@@ -253,13 +267,19 @@ public sealed record CobroRespuesta(
 /// cobro y la factura comparten moneda</b>, porque ahí no se aplicó ninguna conversión. Cuando la
 /// factura es de otra moneda, el importe es su equivalente: <c>ImporteRecibido / TipoCambioValor</c>.
 /// </para>
+/// <para>
+/// <b>Desde F3-09 los campos de la factura son nulos cuando lo que se pagó fue una fianza</b>, y
+/// <paramref name="FianzaId"/> es el que viene informado. El destino es uno solo y por eso el de la
+/// factura y el de la fianza no van en un objeto anidado: separarlos cuesta más de lo que ahorra.
+/// </para>
 /// </summary>
 public sealed record CobroAsignacionRespuesta(
     Guid Id,
-    Guid FacturaId,
+    Guid? FacturaId,
+    Guid? FianzaId,
     int? FacturaNumero,
     DateOnly? FacturaVencimiento,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda FacturaMoneda,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda? FacturaMoneda,
     decimal Importe,
     decimal? ImporteRecibido,
     decimal? TipoCambioValor,
@@ -295,12 +315,19 @@ public sealed record CobroSimulacionRespuesta(
 /// equivalente en la moneda recibida; por eso la línea lleva <paramref name="ImporteRecibido"/> y
 /// <paramref name="TipoCambioValor"/>, que son null cuando la factura está en la moneda del pago.
 /// </para>
+/// <para>
+/// <b>Desde F3-09 una línea puede ser de una fianza</b> (§3.11): entonces lo de la factura es nulo y
+/// <paramref name="FianzaId"/> viene informado. La simulación dice lo mismo que el registro —ambos
+/// comparten la planificación— así que quien ve aquí una línea de fianza sabe que al confirmar se va a
+/// guardar.
+/// </para>
 /// </summary>
 public sealed record CobroAsignacionSimulada(
-    Guid FacturaId,
+    Guid? FacturaId,
+    Guid? FianzaId,
     int? Numero,
-    DateOnly FechaVencimiento,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda FacturaMoneda,
+    DateOnly? FechaVencimiento,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda MonedaDestino,
     decimal Importe,
     decimal? ImporteRecibido,
     decimal? TipoCambioValor,

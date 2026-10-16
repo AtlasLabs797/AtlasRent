@@ -123,9 +123,12 @@ public sealed class CobroRegistroTests(ContenedorBdFixture bd, ApiTestFactory ap
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
 
+        // F3-09: sin el filtro por `FacturaId` no nulo, una asignación a fianza agruparía bajo una clave
+        // nula y esta cuenta dejaría de ser la de las facturas. Aquí no hay fianzas, pero el filtro
+        // tiene que ser el mismo que usa el servicio para que la cuenta signifique lo mismo.
         var cobrada = await contexto.CobroAsignacion.AsNoTracking()
-            .Where(a => a.Vigente)
-            .GroupBy(a => a.FacturaId)
+            .Where(a => a.Vigente && a.FacturaId != null)
+            .GroupBy(a => a.FacturaId!.Value)
             .Select(g => new { FacturaId = g.Key, Cobrado = g.Sum(a => a.Importe) })
             .ToDictionaryAsync(x => x.FacturaId, x => x.Cobrado, ct);
 

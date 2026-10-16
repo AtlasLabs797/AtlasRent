@@ -161,8 +161,12 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
 
                     foreach (var asignacion in respuesta.Asignaciones)
                     {
+                        // F3-09: una asignación puede ser a una fianza, que no está en `pendientesAntes`.
+                        // Aquí no las hay —esta prueba no crea fianzas—, así que el assertion sigue
+                        // teniendo que encontrar la factura.
+                        asignacion.FacturaId.Should().NotBeNull("esta prueba solo asigna a facturas");
                         asignacion.Importe.Should().BeLessThanOrEqualTo(
-                            pendientesAntes[asignacion.FacturaId],
+                            pendientesAntes[asignacion.FacturaId!.Value],
                             "ninguna asignación puede pasar del pendiente de su factura");
                     }
 
@@ -260,8 +264,15 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
         }
 
         return await contexto.CobroAsignacion.AsNoTracking()
-            .Where(a => a.Vigente && facturaIds.Contains(a.FacturaId) && a.Cobro!.Estado == EstadoCobro.Registrado)
-            .GroupBy(a => a.FacturaId)
+            // F3-09: el filtro por `FacturaId` no nulo deja fuera las asignaciones a fianza, que no
+            // son deuda de ninguna factura. Esta es la misma cuenta que escribe el servicio, y por eso
+            // tiene que quedarse fuera igual que allí: una asignación a fianza no puede mover el
+            // pendiente de una factura.
+            .Where(a => a.Vigente
+                && a.FacturaId != null
+                && facturaIds.Contains(a.FacturaId.Value)
+                && a.Cobro!.Estado == EstadoCobro.Registrado)
+            .GroupBy(a => a.FacturaId!.Value)
             .Select(g => new { FacturaId = g.Key, Cobrado = g.Sum(a => a.Importe) })
             .ToDictionaryAsync(x => x.FacturaId, x => x.Cobrado, ct);
     }

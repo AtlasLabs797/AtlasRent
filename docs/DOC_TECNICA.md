@@ -390,6 +390,51 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **`comprobante_retencion` no concede `DELETE`**, igual que `comprobante_fiscal`: es la prueba de que se
   retuvo lo que dijo retener.
 
+### 6.6 Fianzas (F3-09)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/fianzas` | `factura.ver` | Listado paginado, filtros `contratoId` y `moneda`. Cada fila trae exigido, número de fianzas, moneda, cobrado, devuelto, retenido, saldo y estado. Es lo que consume F3-10. |
+| `GET /api/v1/fianzas/{id}` | `factura.ver` | La fianza con sus devoluciones. |
+| `POST /api/v1/fianzas` | `fianza.mover` | Cuerpo `{ contratoId, importeExigido, moneda, numeroFianzas }`. 409 si el contrato ya tiene fianza en esa moneda. Acepta `Idempotency-Key`. |
+| `POST /api/v1/fianzas/{id}/devolver` | `fianza.mover` | Cuerpo `{ importe, importeDescontado, motivo, fecha }`. Acepta `Idempotency-Key`. |
+| `POST /api/v1/fianzas/{id}/retener` | `fianza.mover` | Sin cuerpo. Deja la decisión y su fecha. |
+| `POST /api/v1/fianzas/{id}/liquidar` | `fianza.mover` | Sin cuerpo. Deja la decisión y su fecha. |
+
+- **No hay endpoint para cobrar una fianza.** Cobrar es `POST /api/v1/cobros` con una asignación
+  `{ fianzaId, importe }` en vez de `{ facturaId, importe }` (§3.10.1, §3.11): el dinero entra por la
+  misma puerta y sale por los informes de caja (F5) por un solo camino.
+- **`cobro_asignacion.factura_id` pasa a nulo y nace `fianza_id` nulo**, con
+  `CHECK ck_cobro_asignacion_destino_unico` —`(factura_id IS NULL) <> (fianza_id IS NULL)`, exactamente
+  uno— y **dos índices únicos parciales**, `ux_cobro_asignacion_cobro_factura` y
+  `ux_cobro_asignacion_cobro_fianza`, filtrados a `<destino> IS NOT NULL AND vigente`.
+  Sin el `CHECK`, una asignación sin destino no aplicaría nada y alguien la leería como dinero cobrado
+  sin saber a qué; y una con los dos cerraría dos cuentas con el mismo céntimo.
+  **La unicidad es por (cobro, destino) y no por destino**: dos cobros distintos pueden pagar la misma
+  factura —terminarla a medias con el segundo es el caso normal de §3.10.1— y de lo mismo una fianza se
+  puede ir cobrando por partes; lo que no puede repetirse es la misma línea dos veces en el mismo cobro.
+  **El filtro incluye `vigente`** porque anular un cobro y volver a cobrar lo mismo es el camino de
+  §3.10.2 para corregir un cambio equivocado, y la fila anulada no se borra (AGENTS.md §6): con la
+  unicidad sobre todas las filas, esa segunda salida sería un 409 de «clave duplicada».
+  El índice simple por factura se conserva, porque es el que resuelve la suma de lo cobrado de una
+  página sin N+1 (§3.13).
+- **Una asignación a fianza no es deuda de factura.** `CobradoPorFacturaAsync` filtra por
+  `FacturaId != null`, así que el pendiente y el estado de cobro de ninguna factura se enteran, y la
+  FIFO no propone fianzas: quien paga una fianza la señala.
+- **`cobrado` y `saldo` no son columnas.** Salen de `cobro_asignacion` y `fianza_devolucion` con tres
+  consultas agregadas para toda la página, igual que el `cobrado` de las facturas en F3-06. Un importe
+  guardado al lado del movimiento que lo produce se desincroniza en cuanto el movimiento cambia.
+- **`estado` guarda la decisión, no el estado visible.** Solo se escriben `Retenida`, `EnLiquidacion`,
+  `Devuelta` y `RetenidaParcial`; `Pendiente` y `Parcial` se derivan de lo cobrado en `CalculoFianza`.
+- **El saldo se muestra acotado a cero.** Anular el cobro que pagó una fianza (§3.10.1) deja de contar lo
+  cobrado y, si parte ya se había devuelto, la resta daría negativa; un saldo negativo no es un saldo. El
+  desajuste real sigue a la vista en el cobro anulado.
+- **No se puede filtrar ni ordenar por estado** en el listado: es derivado, y filtrar en la base solo
+  dejaría filtrar por la mitad que es columna, con filas que entran en un estado y se leen en otro.
+- **Devolver más de lo cobrado es 409 con el saldo y lo pedido**; una devolución parcial **sin importe
+  descontado o sin motivo es 400**, que es el criterio de aceptación de la tarea.
+- **`fianza` y `fianza_devolucion` no conceden `DELETE`**, y `fianza` es única por `(contrato_id, moneda)`.
+
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
 - **Añadido para Atlas Rent (expuesta a internet):**
@@ -523,7 +568,7 @@ primeras facturas. Y lo mismo con los trabajos previstos de F3 y F4: las horas d
   trabajo dos veces no crea una segunda fila y no lanza.
 
 ### 8.1 Estado (F1-12)
-Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; **avisos del numerador de comprobante** (06:00), de F3-03; **avisos de comprobante de retención** (06:00), de F3-04; y **periodos sin facturar** (06:00), de F3-05. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3-10), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; **avisos del numerador de comprobante** (06:00), de F3-03; **avisos de comprobante de retención** (06:00), de F3-04; **periodos sin facturar** (06:00), de F3-05; y **fianzas sin devolver** (06:00), de F3-09. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3-10), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
 
 - **Avisos del numerador de comprobante (`TrabajoComprobantes`, 06:00 AST):** recorre los numeradores y
   levanta tres alertas de tipo `comprobante`, con clave estable por serie y condición —
@@ -569,6 +614,27 @@ Con el único de `clave`, una alerta cerrada bloqueaba su propia clave para siem
   ha gestionado en semanas. **Se resuelve en la recepción, no aquí**: quien sabe que el papel llegó es
   quien lo anotó, y resolverlo aquí obligaría al trabajo a enterarse por su cuenta. Con el único parcial
   de BUG-008, una retención que vuelve a quedarse sin comprobante vuelve a levantar el aviso.
+- **Fianzas sin devolver (`TrabajoFianzas`, 06:00 AST, F3-09):** recorre las fianzas **sin decisión
+  guardada** —las que están en `Pendiente` o `Parcial`, que es la mitad de `estado_fianza` que es
+  columna— cuyo contrato está en `Finalizado` o `Liquidado`, y levanta una alerta de tipo **`fianza`**
+  por cada una, con clave estable **por fianza** (`fianza:{fianzaId}:sin-devolver`).
+  **El tipo `fianza` es nuevo** y es lo que §3.16 pide cuando enumera «fianzas pendientes de devolver»:
+  los que ya había no encajan. `contrato` es de contratos sin liquidar (F2-09) y su clave es el
+  contrato, así que un contrato con dos fianzas y solo una sin devolver daría un aviso que señala el
+  contrato y no el depósito. `comprobante` es de numeradores y retenciones (F3-03 y F3-04) y su clave es
+  un papel que hay que pedir a alguien; aquí no hay papel, hay dinero ya cobrado. `factura` es de
+  periodos sin facturar (F3-05) y su clave lleva un periodo natural.
+  **La clave lleva la fianza y no el contrato ni la fecha** por lo mismo que en el resto: el aviso no es
+  «hoy falta devolver» sino «falta devolver», así que dos días seguidos refrescan la misma fila y suman
+  repeticiones. **Se resuelve en el movimiento, no aquí**: la devolución y la puesta en liquidación
+  cierran el aviso en su propio commit, igual que la recepción de un comprobante cierra el suyo, porque
+  quien sabe que el depósito vuelve a su dueño es el servicio que lo devuelve. Con el único parcial de
+  BUG-008, un aviso resuelto antes de tiempo vuelve a levantarse si el asunto regresa.
+  **Una fianza retenida a medias también cuenta como resuelta**: devolver en parte es devolver, y una
+  fianza retenida a propósito por faltantes de inventario (§3.6) no es un olvido. Avisar de ella todos
+  los días sería la forma de alerta que enseña a ignorar la bandeja.
+  Comparte hora con los otros cuatro avisos de las 06:00 porque los cinco son cortos e independientes:
+  leen fianzas, contratos, comprobantes y facturas y escriben en `alerta` con claves distintas.
 - **Tipo de cambio (F3-01):** ExchangeRate-API, con `TipoCambio__Url` y `TipoCambio__ApiKey`
   opcionales; sin clave va al endpoint abierto y con clave al plan de pago, que devuelve la tabla en
   `conversion_rates` en vez de `rates` (el cliente entiende las dos). La columna `valor` es

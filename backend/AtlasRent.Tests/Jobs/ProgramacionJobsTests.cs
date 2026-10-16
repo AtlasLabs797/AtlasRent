@@ -134,6 +134,7 @@ public sealed class ProgramacionJobsTests
                 typeof(TrabajoComprobantes),
                 typeof(TrabajoRetenciones),
                 typeof(TrabajoPeriodosSinFacturar),
+                typeof(TrabajoFianzas),
             ]);
     }
 
@@ -396,6 +397,33 @@ public sealed class ProgramacionJobsTests
     }
 
     [Fact]
+    public void ElAvisoDeFianzasVaDetrasDeLaCopiaYAntesDelFin()
+    {
+        var aviso = Trabajo(ProgramacionJobs.RutaFianzas);
+
+        aviso.HoraLocal.Should().Be(6);
+        aviso.Tipo.Should().Be(typeof(TrabajoFianzas));
+        aviso.Metodo.Should().Be(nameof(TrabajoFianzas.EjecutarAsync));
+
+        TimeZoneInfo.ConvertTime(PrimerDisparo(aviso.Cron), Zona)
+            .Should().Be(new DateTime(2026, 10, 20, 6, 0, 0));
+
+        foreach (var otra in ProgramacionJobs.Todos.Where(t =>
+            t.Ruta is ProgramacionJobs.RutaCopiaSeguridad
+                or ProgramacionJobs.RutaIntegridadAuditoria
+                or ProgramacionJobs.RutaVigilanciaCopia))
+        {
+            aviso.HoraLocal.Should().BeGreaterThan(otra.HoraLocal, $"el aviso va detrás de {otra.Ruta}");
+        }
+
+        foreach (var otra in ProgramacionJobs.Todos.Where(t =>
+            t.Ruta is ProgramacionJobs.RutaFinContratos or ProgramacionJobs.RutaAvisosOperacion))
+        {
+            aviso.HoraLocal.Should().BeLessThan(otra.HoraLocal, $"el aviso va antes de {otra.Ruta}");
+        }
+    }
+
+    [Fact]
     public void RegistrarDejaCadaTrabajoConSuCronYSuMetodo()
     {
         var recurrentes = new RecurrentesFalsos();
@@ -415,6 +443,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaComprobantes,
                 ProgramacionJobs.RutaRetenciones,
                 ProgramacionJobs.RutaPeriodosSinFacturar,
+                ProgramacionJobs.RutaFianzas,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

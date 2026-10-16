@@ -62,6 +62,7 @@ public static class ProgramacionJobs
     public const string RutaComprobantes = "comprobantes-fiscales";
     public const string RutaRetenciones = "comprobantes-retencion";
     public const string RutaPeriodosSinFacturar = "periodos-sin-facturar";
+    public const string RutaFianzas = "fianzas-sin-devolver";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
@@ -206,6 +207,18 @@ public static class ProgramacionJobs
             CronDiarioEnUtc(6),
             typeof(TrabajoPeriodosSinFacturar),
             nameof(TrabajoPeriodosSinFacturar.EjecutarAsync),
+            6),
+        // F3-09: el aviso de las fianzas cuyo contrato terminó y que siguen sin devolver ni liquidar
+        // (§3.11 y §3.16). A las 06:00, la misma hora que los otros tres avisos y por el mismo motivo
+        // (§8): escribe en `alerta`, así que quiere la copia de la madrugada por delante, y antes del
+        // fin y de los avisos de operación, que siguen siendo los últimos. Comparte hora porque los
+        // cinco son cortos e independientes: solo leen fianzas, contratos y asignaciones y escriben en
+        // la tabla de alertas con claves distintas.
+        new(
+            RutaFianzas,
+            CronDiarioEnUtc(6),
+            typeof(TrabajoFianzas),
+            nameof(TrabajoFianzas.EjecutarAsync),
             6),
     ];
 

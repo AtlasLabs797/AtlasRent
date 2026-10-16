@@ -665,9 +665,13 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<Guid>("FacturaId")
+                    b.Property<Guid?>("FacturaId")
                         .HasColumnType("uuid")
                         .HasColumnName("factura_id");
+
+                    b.Property<Guid?>("FianzaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fianza_id");
 
                     b.Property<decimal>("Importe")
                         .HasColumnType("numeric(18,2)")
@@ -713,11 +717,26 @@ namespace AtlasRent.Api.Migrations
                     b.HasIndex("FacturaId")
                         .HasDatabaseName("ix_cobro_asignacion_factura_id");
 
+                    b.HasIndex("FianzaId")
+                        .HasDatabaseName("ix_cobro_asignacion_fianza_id");
+
+                    b.HasIndex("CobroId", "FacturaId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cobro_asignacion_cobro_factura")
+                        .HasFilter("factura_id IS NOT NULL AND vigente");
+
+                    b.HasIndex("CobroId", "FianzaId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cobro_asignacion_cobro_fianza")
+                        .HasFilter("fianza_id IS NOT NULL AND vigente");
+
                     b.ToTable("cobro_asignacion", null, t =>
                         {
                             t.HasCheckConstraint("ck_cobro_asignacion_conversion_completa", "(importe_recibido IS NULL) = (tipo_cambio_valor IS NULL)");
 
                             t.HasCheckConstraint("ck_cobro_asignacion_conversion_positiva", "(importe_recibido IS NULL OR importe_recibido > 0) AND (tipo_cambio_valor IS NULL OR tipo_cambio_valor > 0)");
+
+                            t.HasCheckConstraint("ck_cobro_asignacion_destino_unico", "(factura_id IS NULL) <> (fianza_id IS NULL)");
 
                             t.HasCheckConstraint("ck_cobro_asignacion_importe_positivo", "importe > 0");
                         });
@@ -2115,6 +2134,151 @@ namespace AtlasRent.Api.Migrations
                         .HasDatabaseName("ix_factura_linea_factura_id_posicion");
 
                     b.ToTable("factura_linea", (string)null);
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Fianza", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContratoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contrato_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DevueltaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("devuelta_at");
+
+                    b.Property<DateTimeOffset?>("EnLiquidacionAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("en_liquidacion_at");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer")
+                        .HasColumnName("estado");
+
+                    b.Property<decimal>("ImporteExigido")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe_exigido");
+
+                    b.Property<int>("Moneda")
+                        .HasColumnType("integer")
+                        .HasColumnName("moneda");
+
+                    b.Property<int>("NumeroFianzas")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero_fianzas");
+
+                    b.Property<DateTimeOffset?>("RetenidaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("retenida_at");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_fianza");
+
+                    b.HasIndex("ContratoId")
+                        .HasDatabaseName("ix_fianza_contrato_id");
+
+                    b.HasIndex("ContratoId", "Moneda")
+                        .IsUnique()
+                        .HasDatabaseName("ix_fianza_contrato_moneda");
+
+                    b.ToTable("fianza", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_fianza_importe_positivo", "importe_exigido > 0");
+
+                            t.HasCheckConstraint("ck_fianza_numero_positivo", "numero_fianzas > 0");
+                        });
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.FianzaDevolucion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha");
+
+                    b.Property<Guid>("FianzaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fianza_id");
+
+                    b.Property<decimal>("Importe")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe");
+
+                    b.Property<decimal>("ImporteDescontado")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe_descontado");
+
+                    b.Property<string>("Motivo")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_fianza_devolucion");
+
+                    b.HasIndex("FianzaId")
+                        .HasDatabaseName("ix_fianza_devolucion_fianza_id");
+
+                    b.ToTable("fianza_devolucion", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_fianza_devolucion_descontado_con_motivo", "importe_descontado = 0 OR motivo IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_fianza_devolucion_importe_al_menos_uno", "importe > 0 OR importe_descontado > 0");
+
+                            t.HasCheckConstraint("ck_fianza_devolucion_importe_no_negativo", "importe >= 0 AND importe_descontado >= 0");
+                        });
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.FormaPago", b =>
@@ -4514,12 +4678,19 @@ namespace AtlasRent.Api.Migrations
                         .WithMany()
                         .HasForeignKey("FacturaId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fk_cobro_asignacion_factura_factura_id");
+
+                    b.HasOne("AtlasRent.Api.Data.Fianza", "Fianza")
+                        .WithMany()
+                        .HasForeignKey("FianzaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_cobro_asignacion_fianza_fianza_id");
 
                     b.Navigation("Cobro");
 
                     b.Navigation("Factura");
+
+                    b.Navigation("Fianza");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.CodigoRecuperacion", b =>
@@ -4828,6 +4999,30 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("TipoRetencion");
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.Fianza", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Contrato", "Contrato")
+                        .WithMany()
+                        .HasForeignKey("ContratoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_fianza_contrato_contrato_id");
+
+                    b.Navigation("Contrato");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.FianzaDevolucion", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Fianza", "Fianza")
+                        .WithMany("Devoluciones")
+                        .HasForeignKey("FianzaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_fianza_devolucion_fianza_fianza_id");
+
+                    b.Navigation("Fianza");
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.Inmueble", b =>
                 {
                     b.HasOne("AtlasRent.Api.Data.Subempresa", null)
@@ -5124,6 +5319,11 @@ namespace AtlasRent.Api.Migrations
             modelBuilder.Entity("AtlasRent.Api.Data.Factura", b =>
                 {
                     b.Navigation("Lineas");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Fianza", b =>
+                {
+                    b.Navigation("Devoluciones");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Inmueble", b =>

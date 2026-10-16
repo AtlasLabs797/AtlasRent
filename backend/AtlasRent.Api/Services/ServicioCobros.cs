@@ -9,8 +9,14 @@ namespace AtlasRent.Api.Services;
 /// <summary>
 /// Cobros: registro, asignación a facturas, saldo a favor y anulación (F3-06,
 /// docs/ESPECIFICACION.md §3.10.1); pago en otra moneda y ajuste por diferencia de cambio (F3-07,
-/// §3.10.2 y D8).
+/// §3.10.2 y D8); asignación a la fianza de un contrato (F3-09, §3.11).
 /// <list type="bullet">
+/// <item>
+/// <b>F3-09: una asignación puede ir a una factura o a una fianza</b>, y a una sola. Cobrar una fianza
+/// es por eso este mismo endpoint y no otro: el dinero entra por una puerta y sale por los informes de
+/// caja por un solo camino. Una línea a una fianza no es deuda de factura, así que no toca el pendiente
+/// de ninguna, y la FIFO no propone fianzas —quien paga una fianza la señala—.
+/// </item>
 /// <item>
 /// <b>La asignación por defecto es FIFO dentro del contrato</b> (§3.10.1, «la más antigua
 /// primero»), por vencimiento y a igualdad por emisión, con el identificador como último desempate
@@ -156,8 +162,13 @@ public sealed class ServicioCobros(
         var ids = facturaIds.ToArray();
 
         return await contexto.CobroAsignacion.AsNoTracking()
-            .Where(a => a.Vigente && ids.Contains(a.FacturaId) && a.Cobro!.Estado == EstadoCobro.Registrado)
-            .GroupBy(a => a.FacturaId)
+            // F3-09: una asignación a fianza no es deuda de factura y no debe cambiar lo que se le
+            // pide a esta consulta, así que se queda fuera de ella y no de su filtro.
+            .Where(a => a.Vigente
+                && a.FacturaId != null
+                && ids.Contains(a.FacturaId.Value)
+                && a.Cobro!.Estado == EstadoCobro.Registrado)
+            .GroupBy(a => a.FacturaId!.Value)
             .Select(g => new { FacturaId = g.Key, Cobrado = g.Sum(a => a.Importe) })
             .ToDictionaryAsync(x => x.FacturaId, x => x.Cobrado, ct);
     }
@@ -865,7 +876,7 @@ public sealed class ServicioCobros(
             // hecho más importante de la fila.
             var mismaMoneda = factura.Moneda == monedaRecibida;
 
-            lineas.Add(LineaPlan.Nueva(factura, importe, mismaMoneda ? null : recibido, cambio.Value, pendiente));
+            lineas.Add(LineaPlan.NuevaFactura(factura, importe, mismaMoneda ? null : recibido, cambio.Value, pendiente));
         }
 
         return lineas;
@@ -909,6 +920,15 @@ public sealed class ServicioCobros(
     /// lo guarda, para que las dos cifras no se puedan contradecir en la misma fila.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Las asignaciones que trae la petición, ya validadas y con su cambio resuelto.
+    /// <para>
+    /// <b>Desde F3-09 cada línea va a una factura o a una fianza</b>, nunca a las dos y nunca a
+    /// ninguna, que es lo que exige el <c>CHECK</c> de la tabla. La regla no puede ser un
+    /// <c>[Required]</c> porque depende del otro campo, así que se comprueba aquí y es un 409: quien
+    /// manda las dos, o ninguna, está diciendo algo que no se puede hacer.
+    /// </para>
+    /// </summary>
     private async Task<List<LineaPlan>> LineasExplícitasAsync(
         IReadOnlyList<CobroAsignacionPeticion> pedidas,
         CobroPeticion peticion,
@@ -917,24 +937,19 @@ public sealed class ServicioCobros(
         decimal disponible,
         CancellationToken ct)
     {
-        var repetida = pedidas
-            .GroupBy(p => p.FacturaId)
-            .FirstOrDefault(g => g.Count() > 1);
-        if (repetida is not null)
-        {
-            throw new InvalidOperationException(
-                $"La factura '{repetida.Key:D}' aparece dos veces en las asignaciones: de un cobro a una "
-                    + "factura hay una sola línea.");
-        }
+        ExigirDestinoUnico(pedidas);
 
-        var ids = pedidas.Select(p => p.FacturaId).ToArray();
+        var facturaIds = pedidas.Where(p => p.FacturaId is not null).Select(p => p.FacturaId!.Value).ToArray();
+        var fianzaIds = pedidas.Where(p => p.FianzaId is not null).Select(p => p.FianzaId!.Value).ToArray();
 
         // Se cargan también las que no son candidatas, para poder decir por qué no lo son en vez de
         // un «factura no encontrada» que no sería cierto.
         var encontradas = await contexto.Factura
             .Include(f => f.Serie)
-            .Where(f => ids.Contains(f.Id))
+            .Where(f => facturaIds.Contains(f.Id))
             .ToDictionaryAsync(f => f.Id, ct);
+
+        var saldosFianza = await SaldosDeFianzasAsync(fianzaIds, ct);
 
         var lineas = new List<LineaPlan>();
         var asignado = 0m;
@@ -945,39 +960,18 @@ public sealed class ServicioCobros(
             if (importe <= 0m)
             {
                 throw new InvalidOperationException(
-                    $"La asignación a la factura '{pedida.FacturaId:D}' es de {importe}: tiene que ser mayor que cero.");
+                    $"La asignación a {DescripcionDelDestino(pedida)} es de {importe}: tiene que ser mayor que cero.");
             }
 
-            if (!encontradas.TryGetValue(pedida.FacturaId, out var factura))
-            {
-                throw new KeyNotFoundException($"La factura '{pedida.FacturaId:D}' no existe.");
-            }
+            var cambio = pedida.FianzaId is { } fianzaId
+                ? LineaFianza(pedida, fianzaId, peticion, cambioAplicado, saldosFianza, importe)
+                : LineaFactura(pedida, peticion, cambioAplicado, pendientes, encontradas, importe);
 
-            var cambio = ExigirFacturaAsignable(factura, peticion, cambioAplicado);
-
-            if (!pendientes.TryGetValue(factura.Id, out var pendiente))
-            {
-                throw new InvalidOperationException(
-                    $"La factura {NumeroDe(factura)} ya está pagada y no admite más importe.");
-            }
-
-            if (importe > pendiente)
-            {
-                throw new InvalidOperationException(
-                    $"La asignación a la factura {NumeroDe(factura)} es de {importe} y a esa factura le "
-                        + $"quedan {pendiente} pendientes.");
-            }
-
-            // Lo que sale de la caja por esta línea. En la moneda del cobro es el importe tal cual; en
-            // otra moneda es su equivalente con el cambio aplicado, que puede no salir exacto y por eso
-            // se redondea antes de guardarlo.
-            var recibido = cambio is null ? importe : Redondeo.Importe(importe * cambio.Value);
-
-            // Cada factura tiene su pendiente, pero el conjunto tiene que caber en el cobro, y en la
+            // Cada destino tiene su pendiente, pero el conjunto tiene que caber en el cobro, y en la
             // moneda del cobro. Sin esta comprobación, asignar 300 a una factura con un cobro de 100
             // llegaría al CHECK de la base (excedente negativo) y quien lo escribió vería un 409
             // genérico de «error al guardar» en vez de un mensaje que dice qué se pasó.
-            asignado = Redondeo.Importe(asignado + recibido);
+            asignado = Redondeo.Importe(asignado + (cambio.ImporteRecibido ?? importe));
             if (asignado > disponible)
             {
                 throw new InvalidOperationException(
@@ -985,10 +979,233 @@ public sealed class ServicioCobros(
                         + $"{disponible} {peticion.MonedaRecibida} (importe recibido más el saldo a favor aplicado).");
             }
 
-            lineas.Add(LineaPlan.Nueva(factura, importe, cambio is null ? null : recibido, cambio ?? 1m, pendiente));
+            lineas.Add(cambio);
         }
 
         return lineas;
+    }
+
+    /// <summary>
+    /// Exactamente un destino por línea (F3-09, §3.11). Sin esto, una línea sin destino llegaría al
+    /// <c>CHECK ck_cobro_asignacion_destino_unico</c> de la base y quien lo escribió vería un 409 de
+    /// «error al guardar» en vez de un mensaje que le diga qué enviar.
+    /// </summary>
+    private static void ExigirDestinoUnico(IReadOnlyList<CobroAsignacionPeticion> pedidas)
+    {
+        var repetida = pedidas
+            .Where(p => p.FacturaId is not null)
+            .GroupBy(p => p.FacturaId!.Value)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (repetida is not null)
+        {
+            throw new InvalidOperationException(
+                $"La factura '{repetida.Key:D}' aparece dos veces en las asignaciones: de un cobro a una "
+                    + "factura hay una sola línea.");
+        }
+
+        var fianzaRepetida = pedidas
+            .Where(p => p.FianzaId is not null)
+            .GroupBy(p => p.FianzaId!.Value)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (fianzaRepetida is not null)
+        {
+            throw new InvalidOperationException(
+                $"La fianza '{fianzaRepetida.Key:D}' aparece dos veces en las asignaciones: de un cobro a una "
+                    + "fianza hay una sola línea.");
+        }
+
+        var sinDestino = pedidas.FirstOrDefault(p => p.FacturaId is null && p.FianzaId is null);
+        if (sinDestino is not null)
+        {
+            throw new InvalidOperationException(
+                $"La asignación de {sinDestino.Importe} no dice a qué se aplica: cada línea va a una factura "
+                    + "o a una fianza, y sin las dos no hay forma de saber qué deuda salda.");
+        }
+
+        var conDos = pedidas.FirstOrDefault(p => p.FacturaId is not null && p.FianzaId is not null);
+        if (conDos is not null)
+        {
+            throw new InvalidOperationException(
+                $"La línea de {conDos.Importe} apunta a la vez a la factura '{conDos.FacturaId:D}' y a la fianza "
+                    + $"'{conDos.FianzaId:D}'. Cada línea aplica el cobro a un solo destino.");
+        }
+    }
+
+    /// <summary>Cómo se llama el destino de una línea en los mensajes, para no repetirlos.</summary>
+    private static string DescripcionDelDestino(CobroAsignacionPeticion pedida) =>
+        pedida.FacturaId is { } factura ? $"la factura '{factura:D}'" : $"la fianza '{pedida.FianzaId:D}'";
+
+    /// <summary>La línea de una factura, con su pendiente y su cambio, como siempre ha sido.</summary>
+    private static LineaPlan LineaFactura(
+        CobroAsignacionPeticion pedida,
+        CobroPeticion peticion,
+        decimal cambioAplicado,
+        Dictionary<Guid, decimal> pendientes,
+        Dictionary<Guid, Factura> encontradas,
+        decimal importe)
+    {
+        var facturaId = pedida.FacturaId!.Value;
+
+        if (!encontradas.TryGetValue(facturaId, out var factura))
+        {
+            throw new KeyNotFoundException($"La factura '{facturaId:D}' no existe.");
+        }
+
+        var cambio = ExigirFacturaAsignable(factura, peticion, cambioAplicado);
+
+        if (!pendientes.TryGetValue(factura.Id, out var pendiente))
+        {
+            throw new InvalidOperationException(
+                $"La factura {NumeroDe(factura)} ya está pagada y no admite más importe.");
+        }
+
+        if (importe > pendiente)
+        {
+            throw new InvalidOperationException(
+                $"La asignación a la factura {NumeroDe(factura)} es de {importe} y a esa factura le "
+                    + $"quedan {pendiente} pendientes.");
+        }
+
+        // Lo que sale de la caja por esta línea. En la moneda del cobro es el importe tal cual; en
+        // otra moneda es su equivalente con el cambio aplicado, que puede no salir exacto y por eso
+        // se redondea antes de guardarlo.
+        var recibido = cambio is null ? importe : Redondeo.Importe(importe * cambio.Value);
+
+        return LineaPlan.NuevaFactura(factura, importe, cambio is null ? null : recibido, cambio ?? 1m, pendiente);
+    }
+
+    /// <summary>
+    /// La línea de una fianza (F3-09, §3.11). Se parece a la de factura en que el importe va en la
+    /// moneda del destino, y se diferencia en dos cosas: lo que limita la línea es lo que falta por
+    /// exigir, no el pendiente de un documento, y no hay conversión que no sea la de §3.10.2.
+    /// <para>
+    /// <b>El límite es <c>exigido − cobrado</c> y no el saldo.</b> El saldo dice cuánto hay que
+    /// devolver y en el momento de cobrar es cero; usarlo rechazaría todos los cobros de fianzas. La
+    /// regla es la misma que el pendiente de una factura: ni una ni otra admiten un sobrepago, y lo que
+    /// sobra va al excedente del cobro (§3.10.1).
+    /// </para>
+    /// </summary>
+    private static LineaPlan LineaFianza(
+        CobroAsignacionPeticion pedida,
+        Guid fianzaId,
+        CobroPeticion peticion,
+        decimal cambioAplicado,
+        Dictionary<Guid, CifrasFianza> saldos,
+        decimal importe)
+    {
+        if (!saldos.TryGetValue(fianzaId, out var cifras))
+        {
+            throw new KeyNotFoundException($"La fianza '{fianzaId:D}' no existe.");
+        }
+
+        var fianza = cifras.Fianza;
+        var cambio = ExigirFianzaAsignable(fianza, peticion, cambioAplicado);
+        var pendiente = CalculoFianza.PendienteDeCobro(fianza.ImporteExigido, cifras.Cobrado);
+
+        if (pendiente <= 0m)
+        {
+            throw new InvalidOperationException(
+                $"La fianza del contrato '{fianza.ContratoId:D}' ya tiene los "
+                    + $"{fianza.ImporteExigido} exigidos cobrados y no admite más dinero.");
+        }
+
+        if (importe > pendiente)
+        {
+            throw new InvalidOperationException(
+                $"La asignación a la fianza del contrato '{fianza.ContratoId:D}' es de {importe} y a esa "
+                    + $"fianza le exigieron {fianza.ImporteExigido} de los que ya hay {cifras.Cobrado} cobrados.");
+        }
+
+        var recibido = cambio is null ? importe : Redondeo.Importe(importe * cambio.Value);
+
+        return LineaPlan.NuevaFianza(
+            fianza,
+            importe,
+            cambio is null ? null : recibido,
+            cambio ?? 1m,
+            pendiente);
+    }
+
+    /// <summary>
+    /// Por qué una fianza no puede recibir este cobro, y con qué cambio se convierte si puede.
+    /// <para>
+    /// Es <see cref="ExigirFacturaAsignable"/> con otro nombre y las mismas tres reglas, y están
+    /// escritas aparte porque el mensaje necesita decir "fianza" y no "factura" —quien lo lee tiene que
+    /// saber a qué cuenta se le está añadiendo el dinero—. La conversión, en cambio, sí es
+    /// literalmente la misma regla de §3.10.2: se paga en la moneda en que se recibe y solo hay cambio
+    /// del día para los dólares.
+    /// </para>
+    /// </summary>
+    private static decimal? ExigirFianzaAsignable(
+        Fianza fianza,
+        CobroPeticion peticion,
+        decimal cambioAplicado)
+    {
+        if (CalculoFianza.NoCobrable(fianza.Estado))
+        {
+            throw new InvalidOperationException(
+                $"La fianza del contrato '{fianza.ContratoId:D}' está en {fianza.Estado} y no admite más "
+                    + "dinero: devolverla y cobrarla son el mismo movimiento hecho por el camino equivocado.");
+        }
+
+        if (fianza.Moneda != peticion.MonedaRecibida
+            && fianza.Moneda != Dominio.Moneda.USD)
+        {
+            throw new InvalidOperationException(
+                $"La fianza del contrato '{fianza.ContratoId:D}' está en {fianza.Moneda} y el cobro se recibe "
+                    + $"en {peticion.MonedaRecibida}. Para convertir haría falta el cambio de {fianza.Moneda}, y "
+                    + "este cobro solo trae el cambio de la moneda en que se recibe el dinero.");
+        }
+
+        if (peticion.ContratoId is null || fianza.ContratoId != peticion.ContratoId)
+        {
+            throw new InvalidOperationException(
+                $"La fianza del contrato '{fianza.ContratoId:D}' no es de este contrato: un cobro mueve el "
+                    + "dinero de su propio contrato y nunca cruza de uno a otro por su cuenta.");
+        }
+
+        return fianza.Moneda == peticion.MonedaRecibida ? null : Redondeo.TipoCambio(cambioAplicado);
+    }
+
+    /// <summary>
+    /// Las fianzas pedidas con sus sumas de cobro, en una consulta por tabla para toda la línea. Es el
+    /// mismo patrón que <see cref="CobradoPorFacturaAsync"/> y por el mismo motivo: el registro de un
+    /// cobro no puede ser una consulta por línea.
+    /// <para>
+    /// Solo se trae lo cobrado, no lo devuelto ni lo retenido: para validar una asignación lo que cuenta
+    /// es lo que falta por exigir, y lo devuelto no puede volver a cobrarse porque la fianza se
+    /// devuelve una sola vez (§3.11).
+    /// </para>
+    /// </summary>
+    private async Task<Dictionary<Guid, CifrasFianza>> SaldosDeFianzasAsync(
+        Guid[] fianzaIds,
+        CancellationToken ct)
+    {
+        var cifras = new Dictionary<Guid, CifrasFianza>();
+        if (fianzaIds.Length == 0)
+        {
+            return cifras;
+        }
+
+        var fianzas = await contexto.Fianza
+            .Where(f => fianzaIds.Contains(f.Id))
+            .ToDictionaryAsync(f => f.Id, ct);
+
+        var cobrados = await contexto.CobroAsignacion.AsNoTracking()
+            .Where(a => a.Vigente
+                && a.FianzaId != null
+                && fianzaIds.Contains(a.FianzaId.Value)
+                && a.Cobro!.Estado == EstadoCobro.Registrado)
+            .GroupBy(a => a.FianzaId!.Value)
+            .Select(g => new { FianzaId = g.Key, Cobrado = g.Sum(a => a.Importe) })
+            .ToDictionaryAsync(x => x.FianzaId, x => x.Cobrado, ct);
+
+        foreach (var (id, fianza) in fianzas)
+        {
+            cifras[id] = new CifrasFianza(fianza, Redondeo.Importe(cobrados.GetValueOrDefault(id, 0m)));
+        }
+
+        return cifras;
     }
 
     /// <summary>
@@ -1081,7 +1298,12 @@ public sealed class ServicioCobros(
         List<LineaPlan> lineas,
         Moneda monedaRecibida)
     {
-        var aplicado = lineas.GroupBy(l => l.Factura.Id).ToDictionary(g => g.Key, g => g.Sum(l => l.Importe));
+        // F3-09: una línea a una fianza no toca la deuda de ninguna factura, así que se queda fuera del
+        // reparto y la deuda de otra moneda que queda viva sigue siendo la que era.
+        var aplicado = lineas
+            .Where(l => l.Factura is not null)
+            .GroupBy(l => l.Factura!.Id)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Importe));
 
         return
         [
@@ -1196,6 +1418,7 @@ public sealed class ServicioCobros(
             .Include(c => c.FormaPago)
             .Include(c => c.CuentaReceptora)
             .Include(c => c.Asignaciones).ThenInclude(a => a.Factura)
+            .Include(c => c.Asignaciones).ThenInclude(a => a.Fianza)
             .FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new KeyNotFoundException($"El cobro '{id:D}' no existe.");
     }
@@ -1300,12 +1523,14 @@ public sealed class ServicioCobros(
             .OrderBy(a => a.Factura?.FechaVencimiento)
             .ThenBy(a => a.Factura?.Numero)
             .ThenBy(a => a.FacturaId)
+            .ThenBy(a => a.FianzaId)
             .Select(a => new CobroAsignacionRespuesta(
                 a.Id,
                 a.FacturaId,
+                a.FianzaId,
                 a.Factura?.Numero,
                 a.Factura?.FechaVencimiento,
-                a.Factura?.Moneda ?? Moneda.USD,
+                a.Factura?.Moneda,
                 a.Importe,
                 a.ImporteRecibido,
                 a.TipoCambioValor,
@@ -1364,9 +1589,16 @@ public sealed class ServicioCobros(
         Estado = c.Estado.ToString(),
         Asignado = Redondeo.Importe(c.Asignaciones.Where(a => a.Vigente).Sum(a => a.Importe)),
         Facturas = c.Asignaciones
-            .Where(a => a.Vigente)
+            .Where(a => a.Vigente && a.FacturaId is not null)
             .OrderBy(a => a.FacturaId)
-            .Select(a => a.FacturaId.ToString("D"))
+            .Select(a => a.FacturaId!.Value.ToString("D"))
+            .ToList(),
+        // F3-09: la fianza pagada con este cobro va aparte porque es un destino, no una factura, y
+        // auditarlo dentro de la lista de facturas haría creer que se le saldó una deuda que no tiene.
+        Fianzas = c.Asignaciones
+            .Where(a => a.Vigente && a.FianzaId is not null)
+            .OrderBy(a => a.FianzaId)
+            .Select(a => a.FianzaId!.Value.ToString("D"))
             .ToList(),
         c.MotivoAnulacion,
     };
@@ -1374,18 +1606,26 @@ public sealed class ServicioCobros(
     // ---------------------------------------------------------------- tipos internos
 
     /// <summary>
-    /// Una línea de la propuesta: qué factura, cuánto se le aplica en su moneda, cuánto salió de la caja
-    /// para ello y con qué cambio. Se convierte en fila de <c>cobro_asignacion</c> al guardar y es lo
-    /// que devuelve la simulación.
+    /// Una línea de la propuesta: qué factura o qué fianza, cuánto se le aplica en su moneda, cuánto
+    /// salió de la caja para ello y con qué cambio. Se convierte en fila de <c>cobro_asignacion</c> al
+    /// guardar y es lo que devuelve la simulación.
     /// <para>
-    /// <paramref name="ImporteRecibido"/> y <paramref name="Cambio"/> van a null cuando la factura
-    /// está en la moneda del pago: ahí no hubo conversión y guardar un cambio de 1 sería afirmar que
-    /// la hubo. <see cref="Consumido"/> da el número con el que se consume lo que trae el cobro, que
-    /// es siempre la moneda recibida y por eso no necesita mirar el caso especial.
+    /// <paramref name="ImporteRecibido"/> y <paramref name="Cambio"/> van a null cuando el destino está
+    /// en la moneda del pago: ahí no hubo conversión y guardar un cambio de 1 sería afirmar que la
+    /// hubo. <see cref="Consumido"/> da el número con el que se consume lo que trae el cobro, que es
+    /// siempre la moneda recibida y por eso no necesita mirar el caso especial.
+    /// </para>
+    /// <para>
+    /// <b>Desde F3-09 el destino es uno de dos</b> y por eso <paramref name="Factura"/> y
+    /// <paramref name="Fianza"/> son excluyentes. No se unifican en un tipo «destino» común porque lo
+    /// que se necesita de cada uno (pendiente o saldo, número o nada, vencimiento o nada) no tiene
+    /// nada en común, y una clase con seis nulos y un switch en cada uso sería más difícil de leer que
+    /// dos constructores y dos atributos.
     /// </para>
     /// </summary>
     private sealed record LineaPlan(
-        Factura Factura,
+        Factura? Factura,
+        Fianza? Fianza,
         decimal Importe,
         decimal? ImporteRecibido,
         decimal Cambio,
@@ -1394,18 +1634,28 @@ public sealed class ServicioCobros(
         /// <summary>Cuánto del cobro se gasta en esta línea, siempre en la moneda recibida.</summary>
         public decimal Consumido => ImporteRecibido ?? Importe;
 
-        public static LineaPlan Nueva(
+        public static LineaPlan NuevaFactura(
             Factura factura,
             decimal importe,
             decimal? importeRecibido,
             decimal cambio,
             decimal pendienteAntes)
-            => new(factura, importe, importeRecibido, cambio, pendienteAntes);
+            => new(factura, null, importe, importeRecibido, cambio, pendienteAntes);
+
+        public static LineaPlan NuevaFianza(
+            Fianza fianza,
+            decimal importe,
+            decimal? importeRecibido,
+            decimal cambio,
+            decimal saldoAntes)
+            => new(null, fianza, importe, importeRecibido, cambio, saldoAntes);
 
         public CobroAsignacion Entidad => new()
         {
-            FacturaId = Factura.Id,
+            FacturaId = Factura?.Id,
             Factura = Factura,
+            FianzaId = Fianza?.Id,
+            Fianza = Fianza,
             Importe = Importe,
             ImporteRecibido = ImporteRecibido,
             TipoCambioValor = ImporteRecibido is null ? null : Redondeo.TipoCambio(Cambio),
@@ -1413,15 +1663,23 @@ public sealed class ServicioCobros(
         };
 
         public CobroAsignacionSimulada Simulada() => new(
-            Factura.Id,
-            Factura.Numero,
-            Factura.FechaVencimiento,
-            Factura.Moneda,
+            Factura?.Id,
+            Fianza?.Id,
+            Factura?.Numero,
+            Factura?.FechaVencimiento,
+            Factura?.Moneda ?? Fianza!.Moneda,
             Importe,
             ImporteRecibido,
             ImporteRecibido is null ? null : Redondeo.TipoCambio(Cambio),
             PendienteAntes);
     }
+
+    /// <summary>
+    /// Lo cobrado de una fianza, que es lo único que hace falta para saber cuánto falta por exigir. No se
+    /// reutiliza de <c>ServicioFianzas</c> a propósito: aquel además lee las devoluciones, y un trabajo
+    /// de cobros no tiene por qué pagarlo en una consulta que no necesita.
+    /// </summary>
+    private sealed record CifrasFianza(Fianza Fianza, decimal Cobrado);
 
     /// <summary>
     /// Lo que el registro necesita de una planificación: el cobro ya poblado, las líneas, el saldo a

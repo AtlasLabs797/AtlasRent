@@ -313,6 +313,13 @@ builder.Services.AddScoped<TrabajoRetenciones>();
 builder.Services.AddScoped<ServicioFacturacionPeriodica>();
 builder.Services.AddScoped<TrabajoPeriodosSinFacturar>();
 
+// F3-09: fianzas (§3.11). No tiene permiso propio que registrar en la matriz: leer una fianza es ver
+// la cuenta del contrato (factura.ver) y moverla es fianza.mover, que §2 ya deja en gerente y
+// administrador. El trabajo diario solo levanta el aviso de §3.16; la devolución y la liquidación lo
+// resuelven ellas mismas, en su propio commit.
+builder.Services.AddScoped<ServicioFianzas>();
+builder.Services.AddScoped<TrabajoFianzas>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {
