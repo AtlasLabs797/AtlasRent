@@ -22,6 +22,19 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-017 · El dashboard ignoraba el filtro de dueña en silencio, por un `propietarioId` mal escrito
+- Fecha detectado: 18/10/2026 · Fecha corregido: 18/10/2026 (orquestador)
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: F5-01 · informes / dashboard
+- Detectado por: la **verificación de aceptación** del bloque, al comprobar que el contrato del frontend coincide con el de la API.
+- Síntoma: `GET /api/v1/informes/dashboard?propietariaId={id}` **no filtraba por dueña**: devolvía el dashboard entero, con los ocho bloques y los indicadores sin tocar, y **sin ningún error**. El mismo filtro funcionaba en `/informes/resumen` y en `/informes/exportar`. El frontend, que manda `propietariaId` en los tres, llevaba un filtro vivo y dos muertos sin que nadie lo notara.
+- Cómo reproducir: (1) dos unidades de dueñas distintas con una factura cada una; (2) `GET /api/v1/informes/dashboard?clienteId={c1}&propietariaId={dueña de la otra}` → sale la factura de `c1`, cuando no puede quedar ninguna. Con `propietarioId` —sin la «a»— el mismo filtro sí acota, que es la prueba de que el parámetro se estaba declarando con otro nombre.
+- Causa raíz: **el parámetro del dashboard se llamaba `propietarioId`** (`InformesController.cs:85`) mientras que el de `Resumen` y el de `Exportar` se llaman `propietariaId`. ASP.NET **no rechaza los parámetros que la acción no declara**: los ignora. Por eso el síntoma no era un 400 sino un informe completo y plausible, y por eso ninguna prueba lo cazó: los once filtros se probaban **contra el `resumen`**, que estaba bien escrito. El fallo estaba en la firma de una acción, no en la lógica, y la lógica es la misma para los tres endpoints.
+- Solución: el nombre del parámetro en el dashboard, `propietarioId` → `propietariaId`. **Una línea**, sin tocar nada más: el valor ya se pasaba a `FiltroInformes` en la posición correcta y el servicio siempre aplicó el filtro bien.
+- Test que lo cubre: dos, en `backend/AtlasRent.Tests/Informes/InformeResumenTests.cs`. `LosTresEndpointsDeclaranLosMismosOnceFiltros` afirma por **reflexión** que `Resumen`, `Dashboard` y `Exportar` declaran los once filtros de §3.15 con los mismos nombres: es lo que caza una errata de este tipo aunque el parámetro sea otro, y no depende de datos. `ElDashboardAplicaElFiltroDePropietaria` va por HTTP con dos facturas en unidades de dueñas distintas y afirma que filtrar por el cliente de una **y** la dueña de la otra no deja nada, mientras que sin el filtro de dueña sí sale la del cliente. **Comprobado que ambos fallan con el bug presente** (2 errores) y pasan con el arreglo.
+- Commit/PR: `tarea/F5-01-informes-dashboard`.
+- Datos afectados: ninguno. Es un endpoint de lectura recién construido; no se ha puesto en producción ni ha lingered en un backup.
+- **Riesgo que queda (dicho, no arreglado):** esta clase de fallo —una acción que acepta menos parámetros de los que el resto, y ASP.NET los ignora en silencio— **no la cubre ningún mecanismo del repo** salvo las pruebas que se escriban para ese endpoint concreto. Las dos de aquí la cierran para F5, pero cualquier endpoint futuro con once parámetros escritos a mano repite laoccasion. La regla que sale de esto es que **los tres endpoints con el mismo conjunto de filtros deben|Probarse contra el mismo conjunto**, no uno de ellos.
+
 ### BUG-016 · El filtro por propietaria de la vista única no heredaba la del inmueble y devolvía cero filas
 - Fecha detectado: 18/10/2026 · Fecha corregido: 18/10/2026 (orquestador)
 - Gravedad: **Media** · Estado: CORREGIDO · Módulo: F5-01 · vista única / informes

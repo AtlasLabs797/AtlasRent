@@ -1,5 +1,8 @@
 using System.Net;
+using System.Reflection;
 using AtlasRent.Api.Authorization;
+using AtlasRent.Api.Controllers;
+using Microsoft.AspNetCore.Mvc;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.DTOs;
 using AtlasRent.Tests.CicloFactura;
@@ -352,6 +355,83 @@ public sealed class InformeResumenTests(ContenedorBdFixture bd, ApiTestFactoryBl
 
         (await AyudaInformes.ResumenAsync(admin, $"{consulta}&propietariaId={otraDuena:D}", ct))
             .Bloque("facturado").Usd().Should().Be(700m);
+    }
+
+    /// <summary>
+    /// Los tres endpoints de §3.15 declaran <b>los mismos once filtros con los mismos nombres</b>.
+    /// <para>
+    /// No es una regla de estilo: son tres firmas escritas a mano, y una de ellas se escribió como
+    /// <c>propietarioId</c> sin la «a» (BUG-017). Un parámetro que la acción no declara <b>no da
+    /// error</b>: ASP.NET lo ignora y el informe sale entero. Por eso se afirma sobre el conjunto de
+    /// parámetros y no sobre el 200.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void LosTresEndpointsDeclaranLosMismosOnceFiltros()
+    {
+        string[] filtros =
+        [
+            "desde", "hasta", "serieId", "moneda", "estado", "clienteId", "unidadId", "contratoId",
+            "inmuebleId", "propietariaId", "facturadoraId",
+        ];
+
+        foreach (var accion in new[] { "Resumen", "Dashboard", "Exportar" })
+        {
+            var declarados = typeof(InformesController).GetMethod(accion)!
+                .GetParameters()
+                .Where(p => p.GetCustomAttribute<FromQueryAttribute>() is not null)
+                .Select(p => p.Name!)
+                .ToArray();
+
+            declarados.Should().Contain(
+                filtros,
+                $"{accion} no declara alguno de los once filtros de §3.15: "
+                + $"pide {string.Join(", ", filtros.Except(declarados))}");
+        }
+    }
+
+    /// <summary>
+    /// El filtro por dueña <b>llega al dashboard</b>, que es el endpoint donde se perdió (BUG-017).
+    /// <para>
+    /// Se monta lo mínimo para que el filtro tenga que trabajar: dos facturas de clientes distintos en
+    /// unidades de dueñas distintas. Filtrando por el cliente de la una <b>y</b> la dueña de la otra no
+    /// puede quedar nada; si el dashboard se come el parámetro sin entenderlo, la del cliente vuelve a
+    /// salir y el facturado deja de ser cero.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ElDashboardAplicaElFiltroDePropietaria()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var admin = await AyudaCuentas.SesionAsync(bd, api, Roles.Admin, ct);
+
+        var duena = await AyudaContrato.SubempresaAsync(bd, ct, propietaria: true);
+        var otraDuena = await AyudaContrato.SubempresaAsync(bd, ct, propietaria: true);
+
+        var clienteDeLaDuena = await AyudaFacturas.CrearClienteAsync(admin, ct);
+        var clienteDeLaOtra = await AyudaFacturas.CrearClienteAsync(admin, ct);
+        var serieId = await AyudaFacturas.CrearSerieAsync(admin, TipoSerie.Normal, Moneda.USD, ct);
+        var hoy = await AyudaFacturas.HoyAsync(admin, ct);
+
+        var (_, unidadDeLaDuena) = await AyudaReserva.InmuebleYUnidadAsync(
+            admin, ct, propietariaUnidadId: duena);
+        var (_, unidadDeLaOtra) = await AyudaReserva.InmuebleYUnidadAsync(
+            admin, ct, propietariaUnidadId: otraDuena);
+
+        await AyudaCobros.EmitidaAsync(
+            admin, clienteDeLaDuena, null, serieId, Moneda.USD, hoy.AddDays(10), 300m, ct, unidadDeLaDuena);
+        await AyudaCobros.EmitidaAsync(
+            admin, clienteDeLaOtra, null, serieId, Moneda.USD, hoy.AddDays(20), 700m, ct, unidadDeLaOtra);
+
+        // Sin el filtro de dueña, la factura de ese cliente está: 300. Esto fija que el dato existe.
+        (await AyudaInformes.DashboardAsync(
+                admin, $"clienteId={clienteDeLaDuena:D}", ct))
+            .GetProperty("resumen").Bloque("facturado").Usd().Should().Be(300m);
+
+        // Con la dueña que no es la suya no puede quedar nada. Si el parámetro se ignora, salen 300.
+        (await AyudaInformes.DashboardAsync(
+                admin, $"clienteId={clienteDeLaDuena:D}&propietariaId={otraDuena:D}", ct))
+            .GetProperty("resumen").Bloque("facturado").Usd().Should().Be(0m);
     }
 
     /// <summary>

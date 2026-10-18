@@ -917,7 +917,7 @@ Los ocho bloques de §3.15, el dashboard del día y la exportación a Excel/CSV.
 | Endpoint | Acción | Notas |
 |---|---|---|
 | `GET /api/v1/informes/resumen` | `informe.ver` | Los ocho bloques, la serie mensual del gráfico y los dos contadores de salvedad. Filtros: los de §6.7 más `desde`, `hasta`, `inmuebleId`, `propietariaId`, `facturadoraId` y `contratoId`. |
-| `GET /api/v1/informes/dashboard` | `informe.ver` | Indicadores del día (disponibles, reservadas, ocupadas, mantenimiento) y contratos activos, más el resumen con los mismos filtros. `fecha` es el día del corte; por defecto hoy en Santo Domingo. |
+| `GET /api/v1/informes/dashboard` | `informe.ver` | Indicadores del día (disponibles, reservadas, ocupadas, mantenimiento) y contratos activos, más el resumen con los mismos filtros. `fecha` es el día del corte; por defecto hoy en Santo Domingo. **Los once filtros se declaran con los mismos nombres que en `resumen` y `exportar`, y eso lo afirma una prueba por reflexión**: un parámetro con otro nombre no da error, ASP.NET lo ignora y el dashboard salía entero sin avisar (BUG-017). Los indicadores de unidades y contratos **no** dependen de los filtros: son un corte de toda la empresa. |
 | `GET /api/v1/informes/exportar` | `informe.ver` | `formato=xlsx\|csv`. Devuelve las filas del detalle y, en el xlsx, una hoja `Resumen` con los bloques. `formato` inválido es un 400 de validación de modelo. |
 
 #### Los bloques salen de la vista única, no de una segunda cuenta

@@ -82,13 +82,13 @@ public sealed class InformesController(
         [FromQuery] Guid? unidadId,
         [FromQuery] Guid? contratoId,
         [FromQuery] Guid? inmuebleId,
-        [FromQuery] Guid? propietarioId,
+        [FromQuery] Guid? propietariaId,
         [FromQuery] Guid? facturadoraId,
         CancellationToken ct) =>
         Ok(await informes.DashboardAsync(
             new FiltroInformes(
                 desde, hasta, serieId, moneda, estado, clienteId, unidadId, contratoId, inmuebleId,
-                propietarioId, facturadoraId),
+                propietariaId, facturadoraId),
             fecha,
             ct));
 
