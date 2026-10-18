@@ -572,7 +572,7 @@ public sealed class ServicioRecordatorios(
             recordatorio.Fecha,
             recordatorio.Estado,
             TextoDelPendiente(pendiente),
-            HuellaAviso.Calcular(recordatorio, TextoDelPendiente(pendiente), hoy));
+            HuellaAviso.Calcular(recordatorio, TextoDelPendiente(pendiente)));
     }
 
     // ---------------------------------------------------------------- lectura
@@ -847,19 +847,21 @@ public sealed class ServicioRecordatorios(
         /// esto cambia y las propuestas pendientes hechas con el formato viejo caducan en vez de
         /// compararse con una coincidencia que ya no significa nada.
         /// </summary>
-        private const string Version = "recordatorio.v2";
+        private const string Version = "recordatorio.v1";
 
         /// <summary>
-        /// Lo que entra: el aviso, su cliente y su unidad, el día para el que se preparó, su estado,
-        /// el pendiente del cliente en ese momento y <b>el día en que se calcula la huella</b>.
+        /// Lo que entra: el aviso, su cliente y su unidad, el día para el que se preparó, su estado y
+        /// el pendiente del cliente en ese momento.
         /// <para>
-        /// El día en que se calcula entra, y no solo el del aviso: el texto del aviso dice cuántos
-        /// días lleva de atraso, así que al cambiar de día lo que se aprobaría ya no es lo que se
-        /// propuso, aunque el saldo siga igual. Por eso el día se pasa como parámetro y lo pone quien
-        /// calcula, que es el único que sabe qué día es.
+        /// <b>El día en que se calcula no entra, a propósito.</b> La huella sirve para detectar que lo
+        /// que hay que aprobar ya no es lo que se propuso, y eso lo detecta el pendiente: si al pasar
+        /// el día entra una factura nueva en mora o se cobra algo, el pendiente cambia y la propuesta
+        /// caduca sola. Si no cambia nada, la acción que se va a aprobar es exactamente la misma y la
+        /// propuesta aguanta, que es lo que hace falta para que una revisión hecha por la mañana no
+        /// invalide lo que se propuso por la tarde del día anterior.
         /// </para>
         /// </summary>
-        public static string Calcular(Recordatorio recordatorio, string pendiente, DateOnly hoy) =>
+        public static string Calcular(Recordatorio recordatorio, string pendiente) =>
             EmisorTokens.HashToken(string.Join('\n',
             [
                 Version,
@@ -867,7 +869,6 @@ public sealed class ServicioRecordatorios(
                 $"cliente={recordatorio.ClienteId:N}",
                 $"unidad={recordatorio.UnidadId?.ToString("N") ?? "-"}",
                 $"fecha={recordatorio.Fecha:yyyy-MM-dd}",
-                $"hoy={hoy:yyyy-MM-dd}",
                 $"estado={(int)recordatorio.Estado}",
                 $"pendiente={pendiente}",
             ]));

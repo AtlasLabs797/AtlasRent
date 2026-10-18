@@ -305,13 +305,21 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
     }
 
     /// <summary>
-    /// El día también deja vieja la propuesta: el texto del aviso dice cuántos días lleva de atraso,
-    /// así que lo que se aprobaría mañana ya no es lo que se propuso hoy. Lo que se comprueba aquí es
-    /// además el <b>motivo</b>: tiene que decir que el aviso cambió, sin inventar por qué —el saldo
-    /// puede no haber cambiado ni un céntimo y el motivo lo daba por cierto—.
+    /// Pasar el día <b>no</b> invalida una propuesta: lo que hay que aprobar sigue siendo lo mismo.
+    /// <para>
+    /// La huella lleva el pendiente del cliente, y el pendiente solo cambia cuando entra algo nuevo en
+    /// mora o se cobra algo — que es justo lo que tiene que caducar. Meter el día en la huella
+    /// además de eso convertiría la bandeja en papel de un solo día: una propuesta del día anterior
+    /// no se podría aprobar aunque no hubiera cambiado absolutamente nada, que es justo cuando un
+    /// gerente llega por la mañana a revisarla.
+    /// </para>
+    /// <para>
+    /// El otro lado de esta regla lo fija <see cref="LaPropuestaCaducaSiElSaldoCambiaEntreProponerYAProbar"/>:
+    /// lo que cambia de verdad caduca.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task UnaPropuestaDelDiaAnteriorCaducaConUnMotivoQueNoCulpaAlSaldo()
+    public async Task UnaPropuestaDelDiaAnteriorSigueSeAprobandoSiNadaHaCambiado()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -334,15 +342,46 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
         respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
 
         var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        cuerpo.GetProperty("resultado").GetString().Should().Be(nameof(ResultadoSolicitud.Aprobada));
+
+        (await AyudaRecordatorios.CorreosDe(bd, fabrica, escenario.ClienteId, ct))
+            .Should().HaveCount(1, "aprobar manda el aviso: es para eso que servía la propuesta");
+    }
+
+    /// <summary>
+    /// La caducidad se comprueba contra lo que de verdad puede haber cambiado, y su motivo tiene que
+    /// decir lo que sabe: que el aviso ya no es el mismo, sin inventar que fue el saldo. Un motivo que
+    /// afirma lo que no sabe hace que un aprobador desconfíe de todas las caducidades, y entonces la
+    /// caducidad deja de ser una garantía y pasa a ser ruido.
+    /// <para>
+    /// <see cref="LaPropuestaCaducaSiElSaldoCambiaEntreProponerYAprobar"/> ya prueba que el cambio de
+    /// saldo caduca; aquí lo que se fija es el motivo.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ElMotivoDeCaducidadDiceQueElAvisoCambioSinCulparAlSaldo()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, escenario, facturaId) = await EscenarioAsync(ct);
+
+        var propuesta = await ProponerAsync(admin, escenario.ClienteId, ct);
+
+        await AyudaCuentas.CobrarAsync(admin, escenario, facturaId, 300m, escenario.Hoy, ct);
+
+        var respuesta = await admin.PostAsync($"/api/v1/ia/propuestas/{propuesta.Id:D}/aprobacion", new { }, ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
         cuerpo.GetProperty("resultado").GetString().Should().Be(nameof(ResultadoSolicitud.Caducada));
 
         var motivo = cuerpo.GetProperty("motivoCaducidad").GetString();
         motivo.Should().NotBeNullOrWhiteSpace();
-        motivo!.Should().NotContain("saldo", because: "el saldo puede no haber cambiado: el motivo no puede afirmar lo que no sabe");
+        motivo!.Should().NotContain("saldo", because: "el motivo no puede afirmar lo que no sabe");
         motivo.Should().NotContain("cobró");
         motivo.Should().NotContain("pago");
 
-        (await AyudaRecordatorios.CorreosDe(bd, fabrica, escenario.ClienteId, ct))
+        (await AyudaRecordatorios.CorreosDe(bd, api, escenario.ClienteId, ct))
             .Should().BeEmpty("una propuesta vieja no manda correos");
         (await AyudaRecordatorios.AvisosAsync(bd, escenario.ClienteId, ct))
             .Single()

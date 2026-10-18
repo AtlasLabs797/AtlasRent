@@ -139,6 +139,13 @@ dotnet test -c Release
 dotnet list package --vulnerable --include-transitive
 dotnet ef database update   # contra BD vacía de desarrollo
 ```
+**Aviso (19/10/2026):** `dotnet test` está aquí como nombre de la comprobación, no como comando que funcione. Los tests son xUnit v3 con runner en proceso y **`dotnet test` termina sin ejecutar una sola prueba**, silenciosamente, con todo en verde. Para ejecutarlos de verdad, el ejecutable de pruebas:
+```
+backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe                       # toda la suite
+backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe -namespace <ns>        # un namespace
+backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe -class <ns.Clase>      # una clase
+```
+Es también la forma de no lanzar la suite entera cuando solo toca comprobar una tarea: **dos ejecuciones a la vez se pelean por `bin\AtlasRent.Tests.dll`**, una espera a que la otra suelte el binario, y la suite tarda 15 minutos en vez de 10 por eso. Compila antes de ejecutar, que el binario es de la configuración `Release`.
 Frontend (cuando exista `frontend/`):
 ```
 npm --prefix frontend ci
