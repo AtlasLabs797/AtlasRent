@@ -74,6 +74,7 @@ export const GRUPOS_MENU: GrupoMenu[] = [
   {
     etiqueta: textos.navegacion.grupos.herramientas,
     entradas: [
+      modulo('asistente', ACCIONES.iaConsultar, '/asistente'),
       // Muestra de componentes del design system (F1-13). Es una herramienta de quien la mantiene,
       // así que se reserva a quien edita la configuración.
       modulo('componentes', ACCIONES.configuracionEditar, '/componentes'),

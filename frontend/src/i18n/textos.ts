@@ -51,6 +51,7 @@ export const textos = {
       cobros: { etiqueta: 'Cobros', icono: 'banknote' },
       fianzas: { etiqueta: 'Fianzas', icono: 'landmark' },
       informes: { etiqueta: 'Informes', icono: 'chart-column' },
+      asistente: { etiqueta: 'Asistente', icono: 'sparkles' },
       auditoria: { etiqueta: 'Auditoría', icono: 'scroll-text' },
       bloqueos: { etiqueta: 'Bloqueos', icono: 'lock' },
       usuarios: { etiqueta: 'Usuarios', icono: 'user-cog' },
@@ -241,6 +242,63 @@ export const textos = {
       titulo: 'No se ha podido cargar el informe',
       cuerpo:
         'Los datos no se han podido pedir a la API, así que no se muestra ninguna cifra. Vuelve a intentarlo en un momento.',
+    },
+  },
+  /**
+   * Asistente de IA (F6-03). El backend es sin estado: cada pregunta va sola y la respuesta no se
+   * guarda en el navegador, así que aquí no hay historial ni conversación que restaurar.
+   */
+  asistente: {
+    titulo: 'Asistente',
+    descripcion: 'Pregunta sobre los datos de Atlas Rent. Elige sobre qué quieres la respuesta.',
+    formulario: {
+      titulo: 'Pregunta',
+      descripcion:
+        'La pregunta se manda junto con el alcance elegido. Cada pregunta es independiente: no se guarda la conversación en este navegador.',
+      pregunta: 'Pregunta',
+      pista: 'Por ejemplo: cuántos contratos vencen este mes',
+      alcance: 'Alcance',
+      alcances: {
+        clientes: 'Clientes',
+        cuentas: 'Cuentas',
+        facturas: 'Facturas',
+        contratos: 'Contratos',
+        informes: 'Informes',
+      },
+      enviar: 'Consultar',
+      enviando: 'Consultando…',
+      preguntaVacia: 'Escribe una pregunta antes de consultar.',
+      alcanceInvalido: 'Elige un alcance de los de la lista.',
+    },
+    respuesta: {
+      titulo: 'Respuesta',
+      vacioTitulo: 'Todavía no hay respuesta',
+      vacioCuerpo: 'Escribe una pregunta y elige el alcance para ver aquí lo que responde la IA.',
+      fuente: 'Respuesta de {proveedor} · {modelo}',
+    },
+    /** Fallbacks: si la API manda su `detail` de `ProblemDetails`, ese texto es el que se enseña. */
+    errores: {
+      sesionCaducada: {
+        titulo: 'La sesión ha caducado',
+        cuerpo: 'Vuelve a entrar en Atlas Rent para poder seguir preguntando.',
+      },
+      sinPermiso: {
+        titulo: 'Tu usuario no puede consultar la IA',
+        cuerpo: 'Pídeselo a quien administre Atlas Rent.',
+      },
+      limite: {
+        titulo: 'Se ha alcanzado el límite de consultas',
+        cuerpo: 'Espera unos minutos antes de volver a intentarlo.',
+      },
+      noDisponible: {
+        titulo: 'La IA no está disponible',
+        cuerpo: 'No está habilitada en esta instalación o no tiene clave configurada.',
+      },
+      generico: {
+        titulo: 'No se ha podido consultar la IA',
+        cuerpo: 'Vuelve a intentarlo en un momento.',
+      },
+      reintentar: 'Reintentar',
     },
   },
 };
