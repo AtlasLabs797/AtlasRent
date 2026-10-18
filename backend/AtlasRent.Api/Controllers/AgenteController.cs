@@ -10,9 +10,9 @@ namespace AtlasRent.Api.Controllers;
 /// F6-01: tokens de agente y las consultas de solo lectura que el asistente hace con ellos.
 /// <para>
 /// Dos superficies distintas en la misma ruta. Los <c>tokens</c> se administran con sesión normal
-/// de administrador, como cualquier otro dato de configuración. Las consultas de lectura son
-/// endpoints de la API como los demás: se pueden llamar con token de agente o con una sesión
-/// corriente, y en los dos casos el <c>[Accion]</c> decide.
+/// de administrador, como cualquier otro dato de configuración. Las consultas de lectura y las
+/// propuestas son endpoints de la API como los demás: se pueden llamar con token de agente o con una
+/// sesión corriente, y en los dos casos el <c>[Accion]</c> decide.
 /// </para>
 /// <para>
 /// Las rutas de lectura exigen <c>ia.consultar</c> además de la acción del dato, y ninguna declara
@@ -25,6 +25,7 @@ public sealed class AgenteController(
     ServicioAgentes agentes,
     ServicioClientes clientes,
     ServicioConsultaIa consultas,
+    ServicioPropuestasAgente propuestas,
     ServicioIdempotencia idempotencia,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
@@ -173,6 +174,54 @@ public sealed class AgenteController(
                 Problemas.ProveedorIaNoDisponible,
                 "Asistente no disponible",
                 noDisponible.Message);
+        }
+    }
+
+    /// <summary>
+    /// Propone una acción con token de agente (F6-03). <b>El primer camino de escritura que acepta
+    /// un agente</b>, y por eso es el más medido: exige <c>ia.proponer</c> en el token y en el techo
+    /// de su propietario, y lo único que devuelve es la propuesta en la bandeja. Aprobar es de otra
+    /// acción y solo se puede con sesión.
+    /// <para>
+    /// Si el token no trae <c>ia.proponer</c>, el filtro de agente lo corta con 403 antes de llegar
+    /// aquí, y la denegación queda auditada con origen <c>agente</c> como cualquier otra.
+    /// </para>
+    /// </summary>
+    [HttpPost("propuesta")]
+    [Accion(Acciones.IaProponer)]
+    public async Task<IActionResult> Proponer(PropuestaIaPeticion peticion, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await propuestas.CrearAsync(peticion, UsuarioDeLaPeticion(), Ip(), ct));
+        }
+        catch (ArgumentException invalida)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status400BadRequest,
+                Problemas.Validacion,
+                "Datos no válidos",
+                invalida.Message);
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (InvalidOperationException conflicto)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status409Conflict,
+                Problemas.ValorDuplicado,
+                "No se puede dejar la propuesta",
+                conflicto.Message);
+        }
+        catch (PermisoDenegadoException)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status403Forbidden,
+                Problemas.PermisoDenegado,
+                "Permiso denegado",
+                "Este token no tiene permiso para proponer acciones.");
         }
     }
 }
