@@ -72,3 +72,11 @@ WhatsApp__Proveedor=<pendiente A1>
 WhatsApp__Token=<secreto>
 WhatsApp__AppSecret=<secreto>
 WhatsApp__VerifyToken=<secreto>
+
+# F6-01: tokens de agente (docs/DOC_TECNICA.md §7). Ninguno es un secreto: son los valores por
+# defecto que usa el alta cuando el administrador no dice otra cosa. Un token siempre caduca; la
+# vida se pide en días y el máximo (Agentes__VidaDiasTokenMaxima) es el tope que no se puede pasar
+# desde la API.
+Agentes__VidaDiasToken=90
+Agentes__VidaDiasTokenMaxima=365
+Agentes__LimiteConsultasDia=500
