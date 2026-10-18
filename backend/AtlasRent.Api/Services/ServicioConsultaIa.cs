@@ -100,15 +100,16 @@ public sealed class ServicioConsultaIa(
                 $"El alcance '{alcance}' no existe. Los que hay: {string.Join(", ", Alcances)}.");
         }
 
-        var proveedor = DelProveedorElegido();
-
         // 1) Permiso del alcance: el del rol y el recorte por usuario, más la lista del token si la
-        //    llamada viene de un agente. Se audita antes de lanzar, como en el resto de servicios que
-        //    comprueban permisos por su cuenta.
+        //    llamada viene de un agente. Va antes que el proveedor a propósito: mirar antes qué
+        //    proveedor está elegido y si tiene clave le diría a quien no tiene permiso cuál es y si
+        //    esta instalación lo tiene configurado, que no le corresponde saber.
         foreach (var accion in acciones)
         {
             await ExigirAsync(accion, $"ia/{alcance.Trim().ToLowerInvariant()}", ct);
         }
+
+        var proveedor = DelProveedorElegido();
 
         // 2) Límites, antes de gastar un céntimo. Va después del permiso: no tiene sentido contar
         //    consultas de quien no podía ver los datos.
