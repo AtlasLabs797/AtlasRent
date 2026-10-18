@@ -7,6 +7,7 @@ import { useSesion } from './sesion/store';
 const Acceso = lazy(() => import('./paginas/Acceso'));
 const Inicio = lazy(() => import('./paginas/Inicio'));
 const Informes = lazy(() => import('./paginas/Informes'));
+const Asistente = lazy(() => import('./paginas/Asistente'));
 const DesignSystem = lazy(() => import('./paginas/DesignSystem'));
 const NoEncontrada = lazy(() => import('./paginas/NoEncontrada'));
 
@@ -53,6 +54,9 @@ export function App() {
             {/* Informes exige `informe.ver`; el `Layout` filtra la ruta con la misma acción que
                 exige la API, así que el empleado recibe "sin permiso" y no un 403. */}
             <Route path="informes" element={<Informes />} />
+            {/* El asistente exige `ia.consultar`, la misma acción que declara el endpoint: el
+                `Layout` filtra la ruta con ella y quien no la tiene recibe "sin permiso". */}
+            <Route path="asistente" element={<Asistente />} />
             <Route path="componentes" element={<DesignSystem />} />
             <Route path="*" element={<NoEncontrada />} />
           </Route>
