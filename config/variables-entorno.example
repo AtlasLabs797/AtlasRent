@@ -98,7 +98,7 @@ Ia__Anthropic__BaseUrl=https://api.anthropic.com
 Ia__Anthropic__Modelo=<modelo>
 
 Ia__Openai__Clave=<secreto>
-Ia__Openai__BaseUrl=https://api.openai.io/v1
+Ia__Openai__BaseUrl=https://api.openai.com/v1
 Ia__Openai__Modelo=<modelo>
 
 Ia__Openrouter__Clave=<secreto>

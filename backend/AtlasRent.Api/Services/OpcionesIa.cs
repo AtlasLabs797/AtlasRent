@@ -88,7 +88,7 @@ public sealed class OpcionesIa
 
     public OpcionesProveedorIa Anthropic { get; init; } = new() { BaseUrl = "https://api.anthropic.com" };
 
-    public OpcionesProveedorIa Openai { get; init; } = new() { BaseUrl = "https://api.openai.io/v1" };
+    public OpcionesProveedorIa Openai { get; init; } = new() { BaseUrl = "https://api.openai.com/v1" };
 
     public OpcionesProveedorIa Openrouter { get; init; } = new() { BaseUrl = "https://openrouter.ai/api/v1" };
 
@@ -120,7 +120,7 @@ public sealed class OpcionesIa
         TopeConsultasMes = configuracion.GetValue($"{Seccion}:TopeConsultasMes", 2000),
         MaxTokensSalida = configuracion.GetValue($"{Seccion}:MaxTokensSalida", 1024),
         Anthropic = LeerProveedor(configuracion, nameof(ProveedorIa.Anthropic), "https://api.anthropic.com"),
-        Openai = LeerProveedor(configuracion, nameof(ProveedorIa.Openai), "https://api.openai.io/v1"),
+        Openai = LeerProveedor(configuracion, nameof(ProveedorIa.Openai), "https://api.openai.com/v1"),
         Openrouter = LeerProveedor(
             configuracion,
             nameof(ProveedorIa.Openrouter),

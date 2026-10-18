@@ -5,7 +5,7 @@ namespace AtlasRent.Api.Services;
 
 /// <summary>
 /// El dialecto <c>POST {BaseUrl}/chat/completions</c>, que es el que ya comparten <b>OpenAI</b>
-/// (<c>https://api.openai.io/v1</c>), <b>OpenRouter</b> (<c>https://openrouter.ai/api/v1</c>) y
+/// (<c>https://api.openai.com/v1</c>), <b>OpenRouter</b> (<c>https://openrouter.ai/api/v1</c>) y
 /// <b>MiniMax</b> (<c>https://api.minimax.io/v1</c>).
 /// <para>
 /// Una sola clase para los tres: la petición, la respuesta y el formato del cuerpo son idénticos y
