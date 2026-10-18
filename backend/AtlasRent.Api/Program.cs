@@ -325,6 +325,14 @@ builder.Services.AddScoped<TrabajoFianzas>();
 // POST /api/v1/cobros.
 builder.Services.AddScoped<ServicioCuentas>();
 
+// F5-01: informes y dashboard (§3.15). Se calculan sobre las filas de la vista única y no con una
+// segunda fórmula de dinero, que es lo que hace que el informe cuadre con la tabla. Solo lectura.
+builder.Services.AddScoped<ServicioInformes>();
+
+// F5-02: exportación del informe a Excel y CSV (§3.15). Sale de las mismas filas que el resumen, así
+// que es de solo lectura y no trae permiso propio: el del endpoint es informe.ver.
+builder.Services.AddScoped<ServicioExportacionInformes>();
+
 // F4-02: el envío de documentos por correo (§3.14). Las opciones son singleton porque son la
 // configuración del despliegue y no cambian mientras corre el proceso; la clave sale de ahí, de
 // variables de entorno o de user-secrets, y no hay ninguna columna donde escribirla.

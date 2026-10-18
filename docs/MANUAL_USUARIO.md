@@ -195,8 +195,30 @@ En la misma tabla de cobros. Al terminar el contrato, el gerente la devuelve ent
 ## 13. Avisos y bandeja 🟡
 La campana muestra vencidas, contratos por vencer o pendientes de aprobar, fianzas pendientes, comprobantes por agotarse, envíos fallidos y avisos de seguridad (administrador).
 
-## 14. Informes (gerente y administrador) ⬜
-Facturado, cobrado, pendiente, vencido, retenido, fianzas y diferencias de cambio, en USD y DOP por separado y consolidado en USD. Exportables a Excel.
+## 14. Informes (gerente y administrador) ✅
+> Construida en F5-01. **Pendiente:** nadie la ha abierto todavía en un navegador, así que su aspecto en
+> tema claro y oscuro está sin revisar (lo está el código, no la pantalla).
+
+En **Informes** tienes los bloques de §3.15: proformado, facturado, cobrado, retenido, pendiente, vencido,
+fianzas retenidas y diferencias de cambio. Cada bloque sale en **USD y DOP por separado** y con el
+**consolidado en dólares**.
+
+- **Filtros:** desde, hasta, moneda y estado. Por cliente, unidad, contrato, inmueble, serie o empresa no
+  hay desplegable todavía: si vienes desde otra pantalla con un filtro en la dirección, se aplica; si no,
+  el informe va de todo.
+- **Lo de arriba son los indicadores del día:** unidades disponibles, reservadas, ocupadas y en
+  mantenimiento, y los contratos activos. Son un **corte de toda la empresa**, no del filtro: cuentan lo que
+  hay en la casa ese día. Los bloques de dinero de abajo sí respetan los filtros.
+- **Gráfico:** facturado y cobrado por mes, ya en dólares.
+- **Exportar:** los botones de Excel y CSV descargan el detalle de facturas, proformas y fianzas con los
+  filtros que estás viendo. El Excel lleva además una hoja con el resumen.
+- **Avisos que pueden salir:** si hay documentos en pesos sin tipo de cambio congelado, el consolidado en
+  dólares **no los incluye** y la pantalla lo dice. Si has puesto filtro de fechas, el saldo a favor no
+  suma al total de cobrado, porque es una foto de hoy y no un movimiento del periodo.
+
+**Ojo con los dos importes:** el consolidado usa el tipo de cambio que tenía cada documento cuando se
+emitió, no el de hoy. Por eso un informe del mes pasado no cambia al verlo mañana, y por eso dos facturas
+iguales en meses distintos pueden consolidar distinto.
 
 ## 15. Preguntas frecuentes
 - **Me equivoqué en una factura emitida.** El gerente la modifica (si no tiene comprobante) o la anula y emite otra.

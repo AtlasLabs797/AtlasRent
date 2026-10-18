@@ -166,4 +166,25 @@ public sealed record FiltroCuentas(
     bool EnvioFallido,
     bool ModificadasTrasEnvio,
     bool IncluirProformas,
-    bool IncluirFianzas);
+    bool IncluirFianzas,
+
+    /// <summary>
+    /// Primer día de emisión, inclusive. F5-01: es el rango que necesitan los informes de §3.15 y lo
+    /// que hace falta para acotar la vista sin tener que traerla entera.
+    /// </summary>
+    DateOnly? Desde,
+
+    /// <summary>Último día de emisión, inclusive.</summary>
+    DateOnly? Hasta,
+
+    /// <summary>Inmueble de la unidad de la factura.</summary>
+    Guid? InmuebleId,
+
+    /// <summary>
+    /// Propietaria de la unidad de la factura, o la del inmueble cuando la unidad no tiene una propia
+    /// (<c>unidad.propietaria_id</c> es la herencia de §3.1).
+    /// </summary>
+    Guid? PropietariaId,
+
+    /// <summary>Facturadora por defecto de la unidad de la factura (<c>unidad.facturadora_por_defecto_id</c>).</summary>
+    Guid? FacturadoraId);

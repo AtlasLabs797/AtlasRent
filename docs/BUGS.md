@@ -22,6 +22,19 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-016 · El filtro por propietaria de la vista única no heredaba la del inmueble y devolvía cero filas
+- Fecha detectado: 18/10/2026 · Fecha corregido: 18/10/2026 (orquestador)
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: F5-01 · vista única / informes
+- Detectado por: un **test** nuevo de F5-01 (`LaUnidadSinPropietariaPropiaSaleAlFiltrarPorLaDelInmueble`), escrito para cubrir el filtro `propietariaId` que el propio bloque añadió y que no tenía ninguna prueba.
+- Síntoma: filtrar la vista única y el informe por una propietaria **no devolvía ninguna fila** de las unidades que no tienen `propietaria_id` propio, es decir de todos los alquileres de un edificio entero. Las unidades con dueña propia sí salían: el filtro parecía funcionar en los datos de siempre y fallaba justo en el caso que §3.1 dice que tiene que funcionar.
+- Cómo reproducir: (1) crear una subempresa propietaria; (2) crear un inmueble **sin** dueña y una unidad dentro; (3) poner la dueña en el inmueble; (4) `GET /api/v1/cuentas?propietariaId={id}` — la fila de esa unidad no aparece, aunque la vista sin filtro sí la enseña. Con `propietaria_id` puesto en la unidad, el mismo filtro la devuelve.
+- Causa raíz: la rama que implementa la herencia (§3.1) correlacionaba el inmueble con **el identificador de la unidad**: `contexto.Inmueble.Any(i => i.Id == f.UnidadId && i.PropietariaId == propietaria)`. `f.UnidadId` es la llave de `unidad`, no la de `inmueble`, así que el `EXISTS` comparaba el id de un inmueble con el id de una unidad y no encontraba nunca nada. La condición correcta es `i.Id == f.Unidad!.InmuebleId`, que es la que ya usaba el filtro equivalente del dashboard y por eso ese no estaba afectado. No era un fallo de la regla sino de la llave con la que se cumplía, y por eso ninguna prueba existente lo cazaba: el filtro no tenía ninguna.
+- Solución: una condición, en `ServicioCuentas.FacturasFiltradas`: `i.Id == f.Unidad!.InmuebleId`. Sin más cambios de comportamiento: la rama de la unidad con dueña propia y la del resto del filtro quedan igual.
+- Test que lo cubre: `backend/AtlasRent.Tests/Informes/InformeResumenTests.cs` — `LaUnidadSinPropietariaPropiaSaleAlFiltrarPorLaDelInmueble`, escrita **antes** de corregir y marcada en `Skip` con el motivo; el `Skip` se quitó al corregir. La cubre además `ElFiltroDePropietariaAcotaLaVistaYElInforme` (el filtro acota) y `ElFiltroDeFacturadoraAcotaLaVistaYElInforme` (el otro filtro nuevo, que nunca estuvo afectado).
+- Commit/PR: `tarea/F5-01-informes-dashboard`.
+- Datos afectados: ninguno. El defecto era de lectura de una vista que no existía antes de F5-01, así que no hay facturas ni saldos que corregir en ninguna instalación.
+- **Riesgo que queda (dicho, no arreglado):** el filtro `propietariaId` **excluye las fianzas**, igual que el resto de filtros que una fianza no puede expresar (§3.13, `DOC_TECNICA.md` §6.7). Con los cinco filtros nuevos hay cinco caminos por los que las fianzas desaparecen del informe, y eso está escrito y es coherente, pero conviene tenerlo presente al comparar el informe con el pie de la vista cuando hay fianzas en el periodo.
+
 ### BUG-015 · Cinco pruebas desfasadas por F4-05: cuatro con la cuenta de jobs y una afirmando el valor de una fila de configuración compartida
 - Fecha detectado: 18/10/2026 · Fecha corregido: 18/10/2026 (worker)
 - Gravedad: **Media** · Estado: CORREGIDO · Módulo: pruebas / F4-05 (jobs) y pruebas / configuración (F4-05)

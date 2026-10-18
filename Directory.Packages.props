@@ -34,6 +34,9 @@
     <!-- F4-02: envío de correo por SMTP (docs/ESPECIFICACION.md §3.14). MailKit arrastra MimeKit
          4.18.1, que es quien arma el mensaje; la versión es la de DOC_TECNICA §2. -->
     <PackageVersion Include="MailKit" Version="4.18.1" />
+    <!-- F5-02: exportación de informes a Excel (docs/ESPECIFICACION.md §3.15). El CSV se escribe a
+         mano porque son doce columnas; la versión es la de DOC_TECNICA §2. -->
+    <PackageVersion Include="ClosedXML" Version="0.105.1" />
     <!-- Tests -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />

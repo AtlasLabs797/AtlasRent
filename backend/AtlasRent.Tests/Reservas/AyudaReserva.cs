@@ -51,26 +51,71 @@ internal static class AyudaReserva
     /// Unidad con las tres modalidades, que es lo que necesita una prueba de reservas: mensual,
     /// medio día y día completo (D11).
     /// </summary>
-    public static async Task<Guid> UnidadAsync(SesionCliente sesion, CancellationToken ct)
+    public static async Task<Guid> UnidadAsync(SesionCliente sesion, CancellationToken ct) =>
+        (await InmuebleYUnidadAsync(sesion, ct)).UnidadId;
+
+    /// <summary>
+    /// El inmueble y su unidad, con la pertenencia que le pida la prueba: quién es la propietaria del
+    /// edificio, cuál es la de la unidad y qué empresa factura por defecto en ella.
+    /// <para>
+    /// Los tres van a null en el caso normal, que es el de las reservas. Existen para F5-01, que
+    /// prueba los filtros por propietaria y por facturadora de la vista única: sin una unidad que
+    /// tenga una u otra no hay dos filas distintas que el filtro pueda separar.
+    /// </para>
+    /// <para>
+    /// Ojo con <paramref name="propietariaInmuebleId"/> y <paramref name="propietariaUnidadId"/>:
+    /// al dar de alta una unidad, la del inmueble se le copia a la unidad (§3.1). Para dejar la
+    /// unidad sin propietaria propia —que es el estado del que habla la herencia— hay que crear el
+    /// inmueble sin ella y ponérsela después.
+    /// </para>
+    /// </summary>
+    public static async Task<(Guid InmuebleId, Guid UnidadId)> InmuebleYUnidadAsync(
+        SesionCliente sesion,
+        CancellationToken ct,
+        Guid? propietariaInmuebleId = null,
+        Guid? propietariaUnidadId = null,
+        Guid? facturadoraId = null)
     {
-        var inmueble = await sesion.PostAsync(
-            "/api/v1/inmuebles",
-            new { nombre = $"Edificio {Guid.NewGuid():N}"[..40], tipo = "Edificio" },
-            ct);
-        inmueble.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cuerpo = new Dictionary<string, object?>
+        {
+            ["nombre"] = $"Edificio {Guid.NewGuid():N}"[..40],
+            ["tipo"] = "Edificio",
+        };
+
+        if (propietariaInmuebleId is { } duena)
+        {
+            cuerpo["propietariaId"] = duena;
+        }
+
+        var inmueble = await sesion.PostAsync("/api/v1/inmuebles", cuerpo, ct);
+        inmueble.StatusCode.Should().Be(HttpStatusCode.OK, await inmueble.Cuerpo());
+
+        var inmuebleId = await Id(inmueble, ct);
+
+        var cuerpoUnidad = new Dictionary<string, object?>
+        {
+            ["nombre"] = $"Unidad {Guid.NewGuid():N}"[..20],
+            ["tipo"] = "Oficina",
+            ["modalidades"] = new[] { "Mensual", "MedioDia", "DiaCompleto" },
+        };
+
+        if (propietariaUnidadId is { } duenaUnidad)
+        {
+            cuerpoUnidad["propietariaId"] = duenaUnidad;
+        }
+
+        if (facturadoraId is { } facturadora)
+        {
+            cuerpoUnidad["facturadoraPorDefectoId"] = facturadora;
+        }
 
         var unidad = await sesion.PostAsync(
-            $"/api/v1/inmuebles/{await Id(inmueble, ct):D}/unidades",
-            new
-            {
-                nombre = $"Unidad {Guid.NewGuid():N}"[..20],
-                tipo = "Oficina",
-                modalidades = new[] { "Mensual", "MedioDia", "DiaCompleto" },
-            },
+            $"/api/v1/inmuebles/{inmuebleId:D}/unidades",
+            cuerpoUnidad,
             ct);
-        unidad.StatusCode.Should().Be(HttpStatusCode.OK);
+        unidad.StatusCode.Should().Be(HttpStatusCode.OK, await unidad.Cuerpo());
 
-        return await Id(unidad, ct);
+        return (inmuebleId, await Id(unidad, ct));
     }
 
     /// <summary>Un día de reserva corta con su franja, tal y como lo manda el cliente.</summary>

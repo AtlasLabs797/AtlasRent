@@ -160,4 +160,87 @@ export const textos = {
       atajo: '⌘ K abre la búsqueda global desde cualquier pantalla.',
     },
   },
+  /**
+   * Informes y dashboard (F5-01, `docs/ESPECIFICACION.md` §3.15). Los nombres de bloque son los de
+   * la especificación; el resto son etiquetas de la pantalla.
+   */
+  informes: {
+    sobrelinea: 'Finanzas',
+    titulo: 'Informes',
+    descripcion:
+      'Bloques económicos de facturación y cobros, y las unidades del día. Todo lo que se ve aquí lo consolida la API.',
+    cargando: 'Cargando el informe…',
+    filtros: {
+      titulo: 'Filtros',
+      descripcion: 'El rango de fechas acota los bloques y la serie mensual.',
+      desde: 'Desde',
+      hasta: 'Hasta',
+      moneda: 'Moneda',
+      estado: 'Estado',
+      todasMonedas: 'Todas',
+      todosEstados: 'Todos',
+      estados: { Borrador: 'Borrador', Emitida: 'Emitida', Anulada: 'Anulada', Convertida: 'Convertida' },
+      sinFechas: 'Sin fechas: todo el histórico.',
+    },
+    entidades: {
+      titulo: 'Filtros que vienen de otra pantalla',
+      cuerpo:
+        'Esta pantalla todavía no puede elegir cliente, unidad, contrato, inmueble, serie ni empresa: llegan por la dirección y se aplican al informe',
+    },
+    unidades: {
+      titulo: 'Unidades del día',
+      descripcion: 'Una unidad está en un solo grupo. Las cifras son del día de corte del dashboard.',
+      disponibles: 'Disponibles',
+      reservadas: 'Reservadas',
+      ocupadas: 'Ocupadas',
+      mantenimiento: 'En mantenimiento',
+      contratosActivos: 'Contratos activos',
+      fecha: 'Corte del {fecha}',
+    },
+    resumen: {
+      titulo: 'Resumen económico',
+      descripcion:
+        'Cada bloque muestra arriba el consolidado en dólares, con el cambio congelado de cada documento, y abajo las dos monedas de los documentos.',
+      proformado: 'Proformado',
+      facturado: 'Facturado',
+      cobrado: 'Cobrado',
+      retenido: 'Retenido',
+      pendiente: 'Pendiente',
+      vencido: 'Vencido',
+      fianzasRetenidas: 'Fianzas retenidas',
+      diferenciasCambio: 'Diferencias de cambio',
+      fechaCorte: 'Vencido medido contra el {fecha}.',
+    },
+    sinCambio: {
+      titulo: 'Documentos sin tipo de cambio congelado',
+      cuerpo:
+        '{n} documentos en pesos quedan fuera del consolidado en dólares porque no tienen cambio congelado. El consolidado de arriba no los incluye.',
+    },
+    saldoFueraDePeriodo: {
+      titulo: 'Saldo a favor fuera del periodo',
+      cuerpo:
+        'El saldo a favor es una foto de hoy, no un movimiento del periodo, así que no suma al total de cobrado cuando hay filtro de fechas. Se sigue enseñando aparte.',
+    },
+    grafico: {
+      titulo: 'Facturado y cobrado por mes',
+      descripcion: 'Importes consolidados en dólares, con el cambio congelado de cada documento.',
+      facturado: 'Facturado',
+      cobrado: 'Cobrado',
+      alternativo: 'Gráfico de barras agrupadas: facturado y cobrado por mes, en dólares.',
+      vacioTitulo: 'Todavía no hay meses con movimiento',
+      vacioCuerpo: 'En cuanto se emita una factura o entre un cobro, los meses aparecerán aquí.',
+    },
+    exportar: {
+      excel: 'Exportar Excel',
+      csv: 'Exportar CSV',
+      enCurso: 'Exportando…',
+      error: 'No se ha podido exportar el informe',
+      errorCuerpo: 'La API no ha devuelto el fichero. Vuelve a intentarlo o revisa los filtros.',
+    },
+    error: {
+      titulo: 'No se ha podido cargar el informe',
+      cuerpo:
+        'Los datos no se han podido pedir a la API, así que no se muestra ninguna cifra. Vuelve a intentarlo en un momento.',
+    },
+  },
 };

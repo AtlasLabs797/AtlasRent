@@ -57,7 +57,7 @@ export const GRUPOS_MENU: GrupoMenu[] = [
       modulo('facturas', ACCIONES.facturaVer, null, 'pantalla de facturas'),
       modulo('cobros', ACCIONES.cobroRegistrar, null, 'pantalla de cobros'),
       modulo('fianzas', ACCIONES.fianzaMover, null, 'pantalla de fianzas'),
-      modulo('informes', ACCIONES.informeVer, null, 'pantalla de informes'),
+      modulo('informes', ACCIONES.informeVer, '/informes'),
     ],
   },
   {

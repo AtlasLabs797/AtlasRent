@@ -106,18 +106,21 @@ internal static class AyudaFacturas
     /// <summary>
     /// Cliente de la prueba. <paramref name="agenteRetencion"/> es la marca de §3.9 y va aquí para que
     /// las pruebas de retención (F3-04) no tengan que escribir a mano el mismo cliente de siempre.
+    /// <paramref name="nombre"/> existe para F5-02: un nombre de cliente es contenido externo y la
+    /// exportación tiene que probarlo con uno que huela a fórmula, no con «Cliente abc123».
     /// </summary>
     public static async Task<Guid> CrearClienteAsync(
         SesionCliente sesion,
         CancellationToken ct,
-        bool agenteRetencion = false)
+        bool agenteRetencion = false,
+        string? nombre = null)
     {
         var documento = $"001-{Guid.NewGuid():N}"[..13];
         var creada = await sesion.PostAsync(
             "/api/v1/clientes",
             new
             {
-                nombre = $"Cliente {Guid.NewGuid():N}"[..20],
+                nombre = nombre ?? $"Cliente {Guid.NewGuid():N}"[..20],
                 tipo = "PersonaFisica",
                 documento,
                 email = "cliente@example.test",

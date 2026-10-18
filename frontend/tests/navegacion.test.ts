@@ -43,7 +43,7 @@ test('el menú no enlaza a rutas que no existen', () => {
     if (valor.includes('*')) continue;
     rutasMontadas.add(valor === '' ? '/' : `/${valor}`);
   }
-  assert.deepEqual([...rutasMontadas].sort(), ['/', '/componentes']);
+  assert.deepEqual([...rutasMontadas].sort(), ['/', '/componentes', '/informes']);
 
   for (const entrada of ENTRADAS_MENU) {
     if (entrada.ruta === null) {
@@ -65,8 +65,7 @@ test('un módulo sin pantalla no aparece en la barra lateral', () => {
       `${clave} no tiene pantalla y no debe ser pulsable`,
     );
   }
-  assert.ok(!conPantalla.includes('informes'), 'Informes todavía no tiene pantalla');
-  assert.deepEqual(conPantalla, ['panel', 'componentes']);
+  assert.deepEqual(conPantalla, ['panel', 'informes', 'componentes']);
 });
 
 test('los permisos de la API filtran el menú: el empleado no ve Informes y el admin sí', () => {
@@ -101,6 +100,11 @@ test('cada módulo se filtra por la acción que exige el backend', () => {
 test('una ruta prohibida da sin permiso y una ruta desconocida no se filtra', () => {
   assert.equal(puedeVerRuta(EMPLEADO, '/componentes'), false, 'configuracion.editar falta al empleado');
   assert.equal(puedeVerRuta(ADMIN, '/componentes'), true);
+
+  // Informes pide informe.ver: el empleado no lo tiene y la ruta está guardada, no solo oculta.
+  assert.equal(accionDeRuta('/informes'), ACCIONES.informeVer);
+  assert.equal(puedeVerRuta(EMPLEADO, '/informes'), false);
+  assert.equal(puedeVerRuta(ADMIN, '/informes'), true);
 
   // Una ruta que no pertenece a ningún módulo no es "sin permiso": no existe.
   assert.equal(puedeVerRuta(EMPLEADO, '/no-existe'), true);

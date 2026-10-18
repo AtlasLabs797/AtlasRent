@@ -6,6 +6,7 @@ import { useSesion } from './sesion/store';
 
 const Acceso = lazy(() => import('./paginas/Acceso'));
 const Inicio = lazy(() => import('./paginas/Inicio'));
+const Informes = lazy(() => import('./paginas/Informes'));
 const DesignSystem = lazy(() => import('./paginas/DesignSystem'));
 const NoEncontrada = lazy(() => import('./paginas/NoEncontrada'));
 
@@ -49,6 +50,9 @@ export function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Inicio />} />
+            {/* Informes exige `informe.ver`; el `Layout` filtra la ruta con la misma acción que
+                exige la API, así que el empleado recibe "sin permiso" y no un 403. */}
+            <Route path="informes" element={<Informes />} />
             <Route path="componentes" element={<DesignSystem />} />
             <Route path="*" element={<NoEncontrada />} />
           </Route>

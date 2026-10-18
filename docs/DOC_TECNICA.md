@@ -31,7 +31,7 @@ Salidas: SMTP (Google) · ExchangeRate-API · Google Drive (backups cifrados) ·
 | Serilog.AspNetCore | 10.0.0 |
 | MailKit / MimeKit | 4.18.1 — **añadido en F4-02** (envío de correo por SMTP, §3.14). Resolvió a MailKit 4.18.1 + MimeKit 4.18.1 + BouncyCastle.Cryptography 2.7.0 |
 | System.Security.Cryptography.Pkcs | 10.0.13 — **añadido en F4-02**: MailKit 4.18.1 arrastra la 10.0.0, con dos avisos de vulnerabilidad conocidos (GHSA-2fmv-rv2c-59x7, moderada, y GHSA-846f-f764-76mx, alta). Se fija a la versión parcheada de la misma línea que el resto de paquetes de Microsoft del repo, con el mismo criterio que Newtonsoft.Json en F1-12, para que el `dotnet list package --vulnerable` de la CI siga limpio |
-| ClosedXML | 0.105.1 |
+| ClosedXML | 0.105.1 — **añadido en F5-02** (exportación a Excel de §3.15). Estaba en esta tabla desde F1-13 pero no referenciado en ningún `.csproj`; entra con `PackageVersion` en `Directory.Packages.props` |
 | QuestPDF | 2026.9.1 — **verificada en F2-02**: `LicenseType.Community` es gratuita solo si la facturación bruta anual consolidada de la organización es **< 1 M USD**. Organismos públicos y empresas cotizadas **no** pueden usarla sea cual sea su facturación; si se deja de cumplir hay 90 días para comprar licencia o dejar de usar la librería, sin retroactividad. Es *source-available*, **no** una licencia aprobada por OSI, así que `SEGURIDAD.md` §A.4 no puede asumir MIT. Pendiente de confirmar los datos de la empresa antes de producción |
 | BCrypt.Net-Next | 4.2.1 (12 rondas) — subido desde 4.2.0 en F1-04: es la última estable (5.0.0 es prerelease) |
 | Otp.NET | 1.4.1 (TOTP; el QR se dibuja en el frontend) |
@@ -45,7 +45,7 @@ Salidas: SMTP (Google) · ExchangeRate-API · Google Drive (backups cifrados) ·
 | TanStack Query / Virtual | 5.104.2 / 3.14.19 |
 | Axios | 1.20.0 |
 | React Hook Form | 7.90.0 |
-| Recharts | 3.10.1 |
+| Recharts | 3.10.1 — **añadido en F5-01** (gráfico de barras del dashboard, §3.15). Estaba en esta tabla desde F1-13 pero no referenciado en `package.json`; entra como dependencia exacta |
 | Lucide React | 1.57.0 |
 | qrcode | 1.5.4 |
 | @fontsource/geist-sans / @fontsource/geist-mono | 5.3.0 / 5.3.0 |
@@ -518,7 +518,7 @@ fianzas**, con una insignia de tipo en cada fila, y los totales al pie **por mon
 
 | Endpoint | Acción | Notas |
 |---|---|---|
-| `GET /api/v1/cuentas` | `factura.ver` | Filtros `anio`, `serieId`, `moneda`, `estado`, `estadoCobro`, `clienteId`, `unidadId`, `vencidas`, `modificadas`, `incluirProformas` (por defecto **false**) e `incluirFianzas` (por defecto **true**). Paginación obligatoria; solo se admite `sortBy=fecha`, con `sortDir` (por defecto ascendente, como el resto de la API). |
+| `GET /api/v1/cuentas` | `factura.ver` | Filtros `anio`, `serieId`, `moneda`, `estado`, `estadoCobro`, `clienteId`, `unidadId`, `vencidas`, `modificadas`, `incluirProformas` (por defecto **false**) e `incluirFianzas` (por defecto **true**). **Desde F5-01** también `desde`, `hasta`, `inmuebleId`, `propietariaId` y `facturadoraId`, que son los que faltaban de §3.15 y son los mismos que aplica el informe. Paginación obligatoria; solo se admite `sortBy=fecha`, con `sortDir` (por defecto ascendente, como el resto de la API). |
 | `POST /api/v1/cobros/simular` | `cobro.registrar` | Además de lo de F3-06, acepta `facturasSeleccionadas` (lista de `facturaId`). Con ellas la propuesta es para esas facturas y **no propone ninguna otra**; sin ellas sigue siendo la FIFO. |
 
 #### Columnas de la fila y de dónde sale cada una
@@ -574,6 +574,10 @@ fianzas**, con una insignia de tipo en cada fila, y los totales al pie **por mon
 | `noEnviadas` | **Sí** (F4-02) | **Nadie lo intentó**: no hay ninguna fila en `envio` para ese documento. |
 | `envioFallido` | **Sí** (F4-02) | **Se intentó y no salió**: hay al menos un envío `Fallido` y ninguno con estado distinto de `Fallido`. |
 | `modificadasTrasEnvio` | **Sí** (F4-02) | `factura.modificada_at IS NOT NULL` y hay un envío que salió con `documento_modificado_at IS NULL` (cuando salió, aún no se había tocado) **o** con `factura.modificada_at > envio.documento_modificado_at`. |
+| `desde`, `hasta` | **Sí** (F5-01) | Rango de `fecha_emision` inclusivo. Son los filtros que faltaban de §3.15; sin ellos el informe solo podía mirar el histórico entero. Los acepta también la exportación. |
+| `inmuebleId` | **Sí** (F5-01) | A través de la unidad. Solo facturas, por el mismo motivo que `serieId`. |
+| `propietariaId` | **Sí** (F5-01) | `unidad.propietaria_id`, y si es nulo el del inmueble (§3.1): sin esa herencia el filtro del landlord del edificio no devolvería nada. **Corregido en BUG-016**: la correlación iba por el id de la unidad y devolvía cero filas para toda unidad sin dueña propia. |
+| `facturadoraId` | **Sí** (F5-01) | `unidad.facturadora_por_defecto_id`. |
 
 - **Los tres de envío no se solapan a propósito.** «No enviada» y «envío fallido» son preguntas
   distintas —«¿se le llegó a mandar?» y «¿se intentó?»— y si la primera significara «no llegó a salir»
@@ -903,6 +907,63 @@ void IColaEnvios.EncolarEnvio(Guid envioId, Guid usuario, string ip);
   al cliente y al año.
 - **Agrupa y cuenta por `lote_id`, no por tu propia tabla.** Si los recordatorios necesitan un
   «lote», la columna es la misma y el `GET /api/v1/envios/masivo/{loteId}` ya sabe contarlo.
+
+### 6.11 Informes, dashboard y exportación (F5-01, F5-02)
+
+Los ocho bloques de §3.15, el dashboard del día y la exportación a Excel/CSV. Los tres endpoints exigen
+`informe.ver`, que es **la acción que la matriz da a gerente y administrador y no al empleado**: en la vista
+única los totales vienen en `null` para el empleado y aquí el endpoint entero no existe para él.
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/informes/resumen` | `informe.ver` | Los ocho bloques, la serie mensual del gráfico y los dos contadores de salvedad. Filtros: los de §6.7 más `desde`, `hasta`, `inmuebleId`, `propietariaId`, `facturadoraId` y `contratoId`. |
+| `GET /api/v1/informes/dashboard` | `informe.ver` | Indicadores del día (disponibles, reservadas, ocupadas, mantenimiento) y contratos activos, más el resumen con los mismos filtros. `fecha` es el día del corte; por defecto hoy en Santo Domingo. |
+| `GET /api/v1/informes/exportar` | `informe.ver` | `formato=xlsx\|csv`. Devuelve las filas del detalle y, en el xlsx, una hoja `Resumen` con los bloques. `formato` inválido es un 400 de validación de modelo. |
+
+#### Los bloques salen de la vista única, no de una segunda cuenta
+
+**No hay consulta de documentos propia en el servicio de informes.** `ServicioInformes` llama a
+`ServicioCuentas.ListarAsync` con el filtro equivalente y suma sobre las filas que ya vienen calculadas, que
+es la misma vía que usa el estado de cuenta en PDF (§6.7.1) y el envío masivo (§6.8). Un segundo «qué facturas
+hay» es exactamente donde una pantalla y un informe dejarían de hablar de lo mismo.
+
+| Bloque | De dónde sale |
+|---|---|
+| Proformado, Facturado, Cobrado (facturas y fianzas), Pendiente, Vencido, Fianzas retenidas | Filas de la vista única. |
+| Facturado | Solo facturas **no anuladas** y de series con `suma_a_facturado`. |
+| Retenido | Filas, partido por `comprobante_retencion.estado == Recibido`. |
+| Diferencias de cambio | `ajuste_diferencia_cambio` vigente de facturas no anuladas, acotadas a las filas. |
+| Saldo a favor | `saldo_a_favor` de los contratos de las filas: **no es una fila de documento**. |
+
+- **El consolidado en dólares divide por el tipo de cambio congelado de cada documento**, que es DOP por
+  1 USD (`Factura.TipoCambioValor` / `Cobro.TipoCambioValor`, la misma convención que `ServicioCobros.cs:1194`).
+  Un documento **nunca se convierte**; esto solo suma para el informe.
+- **Un documento en pesos sin cambio congelado no se convierte con el del día**: cuenta en DOP, queda fuera
+  del consolidado y aparece en `documentosSinTipoCambioCongelado`. Un consolidado al que le faltan
+  documentos tiene que decirlo (§3.12, D9).
+- **`saldoAFavorFueraDePeriodo`**: el saldo a favor es una foto de hoy, no un movimiento del periodo —la
+  tabla no tiene fecha de negocio, solo marcas de auditoría que cambian cada vez que otro cobro lo consume—.
+  Con `desde`/`hasta` **no suma al `cobrado.total`** y la bandera lo dice; sin rango sí cuenta. El importe se
+  sigue enseñando aparte.
+- **`hasta` es además la fecha de corte de lo vencido** y sale en la respuesta como `fechaCorte`, para que
+  quien lo lea sepa contra qué día se calculó lo vencido.
+- **`Facturado` es más estrecho que `totales.total` de la vista**: aquel suma además lo exigido de las
+  fianzas y las proformas. El cuadre con la vista se comprueba bloque a bloque contra las filas del tipo
+  correspondiente, no contra ese total.
+
+#### La exportación
+
+- **Filas:** las mismas que trae la vista única con los mismos filtros. Importes **como número** y fechas
+  **como fecha**: un total en texto no suma en Excel.
+- **Neutralización de fórmulas (SEC-005):** `TextoSeguro` antepone apóstrofo a toda cadena que empiece por
+  `=`, `+`, `-`, `@`, tabulador o salto de línea. **Solo cadenas**: los importes van por ruta tipada, porque
+  un importe negativo empieza por `-` y con apóstrofo dejaría de ser un número. En xlsx, ClosedXML guarda
+  el apóstrofo como `IncludeQuotePrefix`, que es el mecanismo nativo de Excel: el fichero **no** muestra
+  una comilla en la celda.
+- **CSV:** UTF-8 **con BOM** (sin él Excel rompe las tildes), separador `;`, entrecomillado RFC 4180. El
+  detalle es el mismo que en el xlsx; el resumen solo va en el xlsx.
+- **`Content-Disposition`** con nombre fijo `informe-AAAAMMDD-HHmm.<xlsx|csv>` y hora de Santo Domingo,
+  sin entrada de usuario en el nombre.
 
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.

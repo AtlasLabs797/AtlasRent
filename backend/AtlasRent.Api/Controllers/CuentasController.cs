@@ -37,7 +37,15 @@ public sealed class CuentasController(
     /// <b>Filtros aceptados:</b> <c>anio</c>, <c>serieId</c>, <c>moneda</c>, <c>estado</c> (estado de la
     /// factura), <c>estadoCobro</c> (derivado), <c>clienteId</c>, <c>unidadId</c>, <c>vencidas</c>,
     /// <c>modificadas</c>, <c>noEnviadas</c>, <c>envioFallido</c>, <c>modificadasTrasEnvio</c>,
-    /// <c>incluirProformas</c> y <c>incluirFianzas</c>.
+    /// <c>incluirProformas</c>, <c>incluirFianzas</c>, <c>desde</c>, <c>hasta</c>, <c>inmuebleId</c>,
+    /// <c>propietariaId</c> y <c>facturadoraId</c>.
+    /// </para>
+    /// <para>
+    /// <b>F5-01 añadió los cinco últimos</b> (§3.15), que son los que necesitan los informes: sin rango
+    /// de emisión ni por quién se factura, un informe solo se puede pedir entero. Los tres de unidad
+    /// leen los de <c>unidad</c>, y la propietaria la de la unidad o, si no tiene, la que hereda del
+    /// inmueble (§3.1). Todos son opcionales: sin ellos la vista devuelve exactamente lo que
+    /// devolvía antes.
     /// </para>
     /// <para>
     /// <b>F4-02 añadió los tres de envío</b> (<c>noEnviadas</c>, <c>envioFallido</c> y
@@ -47,8 +55,8 @@ public sealed class CuentasController(
     /// </para>
     /// <para>
     /// Un filtro que una fianza no puede expresar —<c>serieId</c>, <c>estado</c>, <c>estadoCobro</c>,
-    /// <c>vencidas</c>, <c>modificadas</c> y los tres de envío— deja las fianzas fuera, en vez de
-    /// devolverlas sin tocar.
+    /// <c>vencidas</c>, <c>modificadas</c>, los tres de envío y los cinco de F5-01— deja las fianzas
+    /// fuera, en vez de devolverlas sin tocar.
     /// </para>
     /// </summary>
     [HttpGet]
@@ -72,6 +80,11 @@ public sealed class CuentasController(
         [FromQuery] bool? modificadasTrasEnvio,
         [FromQuery] bool? incluirProformas,
         [FromQuery] bool? incluirFianzas,
+        [FromQuery] DateOnly? desde,
+        [FromQuery] DateOnly? hasta,
+        [FromQuery] Guid? inmuebleId,
+        [FromQuery] Guid? propietariaId,
+        [FromQuery] Guid? facturadoraId,
         CancellationToken ct)
     {
         try
@@ -92,7 +105,12 @@ public sealed class CuentasController(
                 modificadasTrasEnvio ?? false,
                 incluirProformas ?? false,
                 incluirFianzas ?? true,
-                ct));
+                ct,
+                desde,
+                hasta,
+                inmuebleId,
+                propietariaId,
+                facturadoraId));
         }
         catch (ArgumentException peticionInvalida)
         {

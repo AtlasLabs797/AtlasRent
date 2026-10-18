@@ -73,7 +73,12 @@ public sealed class ServicioCuentas(
         bool modificadasTrasEnvio,
         bool incluirProformas,
         bool incluirFianzas,
-        CancellationToken ct)
+        CancellationToken ct,
+        DateOnly? desde = null,
+        DateOnly? hasta = null,
+        Guid? inmuebleId = null,
+        Guid? propietariaId = null,
+        Guid? facturadoraId = null)
     {
         ExigirOrdenConocido(paginacion.SortBy);
 
@@ -81,14 +86,18 @@ public sealed class ServicioCuentas(
 
         var consultaFacturas = FacturasFiltradas(
             anio, serieId, moneda, estado, estadoCobro, clienteId, unidadId, vencidas, modificadas,
-            noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas);
+            noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas,
+            desde, hasta, inmuebleId, propietariaId, facturadoraId);
 
         // Las fianzas solo están cuando ningún filtro es de factura. No es una decisión de comodidad:
         // una fianza no tiene serie ni estado de factura ni vencimiento ni documento que mandar, así
         // que un filtro de esos no puede decir nada de ella y devolverla sería devolver una fila que
-        // el filtro no tocó. Los tres de envío entran aquí por lo mismo (DOC_TECNICA §6.7).
+        // el filtro no tocó. Los tres de envío entran aquí por lo mismo (DOC_TECNICA §6.7), y los
+        // cinco de F5-01 por lo mismo: una fianza no tiene fecha de emisión —la fecha de su fila es la
+        // del alta— ni inmueble, propietaria ni facturadora que enseñar en la tabla.
         var consultaFianzas = incluirFianzas && SinFiltroDeFactura(
-                serieId, estado, estadoCobro, vencidas, modificadas, noEnviadas, envioFallido, modificadasTrasEnvio)
+                serieId, estado, estadoCobro, vencidas, modificadas, noEnviadas, envioFallido, modificadasTrasEnvio,
+                desde, hasta, inmuebleId, propietariaId, facturadoraId)
             ? FianzasFiltradas(anio, moneda, clienteId, unidadId)
             : null;
 
@@ -102,12 +111,12 @@ public sealed class ServicioCuentas(
         // puede empujar filas del otro tipo fuera de la ventana. Traer solo `pageSize` de cada uno y
         // quedarse con los primeros `pageSize` de la unión pierde filas: la tercera de facturas puede
         // caer en la página 2 junto a una fianza que la desplaza, y entonces nunca sale.
-        var hasta = paginacion.Page * paginacion.PageSize;
+        var finDePagina = paginacion.Page * paginacion.PageSize;
 
         var paginaFacturas = await (paginacion.EsDescendente
             ? consultaFacturas.OrderByDescending(f => f.FechaEmision).ThenByDescending(f => f.Id)
             : consultaFacturas.OrderBy(f => f.FechaEmision).ThenBy(f => f.Id))
-            .Take(hasta)
+            .Take(finDePagina)
             .ToListAsync(ct);
 
         var filas = await FilasDeFacturasAsync(paginaFacturas, hoy, ct);
@@ -117,14 +126,14 @@ public sealed class ServicioCuentas(
             var paginaFianzas = await (paginacion.EsDescendente
                 ? consultaFianzas.OrderByDescending(f => f.CreatedAt).ThenByDescending(f => f.Id)
                 : consultaFianzas.OrderBy(f => f.CreatedAt).ThenBy(f => f.Id))
-                .Take(hasta)
+                .Take(finDePagina)
                 .ToListAsync(ct);
 
             filas.AddRange(await FilasDeFianzasAsync(paginaFianzas, ct));
         }
 
         // La página es la ventana [saltadas, saltadas + pageSize) de la mezcla. Cada tipo viene ya
-        // ordenado por la misma clave y ninguno pasa de `hasta`, así que la ventana se puede cortar
+        // ordenado por la misma clave y ninguno pasa de `finDePagina`, así que la ventana se puede cortar
         // sin que falte ninguna fila que le tocara.
         IReadOnlyList<CuentaFila> data = paginacion.EsDescendente
             ? [.. filas.OrderByDescending(OrdenDeFila).Skip(saltadas).Take(paginacion.PageSize)]
@@ -139,7 +148,8 @@ public sealed class ServicioCuentas(
             await TotalesAsync(consultaFacturas, consultaFianzas, ct),
             new FiltroCuentas(
                 anio, serieId, moneda, estado, estadoCobro, clienteId, unidadId, vencidas, modificadas,
-                noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas, incluirFianzas));
+                noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas, incluirFianzas,
+                desde, hasta, inmuebleId, propietariaId, facturadoraId));
     }
 
     // ---------------------------------------------------------------- estado de cuenta (F4-01)
@@ -282,7 +292,12 @@ public sealed class ServicioCuentas(
         bool noEnviadas,
         bool envioFallido,
         bool modificadasTrasEnvio,
-        bool incluirProformas)
+        bool incluirProformas,
+        DateOnly? desde,
+        DateOnly? hasta,
+        Guid? inmuebleId,
+        Guid? propietariaId,
+        Guid? facturadoraId)
     {
         IQueryable<Factura> consulta = contexto.Factura.AsNoTracking()
             .Include(f => f.Cliente)
@@ -330,6 +345,44 @@ public sealed class ServicioCuentas(
         {
             // El año es el de la fecha de emisión, que es lo que se ve en la columna «fecha».
             consulta = consulta.Where(f => f.FechaEmision!.Value.Year == anyo);
+        }
+
+        // F5-01 (§3.15): rango de emisión. Es el mismo día que se ve en la columna «fecha», así que lo
+        // que acota la vista es lo que acota el informe y no dos fechas distintas con el mismo nombre.
+        // Los extremos van dentro: un rango «de mayo a mayo» incluye los dos.
+        if (desde is { } desdeFiltro)
+        {
+            consulta = consulta.Where(f => f.FechaEmision!.Value >= desdeFiltro);
+        }
+
+        if (hasta is { } hastaFiltro)
+        {
+            consulta = consulta.Where(f => f.FechaEmision!.Value <= hastaFiltro);
+        }
+
+        // Los tres filtros de la unidad, que son los de quién factura y de quién es el alquiler (§1).
+        // Una factura sin unidad no puede decir nada de su inmueble ni de su propietaria, así que con
+        // estos filtros queda fuera: es el mismo criterio que el de las fianzas.
+        if (inmuebleId is { } inmueble)
+        {
+            consulta = consulta.Where(f => f.Unidad!.InmuebleId == inmueble);
+        }
+
+        if (propietariaId is { } propietaria)
+        {
+            // La unidad puede no tener propietaria propia y heredar la del inmueble (§3.1): filtrar
+            // solo por `unidad.propietaria_id` dejaría fuera a los alquileres de un edificio entero.
+            // La correlación va por `unidad.inmueble_id`, que es la llave del inmueble (BUG-016): con
+            // el id de la unidad el `EXISTS` no encontraba nunca el edificio y el filtro no devolvía
+            // ninguna fila de las unidades sin dueña propia.
+            consulta = consulta.Where(f => f.Unidad!.PropietariaId == propietaria
+                || (f.Unidad!.PropietariaId == null
+                    && contexto.Inmueble.Any(i => i.Id == f.Unidad!.InmuebleId && i.PropietariaId == propietaria)));
+        }
+
+        if (facturadoraId is { } facturadora)
+        {
+            consulta = consulta.Where(f => f.Unidad!.FacturadoraPorDefectoId == facturadora);
         }
 
         if (modificadas)
@@ -532,6 +585,10 @@ public sealed class ServicioCuentas(
     /// mandar, así que no puede decir «no enviada» ni «envío fallido» ni «modificada tras envío», y
     /// devolverla «por si acaso» sería una fila que el filtro no tocó —el mismo criterio que ya
     /// aplicaban <c>serie</c>, <c>estado</c>, <c>vencidas</c> y <c>modificadas</c>.
+    /// <para>
+    /// Y los cinco de F5-01 por lo mismo: <c>desde</c>, <c>hasta</c>, <c>inmuebleId</c>,
+    /// <c>propietariaId</c> y <c>facturadoraId</c> son datos de la factura y de su unidad, y la fila de
+    /// fianza no enseña ninguno de ellos.
     /// </para>
     /// </summary>
     private static bool SinFiltroDeFactura(
@@ -542,9 +599,16 @@ public sealed class ServicioCuentas(
         bool modificadas,
         bool noEnviadas,
         bool envioFallido,
-        bool modificadasTrasEnvio) =>
+        bool modificadasTrasEnvio,
+        DateOnly? desde,
+        DateOnly? hasta,
+        Guid? inmuebleId,
+        Guid? propietariaId,
+        Guid? facturadoraId) =>
         serieId is null && estado is null && estadoCobro is null && !vencidas && !modificadas
-        && !noEnviadas && !envioFallido && !modificadasTrasEnvio;
+        && !noEnviadas && !envioFallido && !modificadasTrasEnvio
+        && desde is null && hasta is null
+        && inmuebleId is null && propietariaId is null && facturadoraId is null;
 
     private IQueryable<Fianza> FianzasFiltradas(
         int? anio,

@@ -35,15 +35,23 @@ internal static class AyudaContrato
     /// concreta: crearla por API exige <c>configuracion.editar</c>, que en la matriz de §2 es solo del
     /// administrador, así que una prueba con gerente y empleado no podría tener los datos que su
     /// contrato necesita. Es el mismo truco que <see cref="AyudaAuth.CrearUsuarioAsync"/>.
+    /// <para>
+    /// <paramref name="propietaria"/> existe para F5-01: la misma ayuda da la empresa que es dueña
+    /// de un inmueble, que es lo que los filtros de propietaria de la vista única necesitan. Sin
+    /// él sale una subempresa que factura, que es lo de siempre.
+    /// </para>
     /// </summary>
-    public static async Task<Guid> SubempresaAsync(ContenedorBdFixture bd, CancellationToken ct)
+    public static async Task<Guid> SubempresaAsync(
+        ContenedorBdFixture bd,
+        CancellationToken ct,
+        bool propietaria = false)
     {
         var subempresa = new Subempresa
         {
             Id = Guid.NewGuid(),
             Nombre = $"Empresa {Guid.NewGuid():N}"[..20],
-            Propietaria = false,
-            Facturadora = true,
+            Propietaria = propietaria,
+            Facturadora = !propietaria,
             Activa = true,
             CreatedAt = DateTimeOffset.UtcNow,
         };

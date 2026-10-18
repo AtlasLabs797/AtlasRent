@@ -57,7 +57,7 @@
 - [ ] Clave de cifrado protegida con DPAPI (máquina) o variable de entorno del servicio; nunca en el repositorio ni en `appsettings.json`.
 - [ ] Serilog con redacción: sin contraseñas, tokens, documentos de identidad, teléfonos, emails de clientes ni cuerpos de petición.
 - [ ] Documentos subidos: solo PDF, tamaño máximo, verificación por magic bytes, nombre generado por el servidor, carpeta fuera del webroot, descarga solo vía API con permiso.
-- [ ] Exportaciones neutralizan fórmulas (`=`, `+`, `-`, `@`, tabulador al inicio de celda).
+- [x] Exportaciones neutralizan fórmulas (`=`, `+`, `-`, `@`, tabulador al inicio de celda). **Hecho en F5-02**: función única `TextoSeguro`, en el punto de escritura de texto del xlsx y del CSV. **Solo cadena**: los importes y las fechas van por ruta tipada y no se neutralizan en ninguno de los dos formatos — un importe negativo empieza por `-` y debe seguir siendo un número (`UnCampoCsvDeNumeroNegativoNoSeNeutraliza`). Cubierto por tests; **el fichero no se ha abierto en Excel real**. Cierra SEC-005.
 - [ ] **Corregido en F4-01b: `subempresa.rnc` va cifrado.** Se guardaba en claro contra lo que pide AGENTS.md §6, con un `TODO(A#)` en `Data/Subempresa.cs` y esta línea. Ahora se cifra con el mismo AES-256-GCM y el mismo formato `v1:nonce:cifrado` que el documento de identidad del cliente, y se ve **completo** en la pantalla y en la cabecera del PDF de factura (`DESIGN.md §7`), con el mismo tratamiento (D16). **Sin índice ciego**: no hay ningún endpoint que busque subempresas por RNC —la lista solo ordena por nombre—, así que `rnc_hmac` sería una columna que nadie consulta; el índice ciego existe para buscar y detectar duplicados y aquí no hay ninguna de las dos cosas. A diferencia del documento del cliente, el RNC tampoco va a la auditoría.
 
 ### A.5 Entradas y salidas
@@ -130,9 +130,14 @@
 ```
 
 ### SEC-005 · Inyección de fórmulas en exportaciones
-- Fecha detectado: 13/10/2026 · Gravedad: Media · Estado: ABIERTO (F5-02) · Componente: exportación
+- Fecha detectado: 13/10/2026 · Fecha resuelto: 18/10/2026 · Gravedad: Media · Estado: **CERRADO en F5-02** · Componente: exportación
+- Detectado por: revisión
 - Descripción: un nombre de cliente como `=HYPERLINK(...)` se ejecuta al abrir el Excel exportado.
-- Solución prevista: neutralizar celdas que empiezan por `= + - @` o tabulador.
+- Evidencia: la exportación de §3.15 escribe texto externo (nombre de cliente, número, estado) en celdas. Un nombre que empieza por `=`, `+`, `-`, `@`, tabulador o salto de línea lo ejecuta la hoja al abrirse.
+- Solución: `ServicioExportacionInformes.TextoSeguro` antepone una apóstrofo a **toda cadena** que empiece por esos caracteres, en el punto único de escritura de texto del escritor de Excel y del de CSV. Los importes y las fechas van por una ruta tipada (número y fecha) y **no** se neutralizan: un importe negativo empieza por `-` y debe seguir siendo un número.
+- Verificación: `ElNombreDeClienteQueEsUnaFormulaNoEsUnaFormulaEnElExcel` (comprueba `HasFormula == false` y que el texto queda intacto con el prefijo de texto de Excel), `ElNombreDeClienteQueEsUnaFormulaTampocoEsUnaFormulaEnElCsv`, y `ElTextoQueEmparaPorFormulaVaConApostrofo` con 11 casos de tabla. **No se abrió el fichero en Excel ni en LibreOffice**: la protección está probada leyendo el xlsx generado con ClosedXML.
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? No. La exportación no existía todavía.
 
 ### SEC-004 · Datos personales y documentos de propiedad
 - Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: **CERRADO en F1-09 y F1-10** · Componente: clientes, inmuebles
