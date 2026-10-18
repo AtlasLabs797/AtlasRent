@@ -16,6 +16,33 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [18/10/2026 23:58] FEAT · F6-02 · Asistente de solo lectura con IA: cuatro proveedores, sin datos personales fuera y con límites (worker)
+- **Qué:** backend de F6-02. Nuevos `Services/OpcionesIa.cs`, `Services/IProveedorIA.cs`, `Services/ProveedorAnthropic.cs`, `Services/ProveedorChatCompletions.cs`, `Services/PromptSistemaIa.cs`, `Services/MapaSeudonimos.cs`, `Services/ServicioConsultaIa.cs`, `DTOs/IaDtos.cs`, `Controllers/IaController.cs` y `backend/AtlasRent.Tests/IA/` (16 pruebas en `ConsultaIaTests.cs`, doble de transporte en `FalsoProveedorIa.cs`). Modificados: `Controllers/AgenteController.cs` (nuevo `POST /api/v1/agente/consulta`), `Services/Problemas.cs` (`IA-001` y `IA-002`), `Program.cs` (opciones, dos clientes con nombre y los dos `IProveedorIA`), `docs/DOC_TECNICA.md` (§7) y `config/variables-entorno.example`.
+- **Por qué:** criterios de aceptación de la fila F6-02: consultas de solo lectura con IA, cuatro proveedores configurables, ningún dato personal fuera del proceso y límites de gasto.
+- **Decisiones donde el encargo no era exacto:**
+  1. **El mapa alcance → acción se comprueba en el servicio, no con `[Accion]`.** El alcance no se conoce hasta leer el cuerpo, y en una llamada con token la acción tiene que estar además en la lista del token para que siga valiendo el doble techo de F6-01. `ia.consultar` la sigue exigiendo el endpoint en las dos rutas. Mapa: `clientes` → `cliente.ver`; `cuentas` → `factura.ver` **+ `informe.ver`** (los totales del pie son de esa acción); `facturas` → `factura.ver`; `contratos` → `cliente.ver`; `informes` → `informe.ver`.
+  2. **`cuentas` pide dos acciones, no una.** El encargo decía «la acción que hoy protege ese endpoint», y el de la vista única es `factura.ver`, pero esa respuesta trae `totales`, que son de `informe.ver` (`ServicioCuentas`). Con una sola, un token de gerente con `factura.ver` pero sin `informe.ver` en su lista se llevaría los agregados. Hay una prueba que lo comprueba.
+  3. **Sin migración.** El contador de consultas sale de las filas `ia.consulta` permitidas: la auditoría es a la vez el registro y el contador. Se cuentan solo las **permitidas**, para que una consulta rechazada por el límite no sume al contador que la rechazó y no bloquee el mes entero a todos. `agente_token.limite_consultas_dia` ya existía de F6-01 y aquí se aplica.
+  4. **25 filas sin filtros.** El alcance no acepta filtros en esta fase: el modelo solo razona sobre lo que ve y el histórico entero no cabe en ningún contexto. Documentado; ampliarlo es trabajo futuro con criterio propio.
+  5. **El prompt del sistema va en el repositorio**, no en configuración: es parte de la seguridad de la consulta y un cambio por entorno dejaría de auditarse.
+  6. **`documento` está en la lista de propiedades seudonimizadas aunque hoy ningún alcance lo cargue** (`ClienteResumen` no lo lleva). Está por si un resumen lo incluye; la prueba de privacidad comprueba además que hoy no sale.
+  7. **Residual declarado:** la pregunta del usuario solo se seudonimiza con los valores de las filas cargadas. Un nombre escrito a mano que no esté en esa página sí sale al proveedor. Anotado en `DOC_TECNICA §7` y en el código.
+- **Verificado:**
+  - `dotnet build AtlasRent.slnx -c Release -warnaserror` → compilación correcta, 0 advertencias, 0 errores.
+  - `backend/AtlasRent.Tests/bin/Release/net10.0/AtlasRent.Tests.exe -class AtlasRent.Tests.IA.ConsultaIaTests` → **16 pruebas, 0 fallos**.
+  - `... AtlasRent.Tests.exe -class AtlasRent.Tests.Agentes.TokenAgenteTests` → **14 pruebas, 0 fallos** (el endpoint nuevo de `AgenteController` no rompe la lista cerrada de acciones que se lee por reflexión).
+  - `... AtlasRent.Tests.exe -namespace AtlasRent.Tests.Permisos -namespace AtlasRent.Tests.Arranque` → **88 pruebas, 0 fallos**.
+  - Nota sobre el filtro: `dotnet test --filter "FullyQualifiedName~IA"` **no descubre pruebas** en este repositorio (xUnit v3 con runner en proceso); hay que lanzar el binario con `-class`/`-namespace`. Conviene que el orquestador lo sepa.
+- **NO verificado:**
+  - **Ninguna llamada real a ningún proveedor.** Por diseño (AGENTS.md §8): las pruebas sustituyen el `HttpMessageHandler`. **Los cuatro dialectos están escritos según la especificación del encargo y no contra la API real.** La primera configuración de verdad contra Anthropic, OpenAI, OpenRouter o MiniMax **no se ha probado**.
+  - **La suite completa** no se ha ejecutado: la lanza el orquestador.
+  - El **caducado del límite diario** (el corte es por día de negocio de Santo Domingo) no tiene prueba propia: se prueba el corte, no el cambio de día.
+- **Migraciones:** no. Ni columnas nuevas ni snapshot.
+- **Riesgo / pendiente:** las peticiones con token de agente entran al limitador global **antes** de saberse quién las hace, así que se limitan por IP y no por token (`TODO(F6-02)` en DOC_TECNICA §7). Arreglarlo obliga a tocar el orden del pipeline, y el encargo lo deja fuera de esta tarea.
+- **Commit/PR:**
+
+---
+
 ## [18/10/2026 23:40] FEAT · F6-01 · Token de agente externo: la API con los permisos de su usuario y nunca por encima (worker)
 - **Qué:** backend de F6-01. Nuevos `Data/AgenteToken.cs`, `Services/ServicioAgentes.cs`, `Services/OpcionesAgentes.cs`, `Middleware/AutenticacionAgenteMiddleware.cs`, `Authorization/FiltroAccionAgente.cs`, `Controllers/AgenteController.cs`, `DTOs/AgenteTokenDtos.cs` y `backend/AtlasRent.Tests/Agentes/TokenAgenteTests.cs` (14 pruebas). Modificados: `Acciones.cs` y `MatrizPermisos.cs` (tres acciones nuevas), `ContextoSesion.cs`, `AtlasRentDbContext.cs`, `PolicyService.cs` (origen de la denegación), `ValidacionSesionMiddleware.cs` (salto de sesión y de CSRF para agente), `Problemas.cs` (`AUT-005`), `Program.cs` (DI, filtro y middleware; `JwtBearer.OnMessageReceived` ignora la cabecera `Bearer`, que no es un JWT), `docs/DOC_TECNICA.md` (§4.2 y §7) y `config/variables-entorno.example`.
 - **Por qué:** base de **F6-02** y **F6-03** (`docs/PLAN.md`, bloque "Fase 6 · IA"). Un asistente externo necesita una credencial que no caduque con la sesión del navegador y que no pueda ver más de lo que ve su usuario.

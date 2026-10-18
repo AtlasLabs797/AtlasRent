@@ -80,3 +80,34 @@ WhatsApp__VerifyToken=<secreto>
 Agentes__VidaDiasToken=90
 Agentes__VidaDiasTokenMaxima=365
 Agentes__LimiteConsultasDia=500
+
+# F6-02: asistente de consultas de solo lectura (docs/DOC_TECNICA.md §7). Un proveedor por sección,
+# con la misma forma en los cuatro. Solo la clave es secreta; las claves de los proveedores que no
+# se usan se dejan sin poner. Sin clave configurada, o con Ia__Activado=false, el asistente
+# responde 503 y no llama a nadie.
+#
+# El límite va en número de consultas, no en dinero: los precios por millón de tokens cambian sin
+# avisar y ponerlos en el código es una deuda que caduca mal.
+Ia__Activado=true
+Ia__Proveedor=anthropic
+Ia__TopeConsultasMes=2000
+Ia__MaxTokensSalida=1024
+
+Ia__Anthropic__Clave=<secreto>
+Ia__Anthropic__BaseUrl=https://api.anthropic.com
+Ia__Anthropic__Modelo=<modelo>
+
+Ia__Openai__Clave=<secreto>
+Ia__Openai__BaseUrl=https://api.openai.io/v1
+Ia__Openai__Modelo=<modelo>
+
+Ia__Openrouter__Clave=<secreto>
+Ia__Openrouter__BaseUrl=https://openrouter.ai/api/v1
+Ia__Openrouter__Modelo=<modelo>
+# Cabeceras opcionales de atribución de OpenRouter. Si no se poner, el cliente las omite.
+Ia__Openrouter__Referer=
+Ia__Openrouter__Titulo=Atlas Rent
+
+Ia__Minimax__Clave=<secreto>
+Ia__Minimax__BaseUrl=https://api.minimax.io/v1
+Ia__Minimax__Modelo=<modelo>
