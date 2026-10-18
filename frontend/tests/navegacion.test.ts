@@ -43,7 +43,7 @@ test('el menú no enlaza a rutas que no existen', () => {
     if (valor.includes('*')) continue;
     rutasMontadas.add(valor === '' ? '/' : `/${valor}`);
   }
-  assert.deepEqual([...rutasMontadas].sort(), ['/', '/componentes', '/informes']);
+  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/componentes', '/informes']);
 
   for (const entrada of ENTRADAS_MENU) {
     if (entrada.ruta === null) {
@@ -65,7 +65,7 @@ test('un módulo sin pantalla no aparece en la barra lateral', () => {
       `${clave} no tiene pantalla y no debe ser pulsable`,
     );
   }
-  assert.deepEqual(conPantalla, ['panel', 'informes', 'componentes']);
+  assert.deepEqual(conPantalla, ['panel', 'informes', 'asistente', 'componentes']);
 });
 
 test('los permisos de la API filtran el menú: el empleado no ve Informes y el admin sí', () => {
