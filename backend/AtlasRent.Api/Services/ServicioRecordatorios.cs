@@ -572,7 +572,7 @@ public sealed class ServicioRecordatorios(
             recordatorio.Fecha,
             recordatorio.Estado,
             TextoDelPendiente(pendiente),
-            HuellaAviso.Calcular(recordatorio, TextoDelPendiente(pendiente)));
+            HuellaAviso.Calcular(recordatorio, TextoDelPendiente(pendiente), hoy));
     }
 
     // ---------------------------------------------------------------- lectura
@@ -847,15 +847,19 @@ public sealed class ServicioRecordatorios(
         /// esto cambia y las propuestas pendientes hechas con el formato viejo caducan en vez de
         /// compararse con una coincidencia que ya no significa nada.
         /// </summary>
-        private const string Version = "recordatorio.v1";
+        private const string Version = "recordatorio.v2";
 
         /// <summary>
-        /// Lo que entra: el aviso, su cliente y su unidad, el día para el que se preparó, su estado y
-        /// el pendiente del cliente en ese momento. <b>El día entra</b>: el texto del aviso dice
-        /// cuántos días lleva de atraso, así que un cambio de fecha lo deja viejo igual que un cambio
-        /// de saldo.
+        /// Lo que entra: el aviso, su cliente y su unidad, el día para el que se preparó, su estado,
+        /// el pendiente del cliente en ese momento y <b>el día en que se calcula la huella</b>.
+        /// <para>
+        /// El día en que se calcula entra, y no solo el del aviso: el texto del aviso dice cuántos
+        /// días lleva de atraso, así que al cambiar de día lo que se aprobaría ya no es lo que se
+        /// propuso, aunque el saldo siga igual. Por eso el día se pasa como parámetro y lo pone quien
+        /// calcula, que es el único que sabe qué día es.
+        /// </para>
         /// </summary>
-        public static string Calcular(Recordatorio recordatorio, string pendiente) =>
+        public static string Calcular(Recordatorio recordatorio, string pendiente, DateOnly hoy) =>
             EmisorTokens.HashToken(string.Join('\n',
             [
                 Version,
@@ -863,6 +867,7 @@ public sealed class ServicioRecordatorios(
                 $"cliente={recordatorio.ClienteId:N}",
                 $"unidad={recordatorio.UnidadId?.ToString("N") ?? "-"}",
                 $"fecha={recordatorio.Fecha:yyyy-MM-dd}",
+                $"hoy={hoy:yyyy-MM-dd}",
                 $"estado={(int)recordatorio.Estado}",
                 $"pendiente={pendiente}",
             ]));

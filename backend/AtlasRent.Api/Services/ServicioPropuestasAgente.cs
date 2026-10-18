@@ -58,11 +58,12 @@ public sealed class ServicioPropuestasAgente(
     private const string AccionCaducar = "ia.propuesta_caducada";
 
     /// <summary>
-    /// Por qué no se manda nada y hay que proponer de nuevo. El mismo texto para todo lo que cambió
-    /// (saldo, fecha o estado del aviso): quien lo lee necesita saber que está viejo, no auditar el
-    /// cambio exacto.
+    /// Por qué no se manda nada y hay que proponer de nuevo. El mismo texto para todo lo que cambió:
+    /// <b>dice qué pasó, no por qué</b>. La huella avisa de que el aviso ya no es el mismo, y puede
+    /// haber sido por saldo, por el día —el texto dice cuántos días lleva de atraso— o por el estado;
+    /// nombrar uno sería afirmar algo que el sistema no sabe.
     /// </summary>
-    private const string MotivoCaducidad = "El saldo del cliente cambió después de proponerla: lo que se iba a recordar ya no es lo que debe.";
+    private const string MotivoCaducidad = "El aviso de este cliente cambió después de proponerla: lo que se iba a recordar ya no es lo que dice el aviso, así que hay que proponerlo de nuevo.";
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -114,6 +115,14 @@ public sealed class ServicioPropuestasAgente(
             ?? throw new InvalidOperationException(
                 $"El aviso '{aviso.Id:D}' ya no existe y esta propuesta no se puede dejar a medias.");
 
+        // Un solo mapa para el nombre y para la justificación: la justificación es texto libre y la
+        // escribe quien propone, así que sin esto un «llama a Ana» dejaría el nombre real en el
+        // payload y en lo que lee el aprobador. El nombre real sale de la tabla `cliente` al armar la
+        // bandeja, que es donde tiene que estar.
+        var mapa = new MapaSeudonimos();
+        var seudonimo = SeudonimoDe(mapa, nombre);
+        var justificacion = mapa.AnonimizarTexto(peticion.Justificacion ?? string.Empty);
+
         var solicitud = new SolicitudAprobacion
         {
             Tipo = TipoSolicitud.AccionAgente,
@@ -124,8 +133,8 @@ public sealed class ServicioPropuestasAgente(
             HuellaContenido = estado.Huella,
             SolicitadoPorId = usuario,
             SolicitadoAt = reloj.GetUtcNow(),
-            Comentario = peticion.Justificacion,
-            PayloadJson = Serializar(SeudonimoDe(nombre), peticion.ClienteId, aviso.Id, estado.Pendiente, peticion.Justificacion),
+            Comentario = justificacion,
+            PayloadJson = Serializar(seudonimo, peticion.ClienteId, aviso.Id, estado.Pendiente, justificacion),
         };
 
         var solicitante = await NombresDeUsuariosAsync([(Guid?)usuario], ct);
@@ -385,9 +394,8 @@ public sealed class ServicioPropuestasAgente(
     /// por propuesta, y de un solo cliente sale siempre <c>[[cliente_1]]</c>. Lo que no hace falta es
     /// guardarlo: el mapa vive en memoria y aquí solo interesa el texto.
     /// </summary>
-    private static string SeudonimoDe(string nombre)
+    private static string SeudonimoDe(MapaSeudonimos mapa, string nombre)
     {
-        var mapa = new MapaSeudonimos();
         var anonimo = mapa.Anonimizar(JsonSerializer.SerializeToNode(new { cliente = nombre }, Json));
 
         return JsonDocument.Parse(anonimo).RootElement.GetProperty("cliente").GetString() ?? "[[cliente_1]]";
