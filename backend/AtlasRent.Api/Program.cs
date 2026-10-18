@@ -218,6 +218,9 @@ builder.Services
 builder.Services.AddScoped<IProveedorIA, ProveedorAnthropic>();
 builder.Services.AddScoped<IProveedorIA, ProveedorChatCompletions>();
 builder.Services.AddScoped<ServicioConsultaIa>();
+// F6-03: el camino de escritura. Depende del servicio de aprobaciones (que lo reparte por tipo) y
+// del de recordatorios (que es lo que se ejecuta al aprobar), así que se registra después de ambos.
+builder.Services.AddScoped<ServicioPropuestasAgente>();
 builder.Services.AddControllers(opciones =>
 {
     opciones.Filters.Add<FiltroAccionGlobal>();

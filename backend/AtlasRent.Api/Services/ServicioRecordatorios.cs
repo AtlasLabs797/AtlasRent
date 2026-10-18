@@ -524,6 +524,57 @@ public sealed class ServicioRecordatorios(
             .Where(PendienteDeFactura.ConPendiente(contexto))
             .AnyAsync(ct);
 
+    /// <summary>
+    /// Lo que un aviso significa hoy: qué cliente es, cuándo se preparó y cuánto debe entonces. Es el
+    /// <b>snapshot que las propuestas del asistente guardan al proponer</b> (F6-03) y vuelven a
+    /// calcular al aprobar: si la huella ya no coincide, el saldo que el aprobador vio no es el de
+    /// ahora y la propuesta caduca en vez de mandar un correo con cifras viejas.
+    /// <para>
+    /// Se calcula con <see cref="PendienteAsync"/>, la misma cuenta que compone el texto del aviso.
+    /// Si el aviso no existe, <c>null</c>: no hay nada que aprobar.
+    /// </para>
+    /// </summary>
+    public async Task<HuellaAviso?> HuellaDeAvisoAsync(Guid recordatorioId, CancellationToken ct)
+    {
+        var recordatorio = await contexto.Recordatorio.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == recordatorioId, ct);
+
+        if (recordatorio is null)
+        {
+            return null;
+        }
+
+        var hoy = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
+
+        // Las facturas vencidas con saldo del mismo cliente y unidad: el mismo filtro que usa el
+        // barrido, y no el subconjunto que tenía el aviso al quitarse, porque lo que hay que detectar
+        // es el cambio de saldo de hoy.
+        var vencidas = await contexto.Factura.AsNoTracking()
+            .Where(f => f.ClienteId == recordatorio.ClienteId
+                && (!recordatorio.UnidadId.HasValue || f.UnidadId == recordatorio.UnidadId)
+                && f.Estado == EstadoFactura.Emitida
+                && f.FechaVencimiento < hoy)
+            .Where(PendienteDeFactura.ConPendiente(contexto))
+            .Select(f => new Vencida(f.Id, f.ClienteId, f.UnidadId, f.Moneda, f.FechaVencimiento))
+            .ToListAsync(ct);
+
+        var pendiente = vencidas.Count == 0
+            ? new List<ImporteMoneda>()
+            : await PendienteAsync(
+                new Grupo(recordatorio.ClienteId, recordatorio.UnidadId, hoy, [.. vencidas.Select(f => f.Id)]),
+                hoy,
+                ct);
+
+        return new HuellaAviso(
+            recordatorio.Id,
+            recordatorio.ClienteId,
+            recordatorio.UnidadId,
+            recordatorio.Fecha,
+            recordatorio.Estado,
+            TextoDelPendiente(pendiente),
+            HuellaAviso.Calcular(recordatorio, TextoDelPendiente(pendiente)));
+    }
+
     // ---------------------------------------------------------------- lectura
 
     /// <summary>
@@ -777,4 +828,43 @@ public sealed class ServicioRecordatorios(
     /// la cadencia es aritmética sobre días y no se escribe en SQL.
     /// </summary>
     private sealed record Grupo(Guid ClienteId, Guid? UnidadId, DateOnly Vencimiento, List<Guid> Facturas);
+
+    /// <summary>
+    /// El aviso y lo que significaba en este momento (F6-03). Es lo que una propuesta congela al
+    /// proponer y lo que vuelve a mirar al aprobar.
+    /// </summary>
+    public sealed record HuellaAviso(
+        Guid RecordatorioId,
+        Guid ClienteId,
+        Guid? UnidadId,
+        DateOnly Fecha,
+        EstadoRecordatorio Estado,
+        string Pendiente,
+        string Huella)
+    {
+        /// <summary>
+        /// Versión del formato, como en <see cref="HuellaContrato"/>. Si algún día entra un campo más,
+        /// esto cambia y las propuestas pendientes hechas con el formato viejo caducan en vez de
+        /// compararse con una coincidencia que ya no significa nada.
+        /// </summary>
+        private const string Version = "recordatorio.v1";
+
+        /// <summary>
+        /// Lo que entra: el aviso, su cliente y su unidad, el día para el que se preparó, su estado y
+        /// el pendiente del cliente en ese momento. <b>El día entra</b>: el texto del aviso dice
+        /// cuántos días lleva de atraso, así que un cambio de fecha lo deja viejo igual que un cambio
+        /// de saldo.
+        /// </summary>
+        public static string Calcular(Recordatorio recordatorio, string pendiente) =>
+            EmisorTokens.HashToken(string.Join('\n',
+            [
+                Version,
+                $"recordatorio={recordatorio.Id:N}",
+                $"cliente={recordatorio.ClienteId:N}",
+                $"unidad={recordatorio.UnidadId?.ToString("N") ?? "-"}",
+                $"fecha={recordatorio.Fecha:yyyy-MM-dd}",
+                $"estado={(int)recordatorio.Estado}",
+                $"pendiente={pendiente}",
+            ]));
+    }
 }

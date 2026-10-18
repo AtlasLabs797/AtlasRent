@@ -10,11 +10,18 @@ namespace AtlasRent.Api.Services;
 /// La bandeja de aprobaciones de §3.16 (F2-10): los contratos que están esperando que alguien con
 /// <c>contrato.estado</c> decida.
 /// <para>
-/// <b>Solo lecturas, y solo de lo que vive.</b> Ni aprobar ni rechazar: la bandeja no reimplementa la
-/// aprobación, llama a <see cref="ServicioContratos.AprobarAsync"/> y
-/// <see cref="ServicioContratos.RechazarAsync"/>, que ya exigen el permiso por dentro y ya manejan
-/// la caducidad por huella. Un segundo camino de aprobación sería dos reglas de negocio y un sitio
-/// más donde se puede saltar la protección.
+/// <b>F6-03: la bandeja se queda con los contratos y el resto de tipos traen su propia lista</b>
+/// (<c>ServicioPropuestasAgente.ListarAsync</c>), porque las columnas que la pide —renta vigente,
+/// estado del contrato— no existen para una propuesta de recordatorio. Lo que sí es común, y por eso
+/// vive aquí, es <b>quién decide</b>: <see cref="AprobarAsync"/> y <see cref="RechazarAsync"/> miran
+/// el <see cref="TipoSolicitud.Tipo"/> de la fila y la llevan al servicio que corresponde, de modo que
+/// un contrato se aprueba con las reglas de §3.5 y una propuesta con las de F6-03 sin que haya dos
+/// caminos para la misma cosa.
+/// </para>
+/// <para>
+/// <b>Solo lecturas, y solo de lo que vive.</b> Ni aprobar ni rechazar por su cuenta: el servicio
+/// reparte y quien decide es el servicio que sabe. Un segundo camino de aprobación sería dos reglas
+/// de negocio y un sitio más donde se puede saltar la protección.
 /// </para>
 /// <para>
 /// <b>Solo solicitudes vivas.</b> Las caducadas y las resueltas <i>no se borran</i>: son el
@@ -29,7 +36,11 @@ namespace AtlasRent.Api.Services;
 /// entrada por HTTP y este método protege la lista. Y la denegación se audita.
 /// </para>
 /// </summary>
-public sealed class ServicioAprobaciones(AtlasRentDbContext contexto, IPolicyService politica)
+public sealed class ServicioAprobaciones(
+    AtlasRentDbContext contexto,
+    IPolicyService politica,
+    ServicioContratos contratos,
+    ServicioPropuestasAgente propuestas)
 {
     private const string RecursoDeLaBandeja = "bandeja-aprobaciones";
 
@@ -62,6 +73,7 @@ public sealed class ServicioAprobaciones(AtlasRentDbContext contexto, IPolicySer
             .Include(s => s.Contrato).ThenInclude(c => c!.Cliente)
             .Include(s => s.Contrato).ThenInclude(c => c!.Unidad)
             .Where(s => s.Resultado == ResultadoSolicitud.Pendiente
+                && s.Tipo == TipoSolicitud.Contrato
                 && s.Contrato!.Estado == EstadoContrato.PendienteAprobacion);
 
         // El nombre de quien pidió la solicitud y la renta vigente del contrato no salen de la
@@ -80,7 +92,7 @@ public sealed class ServicioAprobaciones(AtlasRentDbContext contexto, IPolicySer
             .Select(u => new { u.Id, u.Nombre })
             .ToDictionaryAsync(u => u.Id, u => u.Nombre, ct);
 
-        var vigentes = await RentaVigentePorContratoAsync(consulta.Select(s => s.ContratoId), ct);
+        var vigentes = await RentaVigentePorContratoAsync(consulta.Select(s => s.ContratoId!.Value), ct);
 
         return await ConsultaPaginada.PaginarAsync(
             consulta,
@@ -90,6 +102,71 @@ public sealed class ServicioAprobaciones(AtlasRentDbContext contexto, IPolicySer
             s => Fila(s, solicitantes, vigentes),
             ct);
     }
+
+    /// <summary>
+    /// Decide la solicitud que sea, según lo que sea (F6-03). Un contrato va a
+    /// <see cref="ServicioContratos.AprobarAsync"/>, que es la misma llamada que hace el botón de su
+    /// ficha; una propuesta va a <see cref="ServicioPropuestasAgente.AprobarAsync"/>, que ejecuta el
+    /// aviso. El permiso, la caducidad y la auditoría los exige cada servicio por su cuenta, que es
+    /// donde están sus reglas: aquí solo se decide a quién le toca.
+    /// <para>
+    /// <b>Devuelve la respuesta del servicio que se haya usado, no una mezcla de las dos.</b> Contrato
+    /// y propuesta no comparten DTO ni reglas, y que un día haya un tercer tipo no cambia nada de esto.
+    /// </para>
+    /// </summary>
+    public async Task<object> AprobarAsync(
+        Guid solicitudId,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var solicitud = await LeerAsync(solicitudId, ct);
+
+        return solicitud.Tipo switch
+        {
+            TipoSolicitud.Contrato
+                => await contratos.AprobarAsync(solicitud.ContratoId!.Value, usuario, ip, mutacion, ct),
+            TipoSolicitud.AccionAgente
+                => await propuestas.AprobarAsync(solicitud.Id, usuario, ip, mutacion, ct),
+            _ => throw new InvalidOperationException($"No hay servicio que decida una solicitud de tipo '{solicitud.Tipo}'."),
+        };
+    }
+
+    /// <summary>Lo mismo que <see cref="AprobarAsync"/> para el rechazo, con el comentario de §3.5.</summary>
+    public async Task<object> RechazarAsync(
+        Guid solicitudId,
+        string comentario,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var solicitud = await LeerAsync(solicitudId, ct);
+
+        return solicitud.Tipo switch
+        {
+            TipoSolicitud.Contrato
+                => await contratos.RechazarAsync(
+                    solicitud.ContratoId!.Value,
+                    new ContratoRechazoPeticion { Comentario = comentario },
+                    usuario,
+                    ip,
+                    mutacion,
+                    ct),
+            TipoSolicitud.AccionAgente
+                => await propuestas.RechazarAsync(solicitud.Id, comentario, usuario, ip, mutacion, ct),
+            _ => throw new InvalidOperationException($"No hay servicio que decida una solicitud de tipo '{solicitud.Tipo}'."),
+        };
+    }
+
+    /// <summary>Solo el tipo y el contrato: lo que hace falta para saber a quién le toca decidir.</summary>
+    private async Task<SolicitudAprobacion> LeerAsync(Guid id, CancellationToken ct) =>
+        await contexto.SolicitudAprobacion.AsNoTracking()
+            .Where(s => s.Id == id)
+            .Select(s => new SolicitudAprobacion { Id = s.Id, Tipo = s.Tipo, ContratoId = s.ContratoId })
+            .SingleOrDefaultAsync(ct)
+        ?? throw new KeyNotFoundException($"No hay ninguna solicitud de aprobación con identificador '{id:D}'.");
 
     /// <summary>
     /// Renta con la que el contrato queda hoy según su historial de versiones: la
@@ -141,7 +218,7 @@ public sealed class ServicioAprobaciones(AtlasRentDbContext contexto, IPolicySer
 
         return new AprobacionBandejaRespuesta(
             solicitud.Id,
-            contrato?.Id ?? solicitud.ContratoId,
+            contrato?.Id ?? solicitud.ContratoId!.Value,
             solicitud.SolicitadoPorId,
             solicitud.SolicitadoPorId is { } quien && solicitantes.TryGetValue(quien, out var nombre)
                 ? nombre
