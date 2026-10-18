@@ -24,6 +24,7 @@ namespace AtlasRent.Api.Controllers;
 public sealed class AgenteController(
     ServicioAgentes agentes,
     ServicioClientes clientes,
+    ServicioConsultaIa consultas,
     ServicioIdempotencia idempotencia,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
@@ -116,6 +117,62 @@ public sealed class AgenteController(
         catch (KeyNotFoundException noExiste)
         {
             return NoEncontrado(noExiste.Message);
+        }
+    }
+
+    /// <summary>
+    /// Consulta al asistente con token de agente (F6-02). <b>Mismo servicio, mismo contrato y mismo
+    /// código de error que <c>POST /api/v1/ia/consulta</c></b>: lo único que cambia es la
+    /// credencial.
+    /// <para>
+    /// Lo que un agente no puede es responder más que su propietario. Aquí se junta el doble techo de
+    /// F6-01 (<c>ia.consultar</c> en la lista del token y en el techo del rol) con el del alcance
+    /// (las acciones del endpoint de lectura equivalente), y con el límite diario de
+    /// <c>agente_token.limite_consultas_dia</c> que F6-01 guardaba sin aplicar.
+    /// </para>
+    /// </summary>
+    [HttpPost("consulta")]
+    [Accion(Acciones.IaConsultar)]
+    public async Task<IActionResult> Consultar(ConsultaIaPeticion peticion, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await consultas.ConsultarAsync(peticion.Pregunta, peticion.Alcance, Ip(), ct));
+        }
+        catch (ArgumentException invalida)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status400BadRequest,
+                Problemas.Validacion,
+                "Datos no válidos",
+                invalida.Message);
+        }
+        catch (PermisoDenegadoException)
+        {
+            // La excepción la lanza el servicio; la denegación ya está auditada, también con origen
+            // «agente». Es el mismo camino que siguen el resto de servicios que comprueban permisos
+            // por su cuenta.
+            return Problemas.Construir(
+                StatusCodes.Status403Forbidden,
+                Problemas.PermisoDenegado,
+                "Permiso denegado",
+                "Este token no tiene permiso para consultar este alcance.");
+        }
+        catch (LimiteIaExcedidoException pasado)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status429TooManyRequests,
+                Problemas.LimiteConsultasIa,
+                "Límite de consultas alcanzado",
+                pasado.Message);
+        }
+        catch (ProveedorIaException noDisponible)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status503ServiceUnavailable,
+                Problemas.ProveedorIaNoDisponible,
+                "Asistente no disponible",
+                noDisponible.Message);
         }
     }
 }

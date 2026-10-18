@@ -97,6 +97,20 @@ public static class Problemas
     public const string UnidadNoDisponible = "DIS-001";
 
     /// <summary>
+    /// El asistente no puede contestar ahora mismo: la IA está desactivada, el proveedor elegido
+    /// no tiene clave, o el proveedor falló (F6-02). <b>Un 503 y no un 500</b>: un proveedor caído no
+    /// es un error de este servidor, y el frontend ya lo trata como una situación que se pasa sola.
+    /// </summary>
+    public const string ProveedorIaNoDisponible = "IA-001";
+
+    /// <summary>
+    /// Se agotó el límite de consultas al asistente: el diario del token de agente o el tope global
+    /// del mes (F6-02). Se rechaza antes de llamar al proveedor, así que no se ha gastado nada con
+    /// esta petición.
+    /// </summary>
+    public const string LimiteConsultasIa = "IA-002";
+
+    /// <summary>
     /// Construye la respuesta de error y la registra. No lleva traza: solo el código, el título y
     /// una explicación que no delate datos internos.
     /// </summary>

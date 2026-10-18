@@ -200,6 +200,24 @@ builder.Services.AddScoped<ServicioContratos>();
 // la lista del token además de estar en el techo del propietario (F6-01).
 builder.Services.AddSingleton(OpcionesAgentes.Desde(builder.Configuration));
 builder.Services.AddScoped<ServicioAgentes>();
+
+// F6-02: el asistente. Dos implementaciones de IProveedorIA, no cuatro: la API de mensajes de
+// Anthropic y el dialecto chat/completions que OpenAI, OpenRouter y MiniMax ya comparten. Los
+// clientes son de IHttpClientFactory y con nombre, para que una prueba sustituya el transporte con
+// un HttpMessageHandler falso y capture la petición sin llamar a ninguna IA de verdad.
+builder.Services.AddSingleton(OpcionesIa.Desde(builder.Configuration));
+
+// Holgado a propósito: un proveedor lento tiene que acabar en 503, no cortar la petición a los 30 s
+// de TimeProvider, que además dejaría la llamada colgada sin auditar.
+var tiempoEsperaProveedor = TimeSpan.FromSeconds(45);
+
+builder.Services
+    .AddHttpClient(ProveedorAnthropic.NombreCliente, http => http.Timeout = tiempoEsperaProveedor);
+builder.Services
+    .AddHttpClient(ProveedorChatCompletions.NombreCliente, http => http.Timeout = tiempoEsperaProveedor);
+builder.Services.AddScoped<IProveedorIA, ProveedorAnthropic>();
+builder.Services.AddScoped<IProveedorIA, ProveedorChatCompletions>();
+builder.Services.AddScoped<ServicioConsultaIa>();
 builder.Services.AddControllers(opciones =>
 {
     opciones.Filters.Add<FiltroAccionGlobal>();
