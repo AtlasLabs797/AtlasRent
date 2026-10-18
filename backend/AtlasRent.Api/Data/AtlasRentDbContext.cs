@@ -989,12 +989,18 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.ToTable("solicitud_aprobacion");
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.HuellaContenido).HasMaxLength(64).IsRequired();
+            // F6-03: qué se propone hacer cuando la solicitud no es de contrato. El aviso al que
+            // apunta no se copia aquí: se lee de `recordatorio` cuando se decide, igual que el nombre
+            // del cliente se lee de `cliente`.
+            entidad.Property(e => e.PayloadJson).HasColumnType("text");
             entidad.Property(e => e.Comentario).HasMaxLength(1000);
             entidad.Property(e => e.MotivoCaducidad).HasMaxLength(200);
             entidad.Property(e => e.CreatedAt).IsRequired();
             // Único y parcial: una sola solicitud viva por contrato. El índice es lo que hace
             // imposible que dos envíos simultáneos dejen dos contratos esperando aprobación; cuando
             // la primera caduca, la siguiente cabe porque ya no cumple el predicado.
+            // F6-03: `contrato_id` puede venir nulo (propuesta del asistente) y en Postgres los
+            // nulos no chocan en un único, así que varias propuestas vivas conviven sin estorbarse.
             entidad.HasIndex(e => e.ContratoId).IsUnique().HasFilter("(resultado = 1)");
             // La bandeja de aprobación de F2-10 lista por resultado y ordena por fecha de envío.
             entidad.HasIndex(e => new { e.Resultado, e.SolicitadoAt });

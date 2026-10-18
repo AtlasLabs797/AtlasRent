@@ -4331,7 +4331,7 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("comentario");
 
-                    b.Property<Guid>("ContratoId")
+                    b.Property<Guid?>("ContratoId")
                         .HasColumnType("uuid")
                         .HasColumnName("contrato_id");
 
@@ -4354,6 +4354,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("motivo_caducidad");
 
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("text")
+                        .HasColumnName("payload_json");
+
                     b.Property<DateTimeOffset?>("ResueltoAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("resuelto_at");
@@ -4373,6 +4377,10 @@ namespace AtlasRent.Api.Migrations
                     b.Property<Guid?>("SolicitadoPorId")
                         .HasColumnType("uuid")
                         .HasColumnName("solicitado_por_id");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tipo");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -5667,7 +5675,6 @@ namespace AtlasRent.Api.Migrations
                         .WithMany("Solicitudes")
                         .HasForeignKey("ContratoId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fk_solicitud_aprobacion_contrato_contrato_id");
 
                     b.Navigation("Contrato");
