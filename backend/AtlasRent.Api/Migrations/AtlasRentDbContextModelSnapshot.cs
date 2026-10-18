@@ -93,6 +93,72 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("acceso_emergencia", (string)null);
                 });
 
+            modelBuilder.Entity("AtlasRent.Api.Data.AgenteToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.PrimitiveCollection<string[]>("Acciones")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("acciones");
+
+                    b.Property<DateTimeOffset?>("Caduca")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("caduca");
+
+                    b.Property<DateTimeOffset>("Creado")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creado");
+
+                    b.Property<string>("HashToken")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash_token");
+
+                    b.Property<int>("LimiteConsultasDia")
+                        .HasColumnType("integer")
+                        .HasColumnName("limite_consultas_dia");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nombre");
+
+                    b.Property<DateTimeOffset?>("Revocado")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revocado");
+
+                    b.Property<DateTimeOffset?>("UltimoUso")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultimo_uso");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_agente_token");
+
+                    b.HasIndex("HashToken")
+                        .IsUnique()
+                        .HasDatabaseName("ix_agente_token_hash_token");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("ix_agente_token_usuario_id");
+
+                    b.ToTable("agente_token", (string)null);
+                });
+
             modelBuilder.Entity("AtlasRent.Api.Data.AjusteDiferenciaCambio", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3181,6 +3247,21 @@ namespace AtlasRent.Api.Migrations
                         },
                         new
                         {
+                            RolClave = "admin",
+                            Accion = "agente.token"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "ia.consultar"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
+                            Accion = "ia.proponer"
+                        },
+                        new
+                        {
                             RolClave = "gerente",
                             Accion = "cliente.ver"
                         },
@@ -3268,6 +3349,16 @@ namespace AtlasRent.Api.Migrations
                         {
                             RolClave = "gerente",
                             Accion = "sesion.cerrar"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "ia.consultar"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
+                            Accion = "ia.proponer"
                         },
                         new
                         {
@@ -4919,6 +5010,18 @@ namespace AtlasRent.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_acceso_emergencia_usuario_usuario_id");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.AgenteToken", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_agente_token_usuario_usuario_id");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.AjusteDiferenciaCambio", b =>

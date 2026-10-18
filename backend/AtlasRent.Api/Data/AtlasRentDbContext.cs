@@ -41,6 +41,10 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<UsuarioPermiso> UsuarioPermiso => Set<UsuarioPermiso>();
 
+    // F6-01: credenciales de los agentes externos. La lista de acciones va en la fila; el techo, en
+    // el usuario propietario.
+    public DbSet<AgenteToken> AgenteToken => Set<AgenteToken>();
+
     // F1-08: configuración. Los porcentajes de ITBIS y retención son filas de estas tablas, no
     // constantes del código (D14).
     public DbSet<Serie> Serie => Set<Serie>();
@@ -414,6 +418,26 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             // Solo se guarda lo que difiere del techo, y una sola vez por acción.
             entidad.HasIndex(e => new { e.UsuarioId, e.Accion }).IsUnique();
             entidad.HasOne<Usuario>()
+                .WithMany()
+                .HasForeignKey(e => e.UsuarioId);
+        });
+
+        // F6-01: tokens de agente. Corre junto a los permisos porque el token no es una credencial
+        // suelta: vale lo que valga su propietario, y su lista de acciones es un recorte de ese
+        // techo. Nunca se borra: revocar es poner la fecha (AGENTS.md §6).
+        modelBuilder.Entity<AgenteToken>(entidad =>
+        {
+            entidad.ToTable("agente_token");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Nombre).IsRequired();
+            // SHA-256 en hexadecimal, como el hash del token de refresco.
+            entidad.Property(e => e.HashToken).IsRequired().HasMaxLength(64);
+            entidad.Property(e => e.Acciones).HasColumnType("text[]").IsRequired();
+            entidad.Property(e => e.Creado).IsRequired();
+            // Único: es la búsqueda del token en cada petición.
+            entidad.HasIndex(e => e.HashToken).IsUnique();
+            entidad.HasIndex(e => e.UsuarioId);
+            entidad.HasOne(e => e.Usuario)
                 .WithMany()
                 .HasForeignKey(e => e.UsuarioId);
         });
