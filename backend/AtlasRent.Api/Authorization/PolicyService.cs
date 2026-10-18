@@ -146,7 +146,9 @@ public sealed class PolicyService(
                 ["rol"] = sesion.Rol,
             }),
             Resultado = "denegado",
-            Origen = "api",
+            // F6-01: una denegación de un token de agente se registra como tal, para que el soporte
+            // pueda distinguirla de un usuario que se pasó de listo con su sesión.
+            Origen = sesion.EsAgente ? "agente" : "api",
         }, ct);
 
         await transaccion.CommitAsync(ct);

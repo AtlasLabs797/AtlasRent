@@ -131,6 +131,17 @@ builder.Services
         {
             OnMessageReceived = contexto =>
             {
+                // F6-01: el token de agente viaja en Authorization: Bearer y no es un JWT. Si se
+                // dejara, JwtBearer lo validaría como tal y devolvería 401 antes de que lo viera
+                // AutenticacionAgenteMiddleware. Que la cabecera mande aquí no abre ninguna puerta:
+                // las peticiones de agente pasan por el mismo techo de rol que las demás.
+                if (contexto.Request.Headers.Authorization.ToString()
+                    .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    contexto.Token = null;
+                    return Task.CompletedTask;
+                }
+
                 var token = contexto.Request.Cookies[NombresCookies.Acceso];
                 if (!string.IsNullOrEmpty(token))
                 {
@@ -183,7 +194,17 @@ builder.Services.AddScoped<ServicioCalendario>();
 // activar un contrato escribe el candado de la unidad y deja en conflicto las reservas que se
 // solapan, todo en la misma transacción.
 builder.Services.AddScoped<ServicioContratos>();
-builder.Services.AddControllers(opciones => opciones.Filters.Add<FiltroAccionGlobal>());
+// F6-01: tokens de agente. Servicio y opciones sin estado; el contexto de sesión que fija el
+// middleware es el mismo que el de la sesión de cookie, así que RLS no se entera de la diferencia.
+// El segundo filtro solo actúa en peticiones con token de agente, para exigir que la acción esté en
+// la lista del token además de estar en el techo del propietario (F6-01).
+builder.Services.AddSingleton(OpcionesAgentes.Desde(builder.Configuration));
+builder.Services.AddScoped<ServicioAgentes>();
+builder.Services.AddControllers(opciones =>
+{
+    opciones.Filters.Add<FiltroAccionGlobal>();
+    opciones.Filters.Add<FiltroAccionAgente>();
+});
 
 // F1-12: copia de seguridad cifrada de la base de datos y de los documentos, con rotación. El
 // volcado lo hace el cliente de PostgreSQL con el rol rent_backup (ConnectionStrings__Backup), que
@@ -406,6 +427,9 @@ app.UseSerilogRequestLogging();
 // protege de fuerza bruta, sigue estando antes de todo lo demás.
 app.UseMiddleware<IpBanMiddleware>();
 app.UseAuthentication();
+// F6-01: el token de agente se resuelve antes de validar la sesión de cookie, porque fija el mismo
+// contexto de sesión. Si no viene cabecera, no hace nada.
+app.UseMiddleware<AutenticacionAgenteMiddleware>();
 app.UseRateLimiter();
 app.UseMiddleware<ValidacionSesionMiddleware>();
 app.UseMiddleware<CsrfMiddleware>();

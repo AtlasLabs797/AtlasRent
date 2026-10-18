@@ -30,6 +30,9 @@ public static class MatrizPermisos
                 Acciones.SesionCerrar,
                 Acciones.MfaObligatorio,
                 Acciones.SeguridadAccesoEmergencia,
+                Acciones.AgenteToken,
+                Acciones.IaConsultar,
+                Acciones.IaProponer,
             ],
             [Roles.Gerente] =
             [
@@ -51,6 +54,13 @@ public static class MatrizPermisos
                 Acciones.AuditoriaVer,
                 Acciones.SesionVer,
                 Acciones.SesionCerrar,
+                // F6-01: el asistente es de lectura y responde con datos agregados de clientes y
+                // cuentas, así que el gerente sí y el empleado no — igual que con informe.ver.
+                Acciones.IaConsultar,
+                // F6-01: proponer es más estrecho que consultar (la propuesta la aprueba alguien),
+                // pero quien propone ya tiene que ver lo que propone, así que el mismo techo.
+                // TODO(F6-03): la usa el endpoint de propuestas.
+                Acciones.IaProponer,
             ],
             [Roles.Empleado] =
             [

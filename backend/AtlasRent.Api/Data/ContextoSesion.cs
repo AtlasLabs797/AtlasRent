@@ -19,4 +19,18 @@ public sealed class ContextoSesion
     /// Vacío o ausente = sin acceso de lectura a auditoría.
     /// </summary>
     public string Rol { get; set; } = string.Empty;
+
+    /// <summary>
+    /// F6-01: la petición no viene de una sesión de navegador sino de un token de agente. El
+    /// usuario y el rol son los del propietario del token, así que RLS y los permisos se comporta
+    /// igual que en su sesión; lo único que cambia es que además hay que comprobar la lista de
+    /// acciones del token (<see cref="AgenteAcciones"/>).
+    /// </summary>
+    public bool EsAgente { get; set; }
+
+    /// <summary>Token de agente que atendió la petición, para poder auditarlo.</summary>
+    public Guid? AgenteTokenId { get; set; }
+
+    /// <summary>Acciones que el token de agente puede pedir. Vacío fuera de una petición de agente.</summary>
+    public IReadOnlySet<string> AgenteAcciones { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 }

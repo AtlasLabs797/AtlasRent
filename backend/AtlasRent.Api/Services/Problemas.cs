@@ -45,6 +45,9 @@ public static class Problemas
     /// <summary>El acceso de emergencia no se puede pedir ni aprobar con quien lo pide.</summary>
     public const string EmergenciaDenegada = "SEG-006";
 
+    /// <summary>Token de agente desconocido, revocado, caducado o de un usuario que ya no puede entrar (F6-01).</summary>
+    public const string TokenAgenteInvalido = "AUT-005";
+
     /// <summary>
     /// El usuario no tiene el permiso que exige el endpoint, o el endpoint no declara ninguno.
     /// Todo intento denegado queda también en la auditoría firmada.

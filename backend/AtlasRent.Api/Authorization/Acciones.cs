@@ -109,6 +109,31 @@ public static class Acciones
     public const string SeguridadAccesoEmergencia = "seguridad.acceso_emergencia";
 
     /// <summary>
+    /// F6-01: emitir, listar y revocar tokens de agente. Solo admin, como
+    /// <see cref="ConfiguracionEditar"/>: un token corre con los permisos de su usuario y la
+    /// decisión de emitirlo no es de negocio.
+    /// </summary>
+    public const string AgenteToken = "agente.token";
+
+    /// <summary>
+    /// F6-01: usar el asistente o la consulta de IA en modo de solo lectura.
+    /// <para>
+    /// Admin y gerente, nunca empleado: lo que devuelve el asistente son datos agregados de clientes
+    /// y cuentas, y el empleado no recibe totales por ningún endpoint (docs/ESPECIFICACION.md §2 y
+    /// AGENTS.md §6). Es el mismo motivo por el que <see cref="InformeVer"/> no es del empleado.
+    /// </para>
+    /// </summary>
+    public const string IaConsultar = "ia.consultar";
+
+    /// <summary>
+    /// F6-01: proponer una acción para que la apruebe alguien. Ningún endpoint la usa todavía.
+    /// <para>
+    /// TODO(F6-03): la usan las propuestas del asistente cuando ese trabajo construya el endpoint.
+    /// </para>
+    /// </summary>
+    public const string IaProponer = "ia.proponer";
+
+    /// <summary>
     /// Los 19 identificadores de la matriz, en el orden de la especificación. La fila 19 ("desbloquear
     /// IP o cuenta") tiene dos porque son dos operaciones distintas sobre dos datos distintos.
     /// </summary>
@@ -138,6 +163,7 @@ public static class Acciones
 
     /// <summary>Todas las acciones conocidas, las de la matriz y las técnicas.</summary>
     public static readonly IReadOnlySet<string> Todas = new HashSet<string>(
-        [.. Matriz, SesionVer, SesionCerrar, MfaObligatorio, SeguridadAccesoEmergencia],
+        [.. Matriz, SesionVer, SesionCerrar, MfaObligatorio, SeguridadAccesoEmergencia,
+            AgenteToken, IaConsultar, IaProponer],
         StringComparer.Ordinal);
 }

@@ -33,6 +33,15 @@ public sealed class ValidacionSesionMiddleware(RequestDelegate siguiente)
             return;
         }
 
+        // F6-01: si la petición venía con un token de agente, el usuario y el rol ya están puestos
+        // con los del propietario y no hay sesión de cookie que validar. La cabecera manda: llevar
+        // las dos a la vez no es una vía para saltarse nada, porque el techo se comprueba igual.
+        if (contextoSesion.EsAgente)
+        {
+            await siguiente(http);
+            return;
+        }
+
         var principal = http.User;
         var sid = principal.FindFirst("sid")?.Value;
         if (principal.Identity?.IsAuthenticated != true
@@ -79,16 +88,24 @@ public sealed class ValidacionSesionMiddleware(RequestDelegate siguiente)
 /// <summary>
 /// Comprueba el doble envío del token de CSRF: la cabecera <c>X-CSRF-Token</c> tiene que coincidir
 /// con la cookie <c>atlas-rent-csrf</c> en los métodos que modifican estado (docs/SEGURIDAD.md A.2).
+/// <para>
+/// F6-01: se salta cuando la petición viene con un token de agente resuelto. No es una excepción
+/// global ni un atributo de endpoint: solo afecta a peticiones que no llevan cookie de sesión,
+/// que es justamente lo que el token de CSRF protege (una petición de navegador que se aprovecha
+/// de la sesión del usuario). La cabecera <c>Authorization</c> no la puede poner sola un sitio de
+/// terceros, y el token de agente no vive en una cookie sino en el llamante.
+/// </para>
 /// </summary>
 public sealed class CsrfMiddleware(RequestDelegate siguiente)
 {
     private static readonly string[] MetodosSeguros = ["GET", "HEAD", "OPTIONS", "TRACE"];
 
-    public async Task InvokeAsync(HttpContext http)
+    public async Task InvokeAsync(HttpContext http, ContextoSesion contextoSesion)
     {
         var endpoint = http.GetEndpoint();
         if (endpoint?.Metadata.GetMetadata<ApiControllerAttribute>() is not null
             && endpoint.Metadata.GetMetadata<SaltarCsrfAttribute>() is null
+            && !contextoSesion.EsAgente
             && !MetodosSeguros.Contains(http.Request.Method, StringComparer.OrdinalIgnoreCase))
         {
             var cabecera = http.Request.Headers["X-CSRF-Token"].ToString();
