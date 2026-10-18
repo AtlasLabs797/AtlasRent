@@ -110,16 +110,22 @@ public sealed class ProgramacionJobsTests
     }
 
     /// <summary>
-    /// F1-12: la lista de <c>ProgramacionJobs.Todos</c> es exactamente lo que hay escrito.
+    /// La lista de <c>ProgramacionJobs.Todos</c> es exactamente la que dice §8.1, y nada más.
     /// <para>
-    /// Los trabajos de §8 que dependen de dominio inexistente (recordatorios, envíos, outbox,
-    /// limpieza de sesiones) no se programan: sin lo que tienen que hacer, programarlos solo produce
-    /// errores en el registro cada noche. El tipo de cambio ya no está en esa lista desde F3-01: su
-    /// dominio existe y es lo que programa.
+    /// La equivalencia es la que afirma que lo que §8 deja como <b>previsto</b> no entra: las alertas
+    /// de vencimiento de factura (F3-10), el outbox, la limpieza y la comprobación de actualizaciones.
+    /// Sin el dominio que tienen que tocar, programarlos solo produce errores en el registro cada
+    /// noche. El tipo de cambio entró en F3-01 y los recordatorios en F4-05, cada uno el día que
+    /// apareció lo que tenía que hacer.
+    /// </para>
+    /// <para>
+    /// Los envíos de §3.14 existen desde F4-03 pero <b>no</b> son un trabajo recurrente: se encolan
+    /// al confirmar un lote (§8.0.2). Eso se comprueba aparte, contra la clase que existe, que es la
+    /// única forma de que la afirmación no dependa solo de una lista que escribió el propio código.
     /// </para>
     /// </summary>
     [Fact]
-    public void LosTrabajosDeLaSeccion8QueTodaviaNoExisteNoSePrograman()
+    public void LoProgramadoEsExactoLoQueDiceLaSeccion8()
     {
         ProgramacionJobs.Todos.Select(t => t.Tipo).Should().BeEquivalentTo(
             [
@@ -135,7 +141,14 @@ public sealed class ProgramacionJobsTests
                 typeof(TrabajoRetenciones),
                 typeof(TrabajoPeriodosSinFacturar),
                 typeof(TrabajoFianzas),
+                typeof(TrabajoRecordatorios),
             ]);
+
+        // El único trabajo de §8 que existe y no está en la lista, y está por diseño (§8.0.2): un
+        // envío aparece porque alguien ha pedido mandarlo, no porque sea la hora.
+        ProgramacionJobs.Todos.Select(t => t.Tipo).Should().NotContain(
+            typeof(TrabajoEnvio),
+            "los envíos son una cola que se llena al confirmar un lote, no un trabajo por reloj");
     }
 
     /// <summary>
@@ -243,13 +256,18 @@ public sealed class ProgramacionJobsTests
     }
 
     /// <summary>
-    /// F2-10: los avisos de operación van a las 08:00, la primera hora libre detrás de los seis
-    /// trabajos que ya había, y no se solapan con ninguno.
+    /// F2-10: los avisos de operación van a las 08:00, la última hora de la madrugada, y no se
+    /// solapan con ningún trabajo de ella.
     /// <para>
-    /// Van al final por el mismo motivo que el fin por fecha efectiva: escriben en <c>alerta</c>
-    /// después de que la copia de las 02:00 y el trabajo de fin ya han pasado. No dependen
-    /// funcionalmente de ellos —si la copia falla, el aviso sigue haciendo falta igual—, pero avisar
-    /// sobre un estado que nadie ha verificado es avisar de algo que puede que ya no sea cierto.
+    /// Van al final de la madrugada por el mismo motivo que el fin por fecha efectiva: escriben en
+    /// <c>alerta</c> después de que la copia de las 02:00 y el trabajo de fin ya han pasado. No
+    /// dependen funcionalmente de ellos —si la copia falla, el aviso sigue haciendo falta igual—, pero
+    /// avisar sobre un estado que nadie ha verificado es avisar de algo que puede que ya no sea cierto.
+    /// </para>
+    /// <para>
+    /// Desde F4-05 ya no son el último trabajo del día: los recordatorios van detrás, a las 09:00,
+    /// porque es lo que fija §8.0.3. El nombre sigue siendo cierto —09:00 ya no es madrugada— y la
+    /// comparación con los recordatorios se comprueba aparte para que moverlos no pase inadvertido.
     /// </para>
     /// </summary>
     [Fact]
@@ -264,10 +282,16 @@ public sealed class ProgramacionJobsTests
         TimeZoneInfo.ConvertTime(PrimerDisparo(avisos.Cron), Zona)
             .Should().Be(new DateTime(2026, 10, 20, 8, 0, 0), "las 08:00 de Santo Domingo son las 12:00 UTC");
 
-        foreach (var otra in ProgramacionJobs.Todos.Where(t => t.Ruta != ProgramacionJobs.RutaAvisosOperacion))
+        foreach (var otra in ProgramacionJobs.Todos.Where(t =>
+            t.Ruta != ProgramacionJobs.RutaAvisosOperacion
+                && t.Ruta != ProgramacionJobs.RutaRecordatorios))
         {
             avisos.HoraLocal.Should().BeGreaterThan(otra.HoraLocal, $"el aviso va detrás de {otra.Ruta}");
         }
+
+        avisos.HoraLocal.Should().BeLessThan(
+            Trabajo(ProgramacionJobs.RutaRecordatorios).HoraLocal,
+            "los recordatorios son la última hora del día (§8.0.3), y el aviso el final de la madrugada");
     }
 
     /// <summary>
@@ -324,9 +348,10 @@ public sealed class ProgramacionJobsTests
     /// entrar a un inquilino que resulta que ya tenía contrato. Eso no es un aviso, es un problema.
     /// </para>
     /// <para>
-    /// Ya no es el último: desde F2-10 los avisos de operación van detrás, a las 08:00. El test
-    /// compara al fin con los trabajos anteriores a él, que es lo que este orden significa, y el
-    /// trabajo nuevo comprueba por su cuenta que va detrás del fin.
+    /// Ya no es el último: desde F2-10 los avisos de operación van detrás, a las 08:00, y desde
+    /// F4-05 los recordatorios, a las 09:00. El test compara al fin con los trabajos anteriores a
+    /// él —que es lo que este orden significa— y cada trabajo posterior comprueba por su cuenta que
+    /// va detrás del fin.
     /// </para>
     /// </summary>
     [Fact]
@@ -341,9 +366,12 @@ public sealed class ProgramacionJobsTests
         TimeZoneInfo.ConvertTime(PrimerDisparo(fin.Cron), Zona)
             .Should().Be(new DateTime(2026, 10, 20, 7, 0, 0), "las 07:00 de Santo Domingo son las 11:00 UTC");
 
+        // Lo que va detrás son los avisos de operación (08:00) y los recordatorios (09:00), no este
+        // trabajo: la lista de "anteriores" es todo lo demás, y a las 07:00 queda detrás.
         var anteriores = ProgramacionJobs.Todos
             .Where(t => t.Ruta != ProgramacionJobs.RutaFinContratos
-                && t.Ruta != ProgramacionJobs.RutaAvisosOperacion)
+                && t.Ruta != ProgramacionJobs.RutaAvisosOperacion
+                && t.Ruta != ProgramacionJobs.RutaRecordatorios)
             .ToList();
 
         anteriores.Should().NotBeEmpty("el fin va detrás de los trabajos de F1-12 y de F2-03/F2-06");
@@ -351,6 +379,8 @@ public sealed class ProgramacionJobsTests
         {
             fin.HoraLocal.Should().BeGreaterThan(otra.HoraLocal, $"el fin va detrás de {otra.Ruta}");
         }
+
+        fin.HoraLocal.Should().BeLessThan(Trabajo(ProgramacionJobs.RutaAvisosOperacion).HoraLocal);
     }
 
     /// <summary>
@@ -444,6 +474,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaRetenciones,
                 ProgramacionJobs.RutaPeriodosSinFacturar,
                 ProgramacionJobs.RutaFianzas,
+                ProgramacionJobs.RutaRecordatorios,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

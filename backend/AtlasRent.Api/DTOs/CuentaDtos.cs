@@ -36,10 +36,11 @@ public enum TipoFilaCuenta
 /// <see cref="Retencion"/> son anulables, y por eso una proforma no trae ni vencido ni días de mora.
 /// </para>
 /// <para>
-/// <see cref="EstadoEnvio"/> viene siempre en <c>null</c>: el estado de envío es de F4-01
-/// (documento enviado, entregado, fallido) y no hay todavía de dónde sacarlo. Un
-/// <c>"Pendiente"</c> inventado sería una afirmación sobre documentos que el sistema todavía no
-/// sabe si se han enviado.
+/// <b>F4-02: <see cref="EstadoEnvio"/> ya sale real</b> — es el estado del último envío del documento
+/// (F4-02, §3.14) y viene en <c>null</c> si nunca se mandó. Y en <c>null</c> en una fila de fianza,
+/// porque una fianza no es un documento que se mande: no hay PDF que enviar. Antes de F4-02 esta
+/// columna era un <c>null</c> constante y el comentario que la acompañaba decía que no había todavía
+/// de dónde sacarlo.
 /// </para>
 /// </summary>
 public sealed record CuentaFila(
@@ -70,6 +71,13 @@ public sealed record CuentaFila(
     bool? Modificada,
     bool TieneReservaConAnticipo,
     string? EstadoEnvio,
+
+    /// <summary>
+    /// Si a la factura se la tocó <b>después</b> de que saliera su correo (F4-02, §3.14 y F3-08). Es
+    /// <c>null</c> en una fianza, como el resto de lo que una fianza no puede expresar: no hay
+    /// documento que mandar ni documento que se pueda cambiar después de mandarlo.
+    /// </summary>
+    bool? ModificadaTrasEnvio,
     bool Cobrable);
 
 /// <summary>
@@ -123,9 +131,26 @@ public sealed record CuentasRespuesta(
     FiltroCuentas Filtro);
 
 /// <summary>
-/// Los filtros que se aplicaron, ya normalizados (F3-10, §3.13). Los que no se ACCEPTARON —«no
-/// enviadas», «envío fallido» y «modificadas tras envío»— no están aquí: no se pueden filtrar hasta
-/// que exista F4-01, y un filtro que se acepta y se ignora es peor que uno que no existe.
+/// Los filtros que se aplicaron, ya normalizados (F3-10, §3.13).
+/// <para>
+/// <b>F4-02 añadió los tres de envío y ahora sí filtran.</b> Hasta que existió <c>envio</c>
+/// (docs/ESPECIFICACION.md §3.14) no se aceptaban: un filtro que se acepta y se ignora es peor que
+/// uno que no existe, porque devuelve filas que parecen filtradas. La columna
+/// <see cref="CuentaFila.EstadoEnvio"/> también era un <c>null</c> constante por el mismo motivo y
+/// ahora sale real.
+/// </para>
+/// <para>
+/// La semántica de los tres, que es la que dice <c>docs/DOC_TECNICA.md §6.7</c>:
+/// <list type="bullet">
+/// <item><c>noEnviadas</c>: <b>nadie lo intentó</b> — no hay ninguna fila de envío.</item>
+/// <item><c>envioFallido</c>: <b>se intentó y no salió</b> — hay un envío <c>Fallido</c> y ninguno
+/// que saliera.</item>
+/// <item><c>modificadasTrasEnvio</c>: se mandó y después alguien lo tocó (F3-08).</item>
+/// </list>
+/// Las dos primeras no se solapan a propósito: «no enviada» y «envío fallido» son preguntas
+/// distintas —«¿se le llegó a mandar?» y «¿se intentó?»— y si la primera significara «no llegó a
+/// salir» serían la misma lista con dos nombres.
+/// </para>
 /// </summary>
 public sealed record FiltroCuentas(
     int? Anio,
@@ -137,5 +162,8 @@ public sealed record FiltroCuentas(
     Guid? UnidadId,
     bool Vencidas,
     bool Modificadas,
+    bool NoEnviadas,
+    bool EnvioFallido,
+    bool ModificadasTrasEnvio,
     bool IncluirProformas,
     bool IncluirFianzas);

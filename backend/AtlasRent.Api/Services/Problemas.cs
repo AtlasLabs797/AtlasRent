@@ -67,10 +67,25 @@ public static class Problemas
     public const string IdempotenciaEnConflicto = "API-002";
 
     /// <summary>
+    /// La serie apunta a una plantilla de PDF que este catálogo no tiene (F4-01). Va aparte de
+    /// <see cref="Validacion"/> porque no es un dato de la petición que se pueda corregir en el
+    /// formulario: la plantilla la eligió el administrador en la configuración de la serie.
+    /// </summary>
+    public const string PlantillaDesconocida = "API-004";
+
+    /// <summary>
     /// Ya existe un registro con ese valor único (número o prefijo de serie, tipo de retención por
     /// defecto), o el registro cambió entre que se leyó y se guardó.
     /// </summary>
     public const string ValorDuplicado = "API-003";
+
+    /// <summary>
+    /// No hay servidor de correo configurado y por eso no se puede mandar nada (F4-02). Va aparte
+    /// porque el arreglo no es corregir la petición: es escribir una variable de entorno del
+    /// despliegue, y quien lo lee necesita ese dato para saber a quién llamar. Mismo criterio que
+    /// BUG-007 con la tolerancia de cambio.
+    /// </summary>
+    public const string CorreoNoConfigurado = "API-005";
 
     /// <summary>
     /// La unidad no está disponible para esas fechas: la chocan con un contrato, con otra reserva o

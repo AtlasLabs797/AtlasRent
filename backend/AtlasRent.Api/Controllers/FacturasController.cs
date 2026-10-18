@@ -205,6 +205,47 @@ public sealed class FacturasController(
             id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
     }
 
+    // ---------------------------------------------------------------- PDF (F4-01)
+
+    /// <summary>
+    /// PDF de la factura o la proforma con el diseño de <c>docs/DESIGN.md §7</c> (F4-01).
+    /// <para>
+    /// Usa <c>factura.ver</c> y no <c>informe.ver</c>: esto es una factura individual, y los
+    /// totales agregados de §3.15 son otra cosa.
+    /// </para>
+    /// <para>
+    /// <b>Una factura anulada se descarga.</b> El papel marcado «ANULADA» es lo que necesita el
+    /// expediente del cliente; lo que no se puede es emitirla. No lleva <c>Idempotency-Key</c> ni
+    /// <c>Mutar</c> porque no muta nada.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/pdf")]
+    [Accion(Acciones.FacturaVer)]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var pdf = await facturas.PdfAsync(id, ct);
+            return File(pdf, "application/pdf", $"factura-{id:D}.pdf");
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (Exception invalida) when (invalida is InvalidOperationException or ArgumentException)
+        {
+            // 409: el nombre que tiene la serie en la base no está en el catálogo. Solo se llega aquí
+            // con datos escritos por fuera de la API, porque la configuración lo rechaza al guardar.
+            // Omitir el documento entero no es una opción —el cliente ya tiene una factura que se le
+            // emitió—, así que se explica qué pasó.
+            return Problemas.Construir(
+                StatusCodes.Status409Conflict,
+                Problemas.PlantillaDesconocida,
+                "No se puede generar el documento",
+                invalida.Message);
+        }
+    }
+
     // ---------------------------------------------------------------- ciclo de vida (F3-08)
 
     /// <summary>

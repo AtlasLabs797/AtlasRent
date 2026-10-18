@@ -37,11 +37,23 @@ Backup__GoogleDrive__Credenciales=<secreto>
 Backup__ClaveCifrado=<secreto>
 Backup__Conservar=4
 
-Smtp__Host=smtp.gmail.com
-Smtp__Puerto=587
-Smtp__Usuario=<cuenta>
-Smtp__Password=<contraseña de aplicación>
-Smtp__Remitente=<email>
+# F4-02: servidor de correo para el envío de documentos (docs/ESPECIFICACION.md §3.14).
+# La clave vive AQUÍ, en variables de entorno o en «dotnet user-secrets», y nunca en la base de datos
+# ni en un fichero del repositorio (docs/SEGURIDAD.md §A.7): hay variables de despliegue que se copian
+# a los servidores y ficheros que acaban en un backup sin querer.
+# Sin Correo__Host y Correo__Remitente el envío NO se hace: sale un 409 que dice qué escribir. Un
+# ajuste que se permite sin que nadie haya escrito un valor es una pérdida silenciosa (BUG-007).
+# Correo__Ssl a true es STARTTLS (el 587 de siempre) y a false es TLS implícito (el 465). No hay modo
+# sin cifrar: un correo con datos de factura no viaja en claro.
+# Correo__Usuario y Correo__Clave son opcionales; hacen falta los dos a la vez, y solo si el servidor
+# pide autenticación (el de una red local puede no pedirla).
+Correo__Host=smtp.gmail.com
+Correo__Puerto=587
+Correo__Usuario=<cuenta>
+Correo__Clave=<contraseña de aplicación>
+Correo__Ssl=true
+Correo__Remitente=<email>
+Correo__NombreRemitente=Atlas Rent
 
 # F3-01: fuente del tipo de cambio diario (docs/ESPECIFICACION.md §3.12).
 # Sin TipoCambio__ApiKey se usa el endpoint abierto, que no necesita dar de alta nada.

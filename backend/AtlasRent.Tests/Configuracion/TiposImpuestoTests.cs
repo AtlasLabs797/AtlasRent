@@ -47,9 +47,7 @@ public sealed class TiposImpuestoTests(ContenedorBdFixture bd, ApiTestFactory ap
         var id = await CrearTipoItbisAsync(sesion, "Impuesto de prueba", ItbisInicial, ct);
         var antes = await CalcularAsync(SubtotalDePrueba, id, ct);
 
-        var lectura = await sesion.GetAsync("/api/v1/config/tipos-itbis", ct);
-        lectura.StatusCode.Should().Be(HttpStatusCode.OK);
-        var configurado = await PorcentajeDeLaRespuestaAsync(lectura, id, ct);
+        var configurado = await PorcentajeDeLaRespuestaAsync(sesion, id, ct);
         configurado.Should().Be(ItbisInicial);
         antes.Itbis.Should().Be(75.00m, "7,5 % de 1.000,00 son 75,00");
 
@@ -223,16 +221,35 @@ public sealed class TiposImpuestoTests(ContenedorBdFixture bd, ApiTestFactory ap
         return (await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
     }
 
+    /// <summary>
+    /// El porcentaje que ve el administrador para el tipo dado. Recorre las páginas porque el
+    /// endpoint no filtra y la base es la de la colección: el tipo que crea la prueba puede no estar
+    /// en la primera página, y leer solo esa hacía que la comprobación dependiera de cuántas filas
+    /// hubieran dejado las demás.
+    /// </summary>
     private static async Task<decimal> PorcentajeDeLaRespuestaAsync(
-        HttpResponseMessage respuesta,
+        SesionCliente sesion,
         Guid id,
         CancellationToken ct)
     {
-        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var filas = new List<JsonElement>();
+        for (var pagina = 1; ; pagina++)
+        {
+            var respuesta = await sesion.GetAsync(
+                $"/api/v1/config/tipos-itbis?page={pagina}&pageSize=200&sortBy=nombre", ct);
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        return cuerpo.GetProperty("data").EnumerateArray()
-            .Single(t => t.GetProperty("id").GetGuid() == id)
-            .GetProperty("porcentaje").GetDecimal();
+            var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+            filas.AddRange(cuerpo.GetProperty("data").EnumerateArray());
+
+            if (pagina >= cuerpo.GetProperty("totalPages").GetInt32())
+            {
+                break;
+            }
+        }
+
+        return filas.Should().ContainSingle(t => t.GetProperty("id").GetGuid() == id)
+            .Which.GetProperty("porcentaje").GetDecimal();
     }
 
     /// <summary>
@@ -248,6 +265,14 @@ public sealed class TiposImpuestoTests(ContenedorBdFixture bd, ApiTestFactory ap
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
         var servicio = new ServicioConfiguracion(
             contexto, new AuditoriaService(contexto), new ServicioIdempotencia(contexto, TimeProvider.System),
+            // Esta prueba solo calcula impuestos: el RNC cifrado no se toca, pero el constructor
+            // necesita el servicio.
+            new ServicioCifrado(new OpcionesSeguridad
+            {
+                ClaveJwt = [],
+                ClaveCifrado = ApiTestFactory.ClaveCifrado,
+                ClaveHmacDocumento = api.ClaveHmacDocumento,
+            }),
             TimeProvider.System);
 
         return await servicio.CalcularAsync(subtotal, tipoItbisId, tipoRetencionIds, ct);

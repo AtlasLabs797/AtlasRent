@@ -37,6 +37,7 @@ Ten en cuenta:
 | Facturas | Ver y preparar borradores | Emitir, modificar, anular, enviar | Todo |
 | Cobros y fianzas | Ver | Registrar, corregir, devolver | Todo |
 | Totales, informes, exportar | No | Sí | Sí |
+| Recordatorios, envío masivo | No | Revisar y enviar; pausar por cliente | Todo, y elegir el modo en Configuración |
 | Configuración, usuarios, desbloqueos | No | No | Sí |
 
 Si no ves un botón, tu usuario no tiene ese permiso.
@@ -45,7 +46,8 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - **Nuevo:** Clientes → *Nuevo*. Obligatorio: nombre, tipo (persona o empresa), documento y teléfono. El número de cliente se pone solo.
 - **Contactos:** varios teléfonos y emails; marca cuál es para WhatsApp y cuál para email.
 - **Prospecto:** alguien a quien solo has hecho una cotización. Pasa a cliente cuando reserva o firma.
-- **Pausar recordatorios:** casilla en la ficha (gerente).
+- **Pausar recordatorios:** casilla en la ficha (gerente). **Frena los avisos automáticos y también**
+  el envío manual de uno que esté pendiente.
 - La ficha tiene pestañas: datos, contratos, reservas, facturas, cobros, fianzas, documentos y mensajes recibidos.
 
 ## 5. Unidades 🟡
@@ -167,6 +169,28 @@ En la misma tabla de cobros. Al terminar el contrato, el gerente la devuelve ent
 - El estado (enviado, entregado, leído, fallido) se ve en la tabla.
 - **Envío masivo:** muestra un resumen antes de enviar.
 - **Recordatorios:** según configuración, salen solos o el gerente revisa la lista del día y los envía.
+  Tienes tres modos en *Configuración → Ajustes* (**administrador**):
+  - **Apagado**: no sale ninguno.
+  - **Manual**: cada mañana a las 9:00 se prepara la lista de avisos y **no sale nada** hasta que pulses *Enviar* en cada uno.
+  - **Automático**: se preparan y se envían solos a las 9:00.
+
+  Los dos plazos de la misma pantalla son **cuántos días desde el vencimiento sale el primer aviso**
+  (5) y **cada cuántos días se repite mientras siga debiendo** (15). Con los valores de fábrica saldrían
+  los días 5, 20 y 35; a los 6 ni al 21 no se repite, a propósito. **Si los dejas vacíos no sale ningún
+  aviso y la app te avisa de que hay que configurarlos**: es preferible callar a mandar recordatorios con
+  plazos que nadie ha decidido.
+
+  Cada aviso es **uno por cliente y unidad** (aunque tenga varias facturas vencidas), va en texto corto
+  y **con el estado de cuenta adjunto**. Con pago parcial menciona **solo lo que falta por pagar**, no la
+  factura entera.
+
+  **Se detienen al pagar:** si alguien paga entre que se preparó el aviso y que pulsas *Enviar*, no sale y
+  queda en la lista como *omitido* con el motivo. También se omite si el cliente tiene la pausa puesta.
+
+- **Pausar los avisos de un cliente:** casilla en su ficha (gerente). **También frena el envío manual**
+  de un aviso pendiente: mientras esté marcada, a ese cliente no se le avisa por ningún camino.
+- **Recordatorios por WhatsApp:** todavía no. Depende de decidir con qué proveedor se manda, y eso está
+  pendiente. Hoy los recordatorios son **solo por correo**.
 
 ## 13. Avisos y bandeja 🟡
 La campana muestra vencidas, contratos por vencer o pendientes de aprobar, fianzas pendientes, comprobantes por agotarse, envíos fallidos y avisos de seguridad (administrador).

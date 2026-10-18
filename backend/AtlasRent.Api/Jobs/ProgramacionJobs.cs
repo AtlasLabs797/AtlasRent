@@ -63,6 +63,7 @@ public static class ProgramacionJobs
     public const string RutaRetenciones = "comprobantes-retencion";
     public const string RutaPeriodosSinFacturar = "periodos-sin-facturar";
     public const string RutaFianzas = "fianzas-sin-devolver";
+    public const string RutaRecordatorios = "recordatorios-pago";
 
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
@@ -220,6 +221,17 @@ public static class ProgramacionJobs
             typeof(TrabajoFianzas),
             nameof(TrabajoFianzas.EjecutarAsync),
             6),
+        // F4-05: los avisos de pago de §3.14 (D12), el primero a los 5 días del vencimiento y luego
+        // cada 15 mientras haya saldo. A las 09:00, la hora que fija docs/DOC_TECNICA.md §8, que es la
+        // última del día a propósito: un aviso que sale cuando la casa ya cerró se lee por la mañana
+        // con la cabeza del día entero, que es cuando se paga. Además es el único trabajo que compone
+        // un PDF por cliente, así que quiere ir después de los avisos que no tocan la red.
+        new(
+            RutaRecordatorios,
+            CronDiarioEnUtc(9),
+            typeof(TrabajoRecordatorios),
+            nameof(TrabajoRecordatorios.EjecutarAsync),
+            9),
     ];
 
     /// <summary>

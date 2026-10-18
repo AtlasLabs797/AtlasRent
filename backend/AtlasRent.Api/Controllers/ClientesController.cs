@@ -22,6 +22,7 @@ namespace AtlasRent.Api.Controllers;
 public sealed class ClientesController(
     ServicioClientes clientes,
     ServicioContactos contactos,
+    ServicioCuentas cuentas,
     ServicioIdempotencia idempotencia,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
@@ -95,6 +96,74 @@ public sealed class ClientesController(
             await clientes.DesactivarAsync(id, UsuarioDeLaPeticion(), Ip(), mutacion, ct);
             return true;
         });
+    }
+
+    // ---------------------------------------------------------------- recordatorios (F4-05)
+
+    /// <summary>
+    /// Pausa o levanta los avisos de pago de este cliente (§3.14, D12). Con <c>pausados</c> en
+    /// <c>true</c> el trabajo diario deja de avisarle y el envío manual de un aviso pendiente también
+    /// se salta: la pausa manda sobre las dos cosas.
+    /// </summary>
+    [HttpPut("{id:guid}/recordatorios-pausados")]
+    [Accion(Acciones.ClienteEditar)]
+    public async Task<IActionResult> PausarRecordatorios(
+        Guid id,
+        RecordatoriosPausadosPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/clientes/{id:D}/recordatorios-pausados");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => clientes.PausarRecordatoriosAsync(
+            id, peticion.Pausados, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    // ---------------------------------------------------------------- estado de cuenta (F4-01)
+
+    /// <summary>
+    /// Estado de cuenta del cliente con el diseño de <c>docs/DESIGN.md §7</c> (F4-01, §3.14): las filas
+    /// de la vista única y los totales por moneda.
+    /// <para>
+    /// <b>Usa <c>informe.ver</c> y no <c>cliente.ver</c> ni <c>factura.ver</c>.</b> El documento lleva
+    /// totales agregados de dinero de un cliente, y AGENTS.md §6 dice que el empleado no los recibe por
+    /// ningún endpoint: con la ficha de un cliente no se puede pedir su deuda total.
+    /// </para>
+    /// <para>
+    /// El <c>anio</c> es opcional y es el mismo filtro que tiene la vista única; sin él sale todo lo que
+    /// tenga el cliente. No lleva <c>Idempotency-Key</c> ni <c>Mutar</c>: es lectura.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/estado-de-cuenta.pdf")]
+    [Accion(Acciones.InformeVer)]
+    public async Task<IActionResult> EstadoDeCuenta(
+        Guid id,
+        [FromQuery] int? anio,
+        CancellationToken ct)
+    {
+        try
+        {
+            var pdf = await cuentas.PdfAsync(id, anio, UsuarioDeLaPeticion(), ct);
+            return File(pdf, "application/pdf", $"estado-de-cuenta-{id:D}.pdf");
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (Exception invalida) when (invalida is InvalidOperationException or ArgumentException)
+        {
+            // 409: una plantilla que no está en el catálogo, que solo se da con datos escritos por fuera
+            // de la API. Sin este papel el cliente no puede saber qué debe.
+            return Problemas.Construir(
+                StatusCodes.Status409Conflict,
+                Problemas.PlantillaDesconocida,
+                "No se puede generar el estado de cuenta",
+                invalida.Message);
+        }
     }
 
     // ---------------------------------------------------------------- contactos

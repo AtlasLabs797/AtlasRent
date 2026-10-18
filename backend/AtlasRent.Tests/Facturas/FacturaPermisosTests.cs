@@ -129,6 +129,15 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
             var auditoria = new AuditoriaService(contexto);
             var idempotencia = new ServicioIdempotencia(contexto, api.Reloj);
             var tiposCambio = ConstruirTiposCambio(contexto, auditoria, idempotencia, api.Reloj);
+
+            // F4-01: cifrado en reposo del documento del cliente y del RNC de la subempresa. Esta
+            // prueba ni llega al PDF ni toca subempresas, así que solo hace falta que exista.
+            var cifrado = new ServicioCifrado(new OpcionesSeguridad
+            {
+                ClaveJwt = [],
+                ClaveCifrado = ApiTestFactory.ClaveCifrado,
+                ClaveHmacDocumento = api.ClaveHmacDocumento,
+            });
             var retenciones = new ServicioRetenciones(
                 contexto,
                 auditoria,
@@ -150,8 +159,9 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
                 tiposCambio,
                 // F3-06: ServicioFacturas lo usa para resolver cobrado, pendiente y estado de cobro
                 // de la factura en la lectura. En esta prueba solo hace falta que exista.
-                ConstruirCobros(contexto, auditoria, idempotencia, tiposCambio, api.Reloj),
+                ConstruirCobros(contexto, auditoria, idempotencia, tiposCambio, cifrado, api.Reloj),
                 new PoliticaSinEmitir(),
+                cifrado,
                 api.Reloj);
 
             var actua = async () => await servicio.EmitirAsync(facturaId, empleado.Id, "10.0.0.1", null, ct);
@@ -198,13 +208,15 @@ public sealed class FacturaPermisosTests(ContenedorBdFixture bd, ApiTestFactory 
         AuditoriaService auditoria,
         ServicioIdempotencia idempotencia,
         ServicioTiposCambio tiposCambio,
+        ServicioCifrado cifrado,
         TimeProvider reloj) =>
         new(
             contexto,
             auditoria,
             idempotencia,
             tiposCambio,
-            new ServicioConfiguracion(contexto, auditoria, idempotencia, reloj),
+            new ServicioConfiguracion(contexto, auditoria, idempotencia, cifrado, reloj),
+            cifrado,
             new PoliticaSinEmitir(),
             reloj);
 

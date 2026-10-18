@@ -58,11 +58,12 @@
 - [ ] Serilog con redacción: sin contraseñas, tokens, documentos de identidad, teléfonos, emails de clientes ni cuerpos de petición.
 - [ ] Documentos subidos: solo PDF, tamaño máximo, verificación por magic bytes, nombre generado por el servidor, carpeta fuera del webroot, descarga solo vía API con permiso.
 - [ ] Exportaciones neutralizan fórmulas (`=`, `+`, `-`, `@`, tabulador al inicio de celda).
+- [ ] **Corregido en F4-01b: `subempresa.rnc` va cifrado.** Se guardaba en claro contra lo que pide AGENTS.md §6, con un `TODO(A#)` en `Data/Subempresa.cs` y esta línea. Ahora se cifra con el mismo AES-256-GCM y el mismo formato `v1:nonce:cifrado` que el documento de identidad del cliente, y se ve **completo** en la pantalla y en la cabecera del PDF de factura (`DESIGN.md §7`), con el mismo tratamiento (D16). **Sin índice ciego**: no hay ningún endpoint que busque subempresas por RNC —la lista solo ordena por nombre—, así que `rnc_hmac` sería una columna que nadie consulta; el índice ciego existe para buscar y detectar duplicados y aquí no hay ninguna de las dos cosas. A diferencia del documento del cliente, el RNC tampoco va a la auditoría.
 
 ### A.5 Entradas y salidas
 - [ ] Validación de entradas en todos los DTO con la validación de modelo de ASP.NET Core; rechazo de campos desconocidos (`JsonUnmappedMemberHandling.Disallow`).
 - [ ] EF Core parametrizado; SQL crudo solo con parámetros y revisado.
-- [ ] PDFs con QuestPDF (por código, sin HTML ni navegador).
+- [ ] PDFs con QuestPDF (por código, sin HTML ni navegador). **Ningún compositor llama a `Html(`, `Svg(`, `.ParseHtml` ni `MinifyHtml`** —vigilado por `InterpretacionEnPdfEnCodigoTests` (F4-01)— y el PDF generado no lleva `/JavaScript`, `/JS`, `/OpenAction`, `/URI`, `/Launch` ni `/EmbeddedFile`.
 - [ ] Plantillas de email/mensaje: variables escapadas; sin HTML libre de usuarios.
 - [ ] Cabeceras: CSP estricta, HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `frame-ancestors 'none'`, `Permissions-Policy`.
 - [ ] CORS cerrado (mismo origen).
@@ -77,6 +78,8 @@
 
 ### A.7 Secretos y dependencias
 - [ ] Secretos solo en variables de entorno del servicio / DPAPI / `dotnet user-secrets` en desarrollo.
+- [ ] **Clave del servidor de correo fuera de la base de datos** (F4-02, §3.14): está en `Correo__Clave`, en el entorno o en `dotnet user-secrets`, y **no hay ninguna columna donde escribirla**. Si se configurara en la base acabaría en los backups y en la tabla, que es justo lo que no se quiere con una credencial. El ejemplo está en `config/variables-entorno.example`.
+- [ ] **El motivo de un envío fallido no lleva credenciales** (F4-02). `envio.ultimo_error` se escribe con el criterio de F3-01: solo el mensaje de una excepción propia y, de cualquier otra, solo el tipo —el mensaje de una excepción de SMTP puede traer el host, la respuesta del servidor o la cadena de conexión—. La columna se lee en la lista de envíos, fuera.
 - [ ] gitleaks en CI.
 - [ ] `dotnet list package --vulnerable --include-transitive` y `npm audit` en CI sin altas/críticas.
 - [ ] Lockfiles versionados (`packages.lock.json`, `package-lock.json`).
@@ -166,3 +169,9 @@
 - Fecha detectado: 13/10/2026 · Gravedad: Alta · Estado: CORREGIDO en especificación
 - Descripción: renderizar HTML con datos de clientes en Chromium permitía inyección de scripts y peticiones a la red interna.
 - Solución: PDFs generados por código con QuestPDF, sin HTML ni navegador.
+
+### SEC-009 · Correo con el cuerpo del cliente sin escapar
+- Fecha detectado: 18/10/2026 · Gravedad: **Media** · Estado: **CERRADO en F4-02** · Componente: envío de correo
+- Descripción: el mismo riesgo que SEC-001 llevado al correo. Sustituir `{cliente}`, `{numero}` o `{total}` en un cuerpo **HTML** permitiría que un nombre de cliente con una etiqueta metiera una imagen que se ejecuta al abrir el correo, o una etiqueta que enlaza a la red interna del cliente y filtra datos de su factura.
+- Solución: el cuerpo va en **texto plano** (`BodyBuilder.TextBody`, sin `HtmlBody`), que es lo único que `ServicioCorreoMailKit` puede construir. La sustitución de variables es textual, **no evalúa nada y no escapa nada**, y el texto del cliente sale literal: el mismo criterio que los PDF, porque un correo en texto plano no puede ejecutar nada ni llamar a ninguna red por su cuenta. **Las plantillas tampoco admiten HTML**: no hay ninguna forma de escribir una etiqueta en `plantilla_mensaje`.
+- Verificado: test `ElCuerpoSaleEnTextoPlanoYLiteral` (un cliente llamado `Roa<b> & Cia` sale tal cual en el correo, sin `&lt;`, sin `&amp;` y sin documento HTML).

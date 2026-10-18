@@ -52,6 +52,12 @@ public sealed class ConfigController(
             return Ok(await configuracion.CrearSerieAsync(
                 peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
         }
+        catch (ArgumentException invalida)
+        {
+            // F4-01: nombre de plantilla que no existe. Es un 400 y no un 409 porque es un dato
+            // equivocado de la petición, y el mensaje lleva la lista de las válidas.
+            return PeticionInvalida(invalida.Message);
+        }
         catch (Exception e) when (e is InvalidOperationException or DbUpdateException)
         {
             return Conflicto(e.Message);
@@ -81,6 +87,11 @@ public sealed class ConfigController(
         catch (KeyNotFoundException noExiste)
         {
             return NoEncontrado(noExiste.Message);
+        }
+        catch (ArgumentException invalida)
+        {
+            // F4-01: nombre de plantilla que no existe (ver CrearSerie).
+            return PeticionInvalida(invalida.Message);
         }
         catch (Exception e) when (e is InvalidOperationException or DbUpdateConcurrencyException or DbUpdateException)
         {
@@ -671,5 +682,16 @@ public sealed class ConfigController(
             StatusCodes.Status409Conflict,
             Problemas.ValorDuplicado,
             "No se puede guardar el cambio",
+            detalle);
+
+    /// <summary>
+    /// Petición con un dato que no existe. Es 400 y no 409 porque el arreglo es corregir lo que se
+    /// envió, no esperar a que alguien lo cambie en la base (F4-01).
+    /// </summary>
+    private IActionResult PeticionInvalida(string detalle) =>
+        Problemas.Construir(
+            StatusCodes.Status400BadRequest,
+            Problemas.Validacion,
+            "Datos no válidos",
             detalle);
 }

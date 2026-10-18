@@ -191,7 +191,7 @@ public sealed class ContratoAprobacionTests(ContenedorBdFixture bd, ApiTestFacto
                     new ServicioCifrado(new OpcionesSeguridad
                     {
                         ClaveJwt = new byte[64],
-                        ClaveCifrado = api.ClaveCifrado,
+                        ClaveCifrado = ApiTestFactory.ClaveCifrado,
                         ClaveHmacDocumento = api.ClaveHmacDocumento,
                     }),
                     api.Reloj),

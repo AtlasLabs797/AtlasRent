@@ -85,11 +85,11 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 ## Fase 4 · Documentos y mensajería
 | ID | Tarea | Aceptación | Depende | Estado |
 |---|---|---|---|---|
-| F4-01 | PDFs con QuestPDF por serie (factura, proforma, recibo, estado de cuenta, cotización, contrato) | Textos de usuario nunca interpretados; diseño según F0-06 | F3-08 | PENDIENTE |
-| F4-02 | Email con MailKit (SMTP configurable), plantillas por idioma, tabla `envio`, copia del PDF enviado | Copia exacta guardada; marca "modificado tras envío" | F4-01 | PENDIENTE |
-| F4-03 | Envío masivo con resumen, cola, reintentos (email) | Reintenta solo fallidos; sin duplicados | F4-02 | PENDIENTE |
+| F4-01 | PDFs con QuestPDF por serie (factura, proforma, recibo, estado de cuenta, cotización, contrato) | Textos de usuario nunca interpretados; diseño según F0-06 | F3-08 | HECHA (18/10/2026) · el diseño sigue siendo el de `DESIGN.md §7` [Supuesto A2]: **F0-06 sigue pendiente** |
+| F4-02 | Email con MailKit (SMTP configurable), plantillas por idioma, tabla `envio`, copia del PDF enviado | Copia exacta guardada; marca "modificado tras envío" | F4-01 | HECHA (18/10/2026) |
+| F4-03 | Envío masivo con resumen, cola, reintentos (email) | Reintenta solo fallidos; sin duplicados | F4-02 | HECHA (18/10/2026) |
 | F4-04 | WhatsApp: adaptador del proveedor elegido, plantillas, webhook firmado e idempotente, entrantes, STOP | Firma inválida → 401 auditado | F0-07, F4-02 | BLOQUEADA (A1) |
-| F4-05 | Recordatorios automático/manual, pausa por cliente, estado de cuenta adjunto | Se detienen al pagar; modo manual no envía nada sin confirmación | F4-03 (+F4-04 para WhatsApp) | PENDIENTE |
+| F4-05 | Recordatorios automático/manual, pausa por cliente, estado de cuenta adjunto | Se detienen al pagar; modo manual no envía nada sin confirmación | F4-03 (+F4-04 para WhatsApp) | HECHA (18/10/2026) · **solo email**; la parte de WhatsApp queda dentro de F4-04 |
 
 ## Fase 5 · Informes
 | ID | Tarea | Aceptación | Depende | Estado |

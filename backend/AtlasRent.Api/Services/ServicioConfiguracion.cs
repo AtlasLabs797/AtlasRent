@@ -19,12 +19,17 @@ namespace AtlasRent.Api.Services;
 /// Los porcentajes de ITBIS y retención son datos (D14). Aquí solo se guardan, redondeados a cuatro
 /// decimales; el cálculo vive en <see cref="CalculoImpuestos"/> y no tiene ninguna cifra fiscal.
 /// </para>
+/// <item>
+/// El RNC de la subempresa se cifra al escribir y se descifra al leer (AGENTS.md §6) con el mismo
+/// <see cref="ServicioCifrado"/> que el documento del cliente. A la auditoría no va.
+/// </item>
 /// </list>
 /// </summary>
 public sealed class ServicioConfiguracion(
     AtlasRentDbContext contexto,
     AuditoriaService auditoria,
     ServicioIdempotencia idempotencia,
+    ServicioCifrado cifrado,
     TimeProvider reloj)
 {
     private static readonly Dictionary<string, Func<IQueryable<Serie>, bool, IOrderedQueryable<Serie>>> OrdenesSerie =
@@ -141,7 +146,8 @@ public sealed class ServicioConfiguracion(
 
         var antes = new SerieRespuesta(
             serie.Id, serie.Numero, serie.Prefijo, serie.Moneda, serie.Tipo, serie.PlantillaPdf,
-            serie.SumaAFacturado, serie.SumaASaldos, serie.GeneraComprobante, serie.Siguiente, serie.Activa);
+            serie.CondicionesPago, serie.SumaAFacturado, serie.SumaASaldos, serie.GeneraComprobante,
+            serie.Siguiente, serie.Activa);
 
         // El contador no lo toca la edición: solo lo mueve la emisión (docs/DOC_TECNICA.md §4.3).
         var siguiente = serie.Siguiente;
@@ -658,6 +664,10 @@ public sealed class ServicioConfiguracion(
         var subempresa = new Subempresa
         {
             Nombre = peticion.Nombre.Trim(),
+            Rnc = Cifrar(peticion.Rnc),
+            Direccion = peticion.Direccion?.Trim(),
+            Telefono = peticion.Telefono?.Trim(),
+            Email = peticion.Email?.Trim(),
             Propietaria = peticion.Propietaria,
             Facturadora = peticion.Facturadora,
             Activa = peticion.Activa,
@@ -672,7 +682,7 @@ public sealed class ServicioConfiguracion(
             admin,
             ip,
             mutacion,
-            datos => JsonSerializer.Serialize(ASubempresa(subempresa)),
+            DatosAuditoriaSubempresa,
             antesDeGuardar: null,
             ct);
     }
@@ -688,6 +698,10 @@ public sealed class ServicioConfiguracion(
         var subempresa = await CargarAsync(contexto.Subempresa, id, "subempresa", ct);
 
         subempresa.Nombre = peticion.Nombre.Trim();
+        subempresa.Rnc = Cifrar(peticion.Rnc);
+        subempresa.Direccion = peticion.Direccion?.Trim();
+        subempresa.Telefono = peticion.Telefono?.Trim();
+        subempresa.Email = peticion.Email?.Trim();
         subempresa.Propietaria = peticion.Propietaria;
         subempresa.Facturadora = peticion.Facturadora;
         subempresa.Activa = peticion.Activa;
@@ -701,7 +715,7 @@ public sealed class ServicioConfiguracion(
             admin,
             ip,
             mutacion,
-            datos => JsonSerializer.Serialize(ASubempresa(subempresa)),
+            DatosAuditoriaSubempresa,
             antesDeGuardar: null,
             ct);
     }
@@ -740,6 +754,12 @@ public sealed class ServicioConfiguracion(
         ajustes.ToleranciaCambioUsd = peticion.ToleranciaCambioUsd is { } usd ? Redondeo.Importe(usd) : null;
         ajustes.ToleranciaCambioDop = peticion.ToleranciaCambioDop is { } dop ? Redondeo.Importe(dop) : null;
         ajustes.ModoRecordatorios = peticion.ModoRecordatorios;
+
+        // Los plazos se guardan tal cual vienen, nulos incluidos: ponerlos a nula es una decisión
+        // legítima —«de momento no avisa a nadie»— y es el trabajo de recordatorios el que avisa con
+        // una alerta de que falta configurarlos, no el guardado (criterio de BUG-007).
+        ajustes.DiasPrimerRecordatorio = peticion.DiasPrimerRecordatorio;
+        ajustes.DiasEntreRecordatorios = peticion.DiasEntreRecordatorios;
 
         return await GuardarAsync(
             contexto.AjusteGeneral,
@@ -798,7 +818,7 @@ public sealed class ServicioConfiguracion(
     // ---------------------------------------------------------------- internos
 
     private static SerieRespuesta ASerie(Serie s) => new(
-        s.Id, s.Numero, s.Prefijo, s.Moneda, s.Tipo, s.PlantillaPdf,
+        s.Id, s.Numero, s.Prefijo, s.Moneda, s.Tipo, s.PlantillaPdf, s.CondicionesPago,
         s.SumaAFacturado, s.SumaASaldos, s.GeneraComprobante, s.Siguiente, s.Activa);
 
     private static TipoItbisRespuesta AItbis(TipoItbis t) =>
@@ -812,11 +832,47 @@ public sealed class ServicioConfiguracion(
     private static CuentaReceptoraRespuesta ACuenta(CuentaReceptora c) =>
         new(c.Id, c.Nombre, c.Banco, c.Moneda, c.Activa);
 
-    private static SubempresaRespuesta ASubempresa(Subempresa s) =>
-        new(s.Id, s.Nombre, s.Propietaria, s.Facturadora, s.Activa);
+    /// <summary>
+    /// El RNC sale descifrado y completo (decisión D16, igual que el documento del cliente), así
+    /// que la respuesta no se puede construir sin la clave.
+    /// </summary>
+    private SubempresaRespuesta ASubempresa(Subempresa s) =>
+        new(
+            s.Id,
+            s.Nombre,
+            s.Rnc is null ? null : cifrado.Descifrar(s.Rnc),
+            s.Direccion,
+            s.Telefono,
+            s.Email,
+            s.Propietaria,
+            s.Facturadora,
+            s.Activa);
+
+    /// <summary>
+    /// A la auditoría va la subempresa sin el RNC: ni cifrado ni en claro. Copia en claro de lo
+    /// que hace <see cref="ServicioClientes"/> con el documento del cliente.
+    /// </summary>
+    private static string DatosAuditoriaSubempresa(Subempresa s) =>
+        JsonSerializer.Serialize(new
+        {
+            s.Nombre,
+            s.Propietaria,
+            s.Facturadora,
+            s.Activa,
+        });
+
+    /// <summary>Un RNC vacío es «sin RNC», no un RNC cifrado de nada.</summary>
+    private string? Cifrar(string? rnc) =>
+        string.IsNullOrWhiteSpace(rnc) ? null : cifrado.Cifrar(rnc.Trim());
 
     private static AjusteGeneralRespuesta AAjustes(AjusteGeneral a) =>
-        new(a.Id, a.ToleranciaCambioUsd, a.ToleranciaCambioDop, a.ModoRecordatorios);
+        new(
+            a.Id,
+            a.ToleranciaCambioUsd,
+            a.ToleranciaCambioDop,
+            a.ModoRecordatorios,
+            a.DiasPrimerRecordatorio,
+            a.DiasEntreRecordatorios);
 
     private static void Aplicar(Serie serie, SeriePeticion peticion)
     {
@@ -824,7 +880,13 @@ public sealed class ServicioConfiguracion(
         serie.Prefijo = peticion.Prefijo.Trim();
         serie.Moneda = peticion.Moneda;
         serie.Tipo = peticion.Tipo;
+
+        // F4-01: una plantilla que no existe no cae en la de por defecto. Aceptarla en silencio
+        // imprimiría cada factura de la serie con un diseño que nadie pidió, y el error saldría
+        // meses después, cuando alguien imprimiera una factura y viera que no es la de siempre.
+        RegistroPlantillasPdf.Resolver(peticion.PlantillaPdf);
         serie.PlantillaPdf = peticion.PlantillaPdf?.Trim();
+        serie.CondicionesPago = peticion.CondicionesPago?.Trim();
         serie.SumaAFacturado = peticion.SumaAFacturado;
         serie.SumaASaldos = peticion.SumaASaldos;
         serie.GeneraComprobante = peticion.GeneraComprobante;

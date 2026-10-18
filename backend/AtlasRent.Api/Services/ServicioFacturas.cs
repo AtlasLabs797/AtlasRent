@@ -55,6 +55,9 @@ public sealed class ServicioFacturas(
     ServicioTiposCambio tiposCambio,
     ServicioCobros cobros,
     IPolicyService politica,
+    // F4-01: el PDF de factura imprime el documento de identidad del cliente descifrado (D16). Lo
+    // descifra este servicio y no el compositor, que no sabe de claves.
+    ServicioCifrado cifrado,
     TimeProvider reloj)
 {
     private static readonly Dictionary<string, Func<IQueryable<Factura>, bool, IOrderedQueryable<Factura>>>
@@ -171,6 +174,119 @@ public sealed class ServicioFacturas(
             ajustados.GetValueOrDefault(factura.Id),
             sinComprobante.Contains(factura.Id));
     }
+
+    // ---------------------------------------------------------------- PDF (F4-01)
+
+    /// <summary>
+    /// PDF de la factura o la proforma con el diseño de <c>docs/DESIGN.md §7</c>.
+    /// <para>
+    /// <b>Una factura anulada también se descarga, y a propósito.</b> Es el papel que necesita el
+    /// expediente del cliente y el contador, y el documento lo lleva marcado con «ANULADA» para que
+    /// nadie lo confunda con una factura viva. Lo que no se puede es <em>emitir</em> una anulada, y
+    /// eso lo sigue llevando <see cref="EmitirAsync"/>.
+    /// </para>
+    /// </summary>
+    public async Task<byte[]> PdfAsync(Guid id, CancellationToken ct) =>
+        DocumentoFacturaPdf.Generar(await ModeloPdfAsync(id, ct));
+
+    /// <summary>
+    /// Lo que el PDF va a decir, separado del render (F4-01).
+    /// <para>
+    /// El texto de un PDF de QuestPDF no se puede leer del archivo: incrusta las fuentes con
+    /// subconjunto y escribe los caracteres como índices de glifo. Sin este paso intermedio, las
+    /// pruebas solo podrían comprobar que el archivo existe.
+    /// </para>
+    /// <para>
+    /// Es <c>internal</c> porque por fuera de la API solo sale el PDF. El compositor es interno por
+    /// el mismo motivo.
+    /// </para>
+    /// </summary>
+    internal async Task<DocumentoFacturaPdfModelo> ModeloPdfAsync(Guid id, CancellationToken ct)
+    {
+        var factura = await CargarParaDocumentoAsync(id, ct);
+
+        var cobrados = await cobros.CobradoPorFacturaAsync([factura.Id], ct);
+        var ajustados = await cobros.AjustadoPorFacturaAsync([factura.Id], ct);
+
+        // Pagado y pendiente salen de Dominio/CalculoCobro, el mismo cálculo que usa la lectura: lo
+        // que dice el papel y lo que dice la pantalla no pueden ser dos números distintos. Sin
+        // cobros no se pone la fila, en vez de poner un pagado de 0,00.
+        var situacion = cobrados.Count == 0 && ajustados.Count == 0
+            ? null
+            : cobros.SituacionDeFactura(
+                factura.Total,
+                factura.Retencion,
+                cobrados.GetValueOrDefault(factura.Id),
+                ajustados.GetValueOrDefault(factura.Id),
+                factura.FechaVencimiento,
+                factura.Estado);
+
+        var comprobante = await contexto.ComprobanteFiscal.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.FacturaId == factura.Id, ct);
+
+        return DocumentoFacturaPdf.Modelo(
+            factura,
+            // La serie se validó al guardarse, así que aquí el nombre siempre existe: si no
+            // existiera es datos de otra base, y sale el 400 con la lista en vez de imprimir otro
+            // diseño.
+            RegistroPlantillasPdf.Resolver(factura.Serie?.PlantillaPdf),
+            await FacturadoraAsync(factura, ct),
+            Descifrar(factura.Cliente?.Documento),
+            situacion,
+            comprobante);
+    }
+
+    /// <summary>
+    /// Empresa facturadora de la cabecera: la del contrato y, sin contrato, la que la unidad tiene
+    /// por defecto (F4-01).
+    /// <para>
+    /// TODO(A#): el orden es el de <c>docs/ESPECIFICACION.md</c> §3.7 —el contrato dice quién
+    /// factura y la unidad solo propone—, pero está escrito aquí y no repartido entre los dos
+    /// caminos para que cambiarlo sea una línea y no una decisión escondida en dos consultas.
+    /// </para>
+    /// <para>
+    /// Sin ninguna de las dos la cabecera sale sin bloque de empresa. Imprimir la de otra factura
+    /// habría sido peor que imprimirla vacía.
+    /// </para>
+    /// </summary>
+    private async Task<Subempresa?> FacturadoraAsync(Factura factura, CancellationToken ct)
+    {
+        var facturadora = await BuscarFacturadoraAsync(factura, ct);
+
+        // Las dos cargas son sin seguimiento, así que sustituir aquí el RNC cifrado por el
+        // descifrado no lo guarda nadie: es lo que hace que el compositor reciba el valor y no el
+        // cifrado, igual que el documento del cliente (D16). Si alguna de las dos dejara de ser
+        // sin seguimiento, esto habría que cambiar por una copia.
+        if (facturadora is not null)
+        {
+            facturadora.Rnc = Descifrar(facturadora.Rnc);
+        }
+
+        return facturadora;
+    }
+
+    private async Task<Subempresa?> BuscarFacturadoraAsync(Factura factura, CancellationToken ct)
+    {
+        if (factura.Contrato?.Facturadora is Subempresa delContrato)
+        {
+            return delContrato;
+        }
+
+        if (factura.Unidad?.FacturadoraPorDefectoId is not Guid deLaUnidad)
+        {
+            return null;
+        }
+
+        return await contexto.Subempresa.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == deLaUnidad, ct);
+    }
+
+    /// <summary>
+    /// El documento de identidad y el RNC de la facturadora se descifran para el PDF y solo para el
+    /// PDF (D16).
+    /// </summary>
+    private string? Descifrar(string? valorCifrado) =>
+        valorCifrado is null ? null : cifrado.Descifrar(valorCifrado);
 
     // ---------------------------------------------------------------- escritura de borrador
 
@@ -1502,9 +1618,35 @@ public sealed class ServicioFacturas(
             : factura;
     }
 
+    /// <summary>
+    /// Carga para el PDF (F4-01): además de <see cref="CargarAsync"/>, el contrato con su facturadora.
+    /// <para>
+    /// Va aparte y no se mete en <see cref="CargarAsync"/> porque esta carga es solo de lectura y
+    /// quella la usan todos los caminos de escritura: añadirle una navegación más significaría un
+    /// <c>JOIN</c> extra en cada emisión, cada cambio de línea y cada anulación para algo que solo
+    /// necesita el documento.
+    /// </para>
+    /// </summary>
+    private async Task<Factura> CargarParaDocumentoAsync(Guid id, CancellationToken ct)
+    {
+        var factura = await contexto.Factura
+            .AsNoTracking()
+            .Include(f => f.Cliente)
+            .Include(f => f.Unidad)
+            .Include(f => f.Serie)
+            .Include(f => f.Contrato)
+            .ThenInclude(c => c!.Facturadora)
+            .Include(f => f.Lineas)
+            .SingleOrDefaultAsync(f => f.Id == id, ct);
+
+        return factura is null
+            ? throw new KeyNotFoundException($"La factura '{id:D}' no existe.")
+            : factura;
+    }
+
     private async Task<Serie> CargarSerieAsync(Guid serieId, CancellationToken ct) =>
         await contexto.Serie.AsNoTracking().SingleOrDefaultAsync(s => s.Id == serieId, ct)
-        ?? throw new KeyNotFoundException($"La serie '{serieId:D}' no existe.");
+            ?? throw new KeyNotFoundException($"La serie '{serieId:D}' no existe.");
 
     /// <summary>
     /// Cliente, unidad y contrato tienen que existir: se valida antes de escribir para que el error

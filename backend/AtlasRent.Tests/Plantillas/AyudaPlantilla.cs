@@ -267,20 +267,53 @@ internal static class AyudaPlantilla
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
+    /// El catálogo de anexos entero, página a página. El endpoint no filtra por tipo ni por nombre y
+    /// la base es la de la colección, así que leer solo la primera página haría que cualquier
+    /// afirmación sobre un anexo concreto dependiera de cuántas filas hubieran dejado las demás
+    /// pruebas.
+    /// </summary>
+    public static async Task<List<JsonElement>> CatalogoAsync(
+        SesionCliente sesion,
+        bool todos,
+        CancellationToken ct)
+    {
+        var filas = new List<JsonElement>();
+        for (var pagina = 1; ; pagina++)
+        {
+            var respuesta = await sesion.GetAsync(
+                $"/api/v1/plantillas-anexo?todos={(todos ? "true" : "false")}&page={pagina}&pageSize=200&sortBy=tipo",
+                ct);
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+            var cuerpo = await Json(respuesta, ct);
+            filas.AddRange(cuerpo.GetProperty("data").EnumerateArray());
+
+            if (pagina >= cuerpo.GetProperty("totalPages").GetInt32())
+            {
+                return filas;
+            }
+        }
+    }
+
+    /// <summary>
     /// Deja libre un tipo de anexo en el catálogo. Las pruebas comparten la base de la colección y
     /// el catálogo es de uno activo por tipo, así que una prueba que usa "Normas" tiene que
     /// despejarlo antes.
+    /// <para>
+    /// Se recogen todos los identificadores antes de desactivar ninguno: si se desactivara al
+    /// recorrer las páginas, el catálogo menguaría mientras se avanza y el salto de páginas se
+    /// saltaría filas.
+    /// </para>
     /// </summary>
     public static async Task LiberarTipoAsync(SesionCliente gerente, string tipo, CancellationToken ct)
     {
-        var catalogo = await Json(
-            await gerente.GetAsync("/api/v1/plantillas-anexo?todos=true", ct), ct);
-
-        foreach (var anexo in catalogo.GetProperty("data").EnumerateArray()
+        var aDesactivar = (await CatalogoAsync(gerente, todos: true, ct))
             .Where(a => a.GetProperty("activa").GetBoolean()
                 && a.GetProperty("tipo").GetString() == tipo)
             .Select(a => a.GetProperty("id").GetString()!)
-            .ToList())
+            .ToList();
+
+        foreach (var anexo in aDesactivar)
         {
             (await DesactivarAnexoAsync(gerente, anexo, ct))
                 .StatusCode.Should().Be(HttpStatusCode.OK, $"desactivar el anexo anterior de tipo {tipo}");

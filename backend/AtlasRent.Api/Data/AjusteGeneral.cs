@@ -27,6 +27,20 @@ public sealed class AjusteGeneral : IEntidadConfiguracion
     /// <summary>Automático, manual o apagado (D12). Nace apagado: nadie envía mensajes sin querer.</summary>
     public ModoRecordatorios ModoRecordatorios { get; set; }
 
+    /// <summary>
+    /// Días desde el vencimiento hasta el primer aviso (§3.14). Nace en 5, que es el supuesto que
+    /// escribe la especificación, y no en el código: si el administrador lo pone a nula el trabajo de
+    /// recordatorios no avisa a nadie y deja una alerta diciendo qué configurar (criterio de BUG-007,
+    /// un recordatorio con plazos sin decidir es ruido para el cliente).
+    /// </summary>
+    public int? DiasPrimerRecordatorio { get; set; } = 5;
+
+    /// <summary>
+    /// Días entre un aviso y el siguiente mientras siga habiendo saldo. Nace en 15 por el mismo
+    /// motivo y con la misma consecuencia de nula que <see cref="DiasPrimerRecordatorio"/>.
+    /// </summary>
+    public int? DiasEntreRecordatorios { get; set; } = 15;
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public Guid? CreatedBy { get; set; }

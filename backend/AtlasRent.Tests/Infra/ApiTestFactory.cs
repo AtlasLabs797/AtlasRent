@@ -56,10 +56,17 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
         Path.Combine(Path.GetTempPath(), $"atlas-rent-docs-{Guid.NewGuid():N}");
 
     /// <summary>
-    /// Clave de cifrado en reposo que usa esta instancia. La aplicación la exige al arrancar; la
-    /// prueba la necesita para descifrar y comprobar que lo guardado es un cifrado válido.
+    /// Clave de cifrado en reposo que usa la aplicación de pruebas. La aplicación la exige al
+    /// arrancar; la prueba la necesita para descifrar y comprobar que lo guardado es un cifrado
+    /// válido.
+    /// <para>
+    /// F4-01b: es <b>estática</b>, no una por instancia. La base de datos la comparte la colección y
+    /// ahora hay una columna cifrada que un listado descifra entera: con una clave por instancia,
+    /// el listado de subempresas de una prueba se encontraría con filas cifradas por la clave de
+    /// otra y reventaría al descifrar. En producción hay una sola clave, como aquí.
+    /// </para>
     /// </summary>
-    public byte[] ClaveCifrado { get; } = RandomNumberGenerator.GetBytes(32);
+    public static byte[] ClaveCifrado { get; } = RandomNumberGenerator.GetBytes(32);
 
     /// <summary>Clave del índice ciego del documento, propia y distinta de la de cifrado.</summary>
     public byte[] ClaveHmacDocumento { get; } = RandomNumberGenerator.GetBytes(32);

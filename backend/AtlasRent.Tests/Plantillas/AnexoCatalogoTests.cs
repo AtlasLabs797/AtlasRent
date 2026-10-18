@@ -90,26 +90,20 @@ public sealed class AnexoCatalogoTests(ContenedorBdFixture bd, ApiTestFactoryBlo
         alta.StatusCode.Should().Be(HttpStatusCode.Created, await alta.Cuerpo());
         var id = (await AyudaPlantilla.Id(alta, ct)).ToString();
 
-        var activos = await AyudaPlantilla.Json(
-            await empleado.GetAsync("/api/v1/plantillas-anexo", ct), ct);
-        activos.GetProperty("data").EnumerateArray()
-            .Should().Contain(a => a.GetProperty("nombre").GetString() == nombre,
-                "mientras está activo es elegible");
+        var activos = await AyudaPlantilla.CatalogoAsync(empleado, todos: false, ct);
+        activos.Should().Contain(a => a.GetProperty("nombre").GetString() == nombre,
+            "mientras está activo es elegible");
 
         (await AyudaPlantilla.DesactivarAnexoAsync(gerente, id, ct)).StatusCode
             .Should().Be(HttpStatusCode.OK);
 
-        var trasDesactivar = await AyudaPlantilla.Json(
-            await empleado.GetAsync("/api/v1/plantillas-anexo", ct), ct);
-        trasDesactivar.GetProperty("data").EnumerateArray()
-            .Should().NotContain(a => a.GetProperty("nombre").GetString() == nombre,
-                "un anexo desactivado no se ofrece para firmar");
+        var trasDesactivar = await AyudaPlantilla.CatalogoAsync(empleado, todos: false, ct);
+        trasDesactivar.Should().NotContain(a => a.GetProperty("nombre").GetString() == nombre,
+            "un anexo desactivado no se ofrece para firmar");
 
-        var todos = await AyudaPlantilla.Json(
-            await empleado.GetAsync("/api/v1/plantillas-anexo?todos=true", ct), ct);
-        todos.GetProperty("data").EnumerateArray()
-            .Should().Contain(a => a.GetProperty("nombre").GetString() == nombre,
-                "pero sigue en el catálogo, porque no se borra");
+        var todos = await AyudaPlantilla.CatalogoAsync(empleado, todos: true, ct);
+        todos.Should().Contain(a => a.GetProperty("nombre").GetString() == nombre,
+            "pero sigue en el catálogo, porque no se borra");
     }
 
     /// <summary>Un anexo sin tipo no entra: el catálogo se ordena por tipo.</summary>

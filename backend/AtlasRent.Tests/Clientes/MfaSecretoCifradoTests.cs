@@ -85,7 +85,7 @@ public sealed class MfaSecretoCifradoTests(ContenedorBdFixture bd, ApiTestFactor
         new ServicioCifrado(new OpcionesSeguridad
         {
             ClaveJwt = new byte[64],
-            ClaveCifrado = api.ClaveCifrado,
+            ClaveCifrado = ApiTestFactory.ClaveCifrado,
             ClaveHmacDocumento = api.ClaveHmacDocumento,
         }).Descifrar(cifrado!).Should().Be(secreto);
     }

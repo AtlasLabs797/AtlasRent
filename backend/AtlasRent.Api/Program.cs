@@ -325,6 +325,39 @@ builder.Services.AddScoped<TrabajoFianzas>();
 // POST /api/v1/cobros.
 builder.Services.AddScoped<ServicioCuentas>();
 
+// F4-02: el envío de documentos por correo (§3.14). Las opciones son singleton porque son la
+// configuración del despliegue y no cambian mientras corre el proceso; la clave sale de ahí, de
+// variables de entorno o de user-secrets, y no hay ninguna columna donde escribirla.
+// IServicioCorreo va detrás de una interfaz para que las pruebas la sustituyan por un doble: el
+// criterio de aceptación de la tarea es qué pasa cuando el servidor de correo falla, y eso no se
+// puede probar esperando al servidor de verdad.
+builder.Services.AddSingleton(OpcionesCorreo.Desde(builder.Configuration));
+builder.Services.AddSingleton<IServicioCorreo, ServicioCorreoMailKit>();
+builder.Services.AddScoped<ServicioPlantillasMensaje>();
+// Va después de ServicioFacturas, ServicioCobros, ServicioCotizaciones, ServicioCuentas y
+// ServicioPlantillas porque el envío compone el PDF del documento con los cinco generadores de
+// F4-01 en lugar de inventar un camino nuevo.
+builder.Services.AddScoped<ServicioEnvios>();
+
+// F4-03: el envío masivo (§3.14). La cola va detrás de una interfaz por el mismo motivo que
+// IServicioCorreo y con el mismo motivo todavía más fuerte: en las pruebas no hay servidor de jobs,
+// y «qué se encoló» es justo lo que hay que comprobar. En producción la encola Hangfire con un
+// trabajo por envío; no es un job recurrente y por eso no va en ProgramacionJobs.
+//
+// Se resuelve por fábrica y no con `AddScoped<ColaEnviosHangfire>()` porque `AddHangfire` solo se
+// registra con el servidor activo: sin esa comprobación, validar el contenedor en desarrollo
+// reventaría al arrancar cualquier instancia sin planificador.
+builder.Services.AddScoped<IColaEnvios>(servicios => servicios.GetService<IBackgroundJobClient>() is { } cliente
+    ? new ColaEnviosHangfire(cliente)
+    : new ColaEnviosSinServidor());
+builder.Services.AddScoped<ServicioEnviosMasivos>();
+builder.Services.AddScoped<TrabajoEnvio>();
+
+// F4-05: los avisos de pago (§3.14, D12). El trabajo va detrás del servicio por el mismo motivo que
+// los demás: para que las pruebas puedan ejercitar el barrido sin pasar por el planificador.
+builder.Services.AddScoped<ServicioRecordatorios>();
+builder.Services.AddScoped<TrabajoRecordatorios>();
+
 // Los 400 de validación de modelo también llevan código de referencia (docs/DOC_TECNICA.md §6).
 builder.Services.Configure<ApiBehaviorOptions>(opciones =>
 {

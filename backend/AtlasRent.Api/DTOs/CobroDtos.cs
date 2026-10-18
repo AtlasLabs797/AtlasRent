@@ -245,9 +245,9 @@ public sealed record CobroResumen(
 /// historial y lo que dice de ellas es que ya no vigoran (§3.10.1, AGENTS.md §6).
 /// </para>
 /// <para>
-/// <b>El recibo en PDF no está aquí</b> (TODO(F4-01)): es de la fase 4, con QuestPDF y las
-/// plantillas por serie. Aquí no hay ningún endpoint que devuelva un PDF provisional, porque un
-/// recibo de dinero provisional es un documento que alguien puede imprimir y archivar.
+/// <b>El recibo en PDF es <c>GET /api/v1/cobros/{id}/pdf</c></b> (F4-01) y sale de estos mismos datos:
+/// esta respuesta y el papel dicen lo mismo porque los dos se montan desde el cobro, no desde aquí una
+/// forma y desde allí otra.
 /// </para>
 /// </summary>
 public sealed record CobroRespuesta(

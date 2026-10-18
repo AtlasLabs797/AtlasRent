@@ -36,17 +36,19 @@ public sealed class CuentasController(
     /// <para>
     /// <b>Filtros aceptados:</b> <c>anio</c>, <c>serieId</c>, <c>moneda</c>, <c>estado</c> (estado de la
     /// factura), <c>estadoCobro</c> (derivado), <c>clienteId</c>, <c>unidadId</c>, <c>vencidas</c>,
-    /// <c>modificadas</c>, <c>incluirProformas</c> y <c>incluirFianzas</c>.
+    /// <c>modificadas</c>, <c>noEnviadas</c>, <c>envioFallido</c>, <c>modificadasTrasEnvio</c>,
+    /// <c>incluirProformas</c> y <c>incluirFianzas</c>.
     /// </para>
     /// <para>
-    /// <b>Filtros que NO se aceptan</b> y por tanto no hay que adivinar qué devuelven: <c>noEnviadas</c>,
-    /// <c>envioFallido</c> y <c>modificadasTrasEnvio</c> son de F4-01, que es quien va a saber si un
-    /// documento se envió y con qué resultado. Aceptarlos hoy y devolver filas sin filtrar sería peor
-    /// que no tenerlos.
+    /// <b>F4-02 añadió los tres de envío</b> (<c>noEnviadas</c>, <c>envioFallido</c> y
+    /// <c>modificadasTrasEnvio</c>). Hasta que existió la tabla <c>envio</c> (§3.14) no se aceptaban,
+    /// y estaba escrito por qué: aceptarlos y devolver filas sin filtrar es peor que no tenerlos.
+    /// Ahora filtran, y cada fila trae su <c>estadoEnvio</c>.
     /// </para>
     /// <para>
     /// Un filtro que una fianza no puede expresar —<c>serieId</c>, <c>estado</c>, <c>estadoCobro</c>,
-    /// <c>vencidas</c>, <c>modificadas</c>— deja las fianzas fuera, en vez de devolverlas sin tocar.
+    /// <c>vencidas</c>, <c>modificadas</c> y los tres de envío— deja las fianzas fuera, en vez de
+    /// devolverlas sin tocar.
     /// </para>
     /// </summary>
     [HttpGet]
@@ -65,6 +67,9 @@ public sealed class CuentasController(
         [FromQuery] Guid? unidadId,
         [FromQuery] bool? vencidas,
         [FromQuery] bool? modificadas,
+        [FromQuery] bool? noEnviadas,
+        [FromQuery] bool? envioFallido,
+        [FromQuery] bool? modificadasTrasEnvio,
         [FromQuery] bool? incluirProformas,
         [FromQuery] bool? incluirFianzas,
         CancellationToken ct)
@@ -82,6 +87,9 @@ public sealed class CuentasController(
                 unidadId,
                 vencidas ?? false,
                 modificadas ?? false,
+                noEnviadas ?? false,
+                envioFallido ?? false,
+                modificadasTrasEnvio ?? false,
                 incluirProformas ?? false,
                 incluirFianzas ?? true,
                 ct));

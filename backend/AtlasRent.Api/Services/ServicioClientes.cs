@@ -264,6 +264,47 @@ public sealed class ServicioClientes(
             ct: ct);
     }
 
+    /// <summary>
+    /// Pausa o levanta los avisos de pago de este cliente (F4-05, §3.14 y D12).
+    /// <para>
+    /// Existe su propio endpoint y no solo el <c>PUT</c> general de la ficha porque la pausa se cambia
+    /// sola y en el momento en que se la ve en un correo: mandar la ficha entera para mover una
+    /// bandera es pedir que alguien la sobrescriba con lo que tenía la pantalla hace diez segundos.
+    /// </para>
+    /// </summary>
+    public async Task<ClienteResumen> PausarRecordatoriosAsync(
+        Guid id,
+        bool pausados,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var cliente = await CargarAsync(id, ct);
+
+        if (cliente.RecordatoriosPausados != pausados)
+        {
+            cliente.RecordatoriosPausados = pausados;
+
+            return await GuardadoAuditado.GuardarAsync(
+                contexto, auditoria, idempotencia, reloj,
+                contexto.Cliente, cliente,
+                esAlta: false,
+                accion: pausados ? "cliente.recordatorios_pausados" : "cliente.recordatorios_reanudados",
+                entidad: "cliente",
+                usuario,
+                ip,
+                mutacion,
+                proyectar: c => AResumen(AFila(c)),
+                datosAuditoria: DatosAuditoria,
+                ct: ct);
+        }
+
+        // Poner dos veces lo mismo no es un cambio: no se escribe una fila de auditoría ni se gasta la
+        // clave de idempotencia en algo que no pasó.
+        return AResumen(AFila(cliente));
+    }
+
     // ---------------------------------------------------------------- internos
 
     /// <summary>

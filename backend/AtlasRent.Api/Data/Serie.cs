@@ -30,7 +30,26 @@ public sealed class Serie : IEntidadConfiguracion
 
     public TipoSerie Tipo { get; set; }
 
+    /// <summary>
+    /// Nombre de la plantilla de PDF de esta serie (<c>docs/ESPECIFICACION.md</c> §3.7), del
+    /// catálogo de <see cref="Services.RegistroPlantillasPdf"/>. Nulo = la de por defecto.
+    /// <para>
+    /// Se valida al guardar la serie (F4-01): un nombre que no existe se rechaza con 400 en vez de
+    /// imprimir el documento con otro diseño del que nadie se enteró.
+    /// </para>
+    /// </summary>
     public string? PlantillaPdf { get; set; }
+
+    /// <summary>
+    /// Condiciones de pago que se imprimen en el pie del documento de esta serie (F4-01,
+    /// <c>docs/DESIGN.md</c> §7). Texto de la empresa, escrito como texto plano.
+    /// <para>
+    /// Es por serie y no global porque las series no se pagan igual: una factura a 30 días y una al
+    /// contado son documentos distintos aunque el diseño sea el mismo.
+    /// </para>
+    /// </summary>
+    public string? CondicionesPago { get; set; }
+
 
     /// <summary>Suma a los totales de facturado (docs/ESPECIFICACION.md §3.15).</summary>
     public bool SumaAFacturado { get; set; }

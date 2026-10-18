@@ -64,13 +64,52 @@ public sealed class CobrosController(
     public async Task<IActionResult> Leer(Guid id, CancellationToken ct) =>
         await ResponderAsync(() => cobros.LeerAsync(id, ct));
 
+    // ---------------------------------------------------------------- recibo en PDF (F4-01)
+
+    /// <summary>
+    /// Recibo del cobro con el diseño de <c>docs/DESIGN.md §7</c> (F4-01, §3.10.1).
+    /// <para>
+    /// Usa <c>factura.ver</c> y no <c>cobro.registrar</c>: es el papel de un cobro que ya existe, y lo
+    /// que lo descarga es quien lo está leyendo, igual que el PDF de la factura (§3.14).
+    /// </para>
+    /// <para>
+    /// <b>Un cobro anulado se descarga</b>, con la marca de agua «ANULADO» y el motivo al pie: el papel
+    /// marcado es lo que necesita el expediente del cliente. No lleva <c>Idempotency-Key</c> ni
+    /// <c>Mutar</c> porque no muta nada.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/pdf")]
+    [Accion(Acciones.FacturaVer)]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var pdf = await cobros.PdfAsync(id, ct);
+            return File(pdf, "application/pdf", $"recibo-{id:D}.pdf");
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (Exception invalida) when (invalida is InvalidOperationException or ArgumentException)
+        {
+            // 409: el mismo caso que el PDF de la factura —una plantilla que no está en el catálogo—,
+            // que solo se da con datos escritos por fuera de la API. Omitir el documento entero no es
+            // una opción: el dinero ya entró, y el papel que lo prueba es este.
+            return Problemas.Construir(
+                StatusCodes.Status409Conflict,
+                Problemas.PlantillaDesconocida,
+                "No se puede generar el recibo",
+                invalida.Message);
+        }
+    }
+
     /// <summary>
     /// Registro de un cobro. Las asignaciones son opcionales: si no vienen, se propone la FIFO del
     /// contrato; si vienen, son las que se aplican.
     /// <para>
-    /// <b>No hay endpoint de recibo en PDF</b> (TODO(F4-01)): el recibo es de la fase 4, con QuestPDF
-    /// y las plantillas por serie. Un PDF provisional de dinero es un documento que alguien puede
-    /// imprimir y archivar, así que no se sirve uno.
+    /// El recibo en PDF es <c>GET /api/v1/cobros/{id}/pdf</c> (F4-01), y lo pide quien registra el cobro
+    /// cuando lo necesita: es opcional y no se genera solo (§3.10.1).
     /// </para>
     /// </summary>
     [HttpPost]

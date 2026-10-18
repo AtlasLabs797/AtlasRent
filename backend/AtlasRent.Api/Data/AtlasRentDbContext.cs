@@ -177,6 +177,22 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
 
     public DbSet<FianzaDevolucion> FianzaDevolucion => Set<FianzaDevolucion>();
 
+    // F4-02: los correos con documento adjunto y la copia exacta del PDF que salió
+    // (docs/ESPECIFICACION.md §3.14). `envio` no tiene clave foránea a ningún documento y eso es a
+    // propósito: apunta a facturas, recibos, estados de cuenta, cotizaciones y contratos, que están en
+    // cuatro tablas distintas. Ver `Data/Envio.cs`.
+    public DbSet<Envio> Envio => Set<Envio>();
+
+    // F4-02: el texto de los correos por tipo de mensaje e idioma. Se edita con `plantilla.editar`
+    // (solo admin, §2) y se desactiva en vez de borrarse, para que un envío antiguo siga teniendo
+    // explicación.
+    public DbSet<PlantillaMensaje> PlantillaMensaje => Set<PlantillaMensaje>();
+
+    // F4-05: el aviso de pago por cliente y unidad (§3.14, D12). No es un documento: no tiene
+    // número ni archivo, y su clave es (cliente, unidad, fecha), que es la que hace que correr el
+    // trabajo dos veces el mismo día no mande dos avisos. Ver `Data/Recordatorio.cs`.
+    public DbSet<Recordatorio> Recordatorio => Set<Recordatorio>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder convenciones)
     {
         // AGENTS.md §6: fechas de negocio en date, marcas de tiempo en timestamptz, dinero en numeric.
@@ -411,6 +427,10 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.Prefijo).HasMaxLength(16);
             entidad.Property(e => e.PlantillaPdf).HasMaxLength(120);
+
+            // F4-01: las condiciones de pago del pie son un párrafo, no una etiqueta. Anulable porque
+            // una serie puede no tenerlas escritas y el pie sale sin ese párrafo.
+            entidad.Property(e => e.CondicionesPago).HasMaxLength(500);
             entidad.Property(e => e.CreatedAt).IsRequired();
             // El número de serie y el prefijo identifican la serie para el usuario: los dos únicos.
             entidad.HasIndex(e => e.Numero).IsUnique();
@@ -580,6 +600,17 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.ToTable("subempresa");
             entidad.HasKey(e => e.Id);
             entidad.Property(e => e.Nombre).HasMaxLength(120).IsRequired();
+
+            // F4-01: datos de cabecera de la empresa facturadora (docs/DESIGN.md §7). Los tamaños
+            // son los de `cliente`, que es donde ya están decididos. Los cuatro son anulables: una
+            // subempresa dada de alta por importación puede no tener contacto todavía, y el PDF
+            // imprime los que hay.
+            // El RNC va cifrado (AGENTS.md §6) y por eso no lleva `HasMaxLength`: su longitud es la
+            // del texto cifrado, no la del RNC. Es lo mismo que hace `cliente.documento`, que sale
+            // como `text`.
+            entidad.Property(e => e.Direccion).HasMaxLength(300);
+            entidad.Property(e => e.Telefono).HasMaxLength(40);
+            entidad.Property(e => e.Email).HasMaxLength(200);
             entidad.Property(e => e.CreatedAt).IsRequired();
             entidad.HasIndex(e => e.Nombre);
         });
@@ -1576,6 +1607,98 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
                 .WithMany()
                 .HasForeignKey(e => e.InmuebleId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // F4-02: `envio`, el correo que salió con su documento adjunto (docs/ESPECIFICACION.md §3.14).
+        modelBuilder.Entity<Envio>(entidad =>
+        {
+            entidad.ToTable("envio");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.DestinatarioEmail).HasMaxLength(320).IsRequired();
+            entidad.Property(e => e.DestinatarioNombre).HasMaxLength(200);
+            entidad.Property(e => e.Asunto).HasMaxLength(300).IsRequired();
+            entidad.Property(e => e.Cuerpo).IsRequired();
+            entidad.Property(e => e.Idioma).HasMaxLength(10).IsRequired();
+            entidad.Property(e => e.NombreArchivo).HasMaxLength(200).IsRequired();
+            // El motivo de un fallo es corto porque no es un mensaje de excepción: o es el texto de
+            // CorreoNoConfiguradoException o es «TipoDeExcepcion sin detalle.» (criterio de F3-01,
+            // DOC_TECNICA §8.0.1).
+            entidad.Property(e => e.UltimoError).HasMaxLength(500);
+            entidad.Property(e => e.CreatedAt).IsRequired();
+            entidad.Property(e => e.Intentos).IsRequired();
+
+            // Los índices son los tres filtros que §3.13 cablea y la lista de envíos por documento.
+            //
+            // «(tipo, documento, año)» es la búsqueda del envío de un documento concreto: la usa la
+            // columna estado_envio de la vista única, el detalle de un documento y el antidiplicado
+            // de §3.14. Va con el año porque un estado de cuenta es (cliente, año).
+            entidad.HasIndex(e => new { e.TipoDocumento, e.DocumentoId, e.DocumentoAnio })
+                .HasDatabaseName("ix_envio_tipo_documento");
+
+            // El filtro «envío fallido» de §3.13 mira solo el estado.
+            entidad.HasIndex(e => e.Estado).HasDatabaseName("ix_envio_estado");
+
+            // El antidiplicado de §3.14 compara documento, año y destinatario. No es único a
+            // propósito: forzar un reenvío tiene que poder escribir una segunda fila, y lo que evita
+            // el duplicado es la comprobación previa del servicio, no una restricción que solo daría
+            // un error de restricción sin decir a quién se lo mandó ya.
+            entidad.HasIndex(e => new { e.TipoDocumento, e.DocumentoId, e.DocumentoAnio, e.DestinatarioEmail })
+                .HasDatabaseName("ix_envio_documento_destinatario");
+
+            // F4-03: el lote es esta columna, no una tabla (§3.14). El índice es el que hace baratos el
+            // progreso, el recuento y el reintento, que son las tres agregaciones del lote por `lote_id`.
+            entidad.HasIndex(e => e.LoteId).HasDatabaseName("ix_envio_lote");
+        });
+
+        // F4-02: `plantilla_mensaje`, el texto de los correos por tipo de mensaje e idioma (§3.14).
+        modelBuilder.Entity<PlantillaMensaje>(entidad =>
+        {
+            entidad.ToTable("plantilla_mensaje");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.Idioma).HasMaxLength(10).IsRequired();
+            entidad.Property(e => e.Asunto).HasMaxLength(300).IsRequired();
+            entidad.Property(e => e.Cuerpo).IsRequired();
+            entidad.Property(e => e.CreatedAt).IsRequired();
+
+            // Una plantilla por tipo de mensaje e idioma: es lo que hace el índice único del
+            // compuesto, y lo que hace que guardar sea un PUT que crea o edita en vez de dos
+            // endpoints distintos con dos formas de dejar la misma fila duplicada.
+            entidad.HasIndex(e => new { e.Tipo, e.Idioma }).IsUnique();
+        });
+
+        // F4-05: `recordatorio`, el aviso de pago por cliente y unidad (docs/ESPECIFICACION.md §3.14).
+        modelBuilder.Entity<Recordatorio>(entidad =>
+        {
+            entidad.ToTable("recordatorio");
+            entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.MotivoOmision).HasMaxLength(300);
+            entidad.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Unidad)
+                .WithMany()
+                .HasForeignKey(e => e.UnidadId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entidad.HasOne(e => e.Envio)
+                .WithMany()
+                .HasForeignKey(e => e.EnvioId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // El único de (cliente, unidad, fecha) es la idempotencia del trabajo (§8.0): correrlo
+            // dos veces el mismo día choca aquí en vez de mandar dos avisos. En la migración se crea
+            // a mano con NULLS NOT DISTINCT, porque `unidad_id` puede ser nula y en PostgreSQL los
+            // nulos de un único no chocan entre sí: sin eso, un cliente sin contrato con unidad
+            // recibiría un aviso por día por cada intento. Es el mismo trato que
+            // ix_factura_periodo_unico y por el mismo motivo.
+            entidad.HasIndex(e => new { e.ClienteId, e.UnidadId, e.Fecha })
+                .IsUnique()
+                .HasDatabaseName("ix_recordatorio_cliente_unidad_fecha");
+
+            // Los dos filtros de la lista de §3.14: lo que está por revisar y lo que se mandó.
+            entidad.HasIndex(e => e.Estado).HasDatabaseName("ix_recordatorio_estado");
+            entidad.HasIndex(e => e.Fecha).HasDatabaseName("ix_recordatorio_fecha");
+            entidad.HasIndex(e => e.ClienteId).HasDatabaseName("ix_recordatorio_cliente");
         });
 
         // docs/DOC_TECNICA.md §4.2: concurrencia optimista con la columna de sistema xmin y sin

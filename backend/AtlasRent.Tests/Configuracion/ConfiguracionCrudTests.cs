@@ -278,20 +278,20 @@ public sealed class ConfiguracionCrudTests(ContenedorBdFixture bd, ApiTestFactor
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    /// <summary>Las tolerancias y el modo de recordatorios son una fila sola y configurable.</summary>
+    /// <summary>Las tolerancias y el modo de recordatorios se guardan y se releen por la API.</summary>
+    /// <remarks>
+    /// <c>ajuste_general</c> es una fila sola de la instalación y la base de pruebas es compartida:
+    /// ninguna otra prueba escribe en ella, pero otras muchas leen lo que hay. Por eso aquí no se
+    /// afirma el valor que hubiera antes —que no es de esta prueba y además lo cambian
+    /// <c>Cobros/AyudaCobros.FijarToleranciaAsync</c> y <c>Recordatorios/AyudaRecordatorios.PonerModoAsync</c>—,
+    /// sino lo único que sí es de esta prueba: que el <c>PUT</c> guarda lo que le han puesto y que el
+    /// <c>GET</c> posterior devuelve lo mismo. Es la clase de fallo de BUG-013 y de BUG-015.
+    /// </remarks>
     [Fact]
     public async Task LasToleranciasYElModoDeRecordatoriosSonConfigurables()
     {
         var ct = TestContext.Current.CancellationToken;
         using var sesion = await SesionDeAdminAsync(ct);
-
-        var inicial = await (await sesion.GetAsync("/api/v1/config/ajustes", ct))
-            .Content.ReadFromJsonAsync<JsonElement>(ct);
-
-        // Nacen sin valor: la especificación los da como supuesto, y un supuesto no es un dato
-        // (AGENTS.md §5). Nadie envía mensajes sin que el administrador lo pida.
-        inicial.GetProperty("toleranciaCambioUsd").ValueKind.Should().Be(JsonValueKind.Null);
-        inicial.GetProperty("modoRecordatorios").GetString().Should().Be("Apagado");
 
         var cambio = await sesion.PutAsync(
             "/api/v1/config/ajustes",
@@ -306,6 +306,8 @@ public sealed class ConfiguracionCrudTests(ContenedorBdFixture bd, ApiTestFactor
 
         var releido = await (await sesion.GetAsync("/api/v1/config/ajustes", ct))
             .Content.ReadFromJsonAsync<JsonElement>(ct);
+        releido.GetProperty("toleranciaCambioUsd").GetDecimal().Should().Be(2.35m);
+        releido.GetProperty("toleranciaCambioDop").GetDecimal().Should().Be(60m);
         releido.GetProperty("modoRecordatorios").GetString().Should().Be("Manual");
     }
 

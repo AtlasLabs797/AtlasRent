@@ -1,4 +1,4 @@
-﻿using AtlasRent.Api.Authorization;
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.DTOs;
@@ -106,8 +106,28 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
                 api.Reloj),
             // F3-07: la tolerancia del ajuste sale de ajuste_general. Esta prueba solo genera cobros en la
             // moneda de la factura y nunca ajusta, así que el valor no le afecta; se pasa el mismo
-            // servicio de configuración que en producción para que se construya igual.
-            new ServicioConfiguracion(contexto, new AuditoriaService(contexto), new ServicioIdempotencia(contexto, api.Reloj), api.Reloj),
+            // servicio de configuración que en producción para que se construya igual. El RNC
+            // cifrado tampoco lo usa: aquí solo hace falta que el constructor lo reciba.
+            new ServicioConfiguracion(
+                contexto,
+                new AuditoriaService(contexto),
+                new ServicioIdempotencia(contexto, api.Reloj),
+                new ServicioCifrado(new OpcionesSeguridad
+                {
+                    ClaveJwt = [],
+                    ClaveCifrado = ApiTestFactory.ClaveCifrado,
+                    ClaveHmacDocumento = api.ClaveHmacDocumento,
+                }),
+                api.Reloj),
+            // F4-01: el recibo descifra el documento de identidad del cliente con este servicio. Esta
+            // prueba no genera PDF, así que solo hace falta que el constructor lo reciba, con la misma
+            // clave que usa la API.
+            new ServicioCifrado(new OpcionesSeguridad
+            {
+                ClaveJwt = [],
+                ClaveCifrado = ApiTestFactory.ClaveCifrado,
+                ClaveHmacDocumento = api.ClaveHmacDocumento,
+            }),
             new PoliticaQuePermiteTodo(),
             api.Reloj);
 

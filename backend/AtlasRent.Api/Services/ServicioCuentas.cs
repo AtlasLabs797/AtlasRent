@@ -37,6 +37,7 @@ public sealed class ServicioCuentas(
     AtlasRentDbContext contexto,
     ServicioCobros cobros,
     ServicioFianzas fianzas,
+    ServicioCifrado cifrado,
     IPolicyService politica,
     TimeProvider reloj)
 {
@@ -67,6 +68,9 @@ public sealed class ServicioCuentas(
         Guid? unidadId,
         bool vencidas,
         bool modificadas,
+        bool noEnviadas,
+        bool envioFallido,
+        bool modificadasTrasEnvio,
         bool incluirProformas,
         bool incluirFianzas,
         CancellationToken ct)
@@ -77,12 +81,14 @@ public sealed class ServicioCuentas(
 
         var consultaFacturas = FacturasFiltradas(
             anio, serieId, moneda, estado, estadoCobro, clienteId, unidadId, vencidas, modificadas,
-            incluirProformas);
+            noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas);
 
         // Las fianzas solo están cuando ningún filtro es de factura. No es una decisión de comodidad:
-        // una fianza no tiene serie ni estado de factura ni vencimiento, así que un filtro de esos no
-        // puede decir nada de ella y devolverla sería devolver una fila que el filtro no tocó.
-        var consultaFianzas = incluirFianzas && SinFiltroDeFactura(serieId, estado, estadoCobro, vencidas, modificadas)
+        // una fianza no tiene serie ni estado de factura ni vencimiento ni documento que mandar, así
+        // que un filtro de esos no puede decir nada de ella y devolverla sería devolver una fila que
+        // el filtro no tocó. Los tres de envío entran aquí por lo mismo (DOC_TECNICA §6.7).
+        var consultaFianzas = incluirFianzas && SinFiltroDeFactura(
+                serieId, estado, estadoCobro, vencidas, modificadas, noEnviadas, envioFallido, modificadasTrasEnvio)
             ? FianzasFiltradas(anio, moneda, clienteId, unidadId)
             : null;
 
@@ -133,7 +139,119 @@ public sealed class ServicioCuentas(
             await TotalesAsync(consultaFacturas, consultaFianzas, ct),
             new FiltroCuentas(
                 anio, serieId, moneda, estado, estadoCobro, clienteId, unidadId, vencidas, modificadas,
-                incluirProformas, incluirFianzas));
+                noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas, incluirFianzas));
+    }
+
+    // ---------------------------------------------------------------- estado de cuenta (F4-01)
+
+    /// <summary>
+    /// Estado de cuenta del cliente con el diseño de <c>docs/DESIGN.md §7</c> (§3.14): las filas de la
+    /// vista única y los totales por moneda.
+    /// <para>
+    /// <b>Las filas salen de <see cref="ListarAsync"/>, la vista única de F3-10, y no de una consulta
+    /// propia.</b> §3.15 exige que los informes cuadren con la vista, y un segundo cálculo de pendiente
+    /// es exactamente cómo se rompe eso: dos fórmulas que un día dicen cosas distintas.
+    /// </para>
+    /// <para>
+    /// <b>El permiso se comprueba aquí y no solo en el endpoint</b>, porque es el método que usará F4-05
+    /// desde un trabajo de Hangfire, sin sesión HTTP ni filtro <c>[Accion]</c> (como en F3-06). El
+    /// permiso es <c>informe.ver</c> y no <c>factura.ver</c>: el documento lleva totales agregados de
+    /// dinero de un cliente, y AGENTS.md §6 dice que el empleado no los recibe por ningún endpoint.
+    /// </para>
+    /// <para>
+    /// <b>El <c>totales</c> de la respuesta no se usa.</b> Sale de <c>IPolicyService.Puede</c>, que en un
+    /// trabajo sin sesión no tiene permisos cargados y devolvería nulo. Los totales del papel se suman
+    /// sobre las filas, que son las de la vista: la misma cuenta que hace una persona al pie de la tabla,
+    /// y la que la prueba de cuadre compara con el <c>totales</c> de la API.
+    /// </para>
+    /// </summary>
+    /// <param name="usuario">
+    /// Usuario al que se le comprueba <c>informe.ver</c>. Es el que inicia el trabajo, no el de la
+    /// sesión HTTP, que en un trabajo no existe.
+    /// </param>
+    public async Task<byte[]> PdfAsync(
+        Guid clienteId,
+        int? anio,
+        Guid usuario,
+        CancellationToken ct) =>
+        DocumentoEstadoCuentaPdf.Generar(
+            await ModeloEstadoCuentaPdfAsync(clienteId, anio, usuario, ct));
+
+    /// <summary>
+    /// Lo que el estado de cuenta va a decir, separado del render (F4-01), por la misma razón que
+    /// <see cref="ServicioFacturas.ModeloPdfAsync"/>: el texto de un PDF de QuestPDF no se puede leer del
+    /// archivo, así que las pruebas afirman sobre el modelo y del archivo solo comprueban lo estructural.
+    /// </summary>
+    internal async Task<DocumentoEstadoCuentaPdfModelo> ModeloEstadoCuentaPdfAsync(
+        Guid clienteId,
+        int? anio,
+        Guid usuario,
+        CancellationToken ct)
+    {
+        await ExigirAsync(Acciones.InformeVer, $"cliente/{clienteId:D}", usuario, ct);
+
+        // Sin proformas —no generan deuda (§3.8)— y con fianzas, que en esta vista son filas de dinero
+        // (§3.13). El año es el que ya tiene la vista única.
+        var vista = await ListarAsync(
+            new ConsultaLista(1, TopeFilasEstadoCuenta, SortBy: null, ConsultaLista.OrdenAscendente),
+            anio,
+            serieId: null,
+            moneda: null,
+            estado: null,
+            estadoCobro: null,
+            clienteId,
+            unidadId: null,
+            vencidas: false,
+            modificadas: false,
+            noEnviadas: false,
+            envioFallido: false,
+            modificadasTrasEnvio: false,
+            incluirProformas: false,
+            incluirFianzas: true,
+            ct);
+
+        var cliente = await contexto.Cliente.AsNoTracking()
+            .SingleOrDefaultAsync(c => c.Id == clienteId, ct)
+            ?? throw new KeyNotFoundException($"El cliente '{clienteId:D}' no existe.");
+
+        return DocumentoEstadoCuentaPdf.Modelo(
+            cliente,
+            // El documento va descifrado solo para el papel (D16); en la fila sigue cifrado.
+            cliente.Documento is { } documentoCifrado ? cifrado.Descifrar(documentoCifrado) : null,
+            anio,
+            vista.Data,
+            vista.Total,
+            // El estado de cuenta no pertenece a ninguna serie, así que usa la de por defecto.
+            RegistroPlantillasPdf.Resolver(nombre: null));
+    }
+
+    /// <summary>
+    /// Tope de filas del detalle de un estado de cuenta.
+    /// <para>
+    /// <b>El tope recorta filas y lo dice en el papel</b> (<c>DocumentoEstadoCuentaPdf</c> avisa de cuántas
+    /// se muestran de cuántas hay), y los totales se calculan sobre las mostradas. Un cliente con cientos
+    /// de documentos en un año es raro pero legal, y un papel que recorta en silencio es peor que uno que
+    /// no se genera. <c>TODO(A#)</c>: si el responsable lo pide, la salida es un anexo con el resto del año
+    /// o partir por periodo.
+    /// </para>
+    /// </summary>
+    public const int TopeFilasEstadoCuenta = 500;
+
+    /// <summary>
+    /// Segunda puerta del permiso: el endpoint lo pide con <c>[Accion]</c> y el atributo protege la
+    /// entrada por HTTP y nada más. Un trabajo entra por el servicio, y el intento denegado se audita
+    /// antes de lanzar, para que quede constancia de quién lo intentó y no pudo.
+    /// </summary>
+    private async Task ExigirAsync(string accion, string recurso, Guid usuario, CancellationToken ct)
+    {
+        if (await politica.PuedeAsync(accion, usuario, ct))
+        {
+            return;
+        }
+
+        await politica.AuditarDenegadoAsync(accion, recurso, ct);
+
+        throw new PermisoDenegadoException(accion, recurso);
     }
 
     /// <summary>
@@ -161,6 +279,9 @@ public sealed class ServicioCuentas(
         Guid? unidadId,
         bool vencidas,
         bool modificadas,
+        bool noEnviadas,
+        bool envioFallido,
+        bool modificadasTrasEnvio,
         bool incluirProformas)
     {
         IQueryable<Factura> consulta = contexto.Factura.AsNoTracking()
@@ -216,7 +337,62 @@ public sealed class ServicioCuentas(
             consulta = consulta.Where(f => f.ModificadaAt != null);
         }
 
+        consulta = ConFiltrosDeEnvio(consulta, noEnviadas, envioFallido, modificadasTrasEnvio);
+
         return ConFiltrosDerivados(consulta, estadoCobro, vencidas);
+    }
+
+    /// <summary>
+    /// Los tres filtros de envío de §3.13, que F4-02 dejó de no aceptar porque ya hay tabla
+    /// <c>envio</c>.
+    /// <para>
+    /// Los tres leen <c>envio</c> con el tipo <see cref="TipoDocumentoEnvio.Factura"/>, que es como se
+    /// registra el envío de una factura y de una proforma (las dos viven en la misma tabla).
+    /// <para>
+    /// <b>«No enviada» y «envío fallido» no se solapan</b>, y es lo que las hace dos preguntas
+    /// distintas: <c>noEnviadas</c> es «nadie lo intentó» (no hay ninguna fila de envío) y
+    /// <c>envioFallido</c> es «se intentó y no salió». Si «no enviada» fuera «no llegó a salir», sería
+    /// las dos listas la misma con dos nombres y la segunda no diría nada que la primera no dijera.
+    /// </para>
+    /// <para>
+    /// <c>modificadasTrasEnvio</c> compara el <c>modificada_at</c> de ahora con el que tenía la
+    /// factura cuando salió (F3-08 y §3.14). El <c>NULL</c> del envío significa «cuando salió, aún no
+    /// se había tocado»: eso también es «tocada después», y por eso se compara el envío con o sin
+    /// fecha. Comparar solo con los que tienen fecha dejaría fuera justamente la factura que nunca se
+    /// había tocado, que es el caso normal.
+    /// </para>
+    /// </summary>
+    private IQueryable<Factura> ConFiltrosDeEnvio(
+        IQueryable<Factura> consulta,
+        bool noEnviadas,
+        bool envioFallido,
+        bool modificadasTrasEnvio)
+    {
+        IQueryable<Envio> envio = contexto.Envio.Where(e => e.TipoDocumento == TipoDocumentoEnvio.Factura);
+
+        var salidos = envio.Where(e => e.Estado != EstadoEnvio.Fallido);
+
+        if (noEnviadas)
+        {
+            consulta = consulta.Where(f => !envio.Any(e => e.DocumentoId == f.Id));
+        }
+
+        if (envioFallido)
+        {
+            consulta = consulta.Where(f =>
+                envio.Any(e => e.DocumentoId == f.Id && e.Estado == EstadoEnvio.Fallido)
+                && !salidos.Any(e => e.DocumentoId == f.Id));
+        }
+
+        if (modificadasTrasEnvio)
+        {
+            // Un envío que no salió no dice nada de si el documento cambió después.
+            consulta = consulta.Where(f => f.ModificadaAt != null
+                && salidos.Any(e => e.DocumentoId == f.Id
+                    && (e.DocumentoModificadoAt == null || f.ModificadaAt > e.DocumentoModificadoAt)));
+        }
+
+        return consulta;
     }
 
     /// <summary>
@@ -324,16 +500,7 @@ public sealed class ServicioCuentas(
     /// nula y una factura sin cobros no tiene pendiente <c>null</c>.
     /// </para>
     /// </summary>
-    private Expression<Func<Factura, decimal>> ExpresionDePendiente() =>
-        f => f.Total - f.Retencion
-            - (contexto.CobroAsignacion
-                .Where(a => a.FacturaId == f.Id && a.Vigente && a.Cobro!.Estado == EstadoCobro.Registrado)
-                .Select(a => (decimal?)a.Importe)
-                .Sum() ?? 0m)
-            - (contexto.AjusteDiferenciaCambio
-                .Where(a => a.FacturaId == f.Id && a.AnuladoAt == null)
-                .Select(a => (decimal?)a.Importe)
-                .Sum() ?? 0m);
+    private Expression<Func<Factura, decimal>> ExpresionDePendiente() => PendienteDeFactura.Expresion(contexto);
 
     /// <summary>
     /// Reemplaza el parámetro de una expresión de importe por el de la consulta, para poder compararla
@@ -360,14 +527,24 @@ public sealed class ServicioCuentas(
 
     /// <summary>
     /// Si ningún filtro es de factura y por tanto las fianzas pueden salir.
+    /// <para>
+    /// Los tres de envío también son filtros de factura (F4-02): una fianza no tiene documento que
+    /// mandar, así que no puede decir «no enviada» ni «envío fallido» ni «modificada tras envío», y
+    /// devolverla «por si acaso» sería una fila que el filtro no tocó —el mismo criterio que ya
+    /// aplicaban <c>serie</c>, <c>estado</c>, <c>vencidas</c> y <c>modificadas</c>.
+    /// </para>
     /// </summary>
     private static bool SinFiltroDeFactura(
         Guid? serieId,
         EstadoFactura? estado,
         EstadoCobroFactura? estadoCobro,
         bool vencidas,
-        bool modificadas) =>
-        serieId is null && estado is null && estadoCobro is null && !vencidas && !modificadas;
+        bool modificadas,
+        bool noEnviadas,
+        bool envioFallido,
+        bool modificadasTrasEnvio) =>
+        serieId is null && estado is null && estadoCobro is null && !vencidas && !modificadas
+        && !noEnviadas && !envioFallido && !modificadasTrasEnvio;
 
     private IQueryable<Fianza> FianzasFiltradas(
         int? anio,
@@ -429,6 +606,17 @@ public sealed class ServicioCuentas(
         var ajustados = await cobros.AjustadoPorFacturaAsync(ids, ct);
         var conReserva = await FacturasConReservaConAnticipoAsync(pagina, ct);
 
+        // F4-02: el estado del último envío de cada documento de la página (§3.13). Una consulta para
+        // toda la página, por el mismo motivo que el cobrado: es otra tabla y una fila de la vista no
+        // puede ser una consulta.
+        var estadosEnvio = await UltimoEnvioPorFacturaAsync(ids, ct);
+
+        // Y qué facturas se tocaron después de que saliera el correo (F4-02, §3.13). Va en su propia
+        // consulta y con la misma condición que el filtro `modificadasTrasEnvio`, para que la marca de
+        // la fila y el filtro no puedan discrepar: si la marca dijera «no» y el filtro la sacara, uno
+        // de los dos estaría mintiendo y no habría forma de saber cuál.
+        var modificadasTrasEnvio = await ModificadasTrasEnvioAsync(ids, ct);
+
         // El comprobante fiscal (F3-03, §3.7) va en su propia consulta para toda la página, por el mismo
         // motivo que el cobrado: es otra tabla y una fila de la vista no puede ser una consulta.
         var comprobantes = await contexto.ComprobanteFiscal.AsNoTracking()
@@ -483,11 +671,62 @@ public sealed class ServicioCuentas(
                 proforma ? factura.Estado.ToString() : situacion.Estado.ToString(),
                 factura.ModificadaAt is not null,
                 conReserva.Contains(factura.Id),
-                null,
+
+                // F4-02: el estado del último envío del documento, o <c>null</c> si nunca se mandó.
+                // No es «Pendiente» para lo que no se ha mandado: no hay nada en la cola, no se ha
+                // intentado nada, y «Pendiente» affirmaría que hay un envío esperando.
+                estadosEnvio.TryGetValue(factura.Id, out var estadoEnvio)
+                    ? estadoEnvio.ToString()
+                    : null,
+                modificadasTrasEnvio.Contains(factura.Id),
                 !proforma && situacion.Pendiente > 0m && factura.Estado != EstadoFactura.Anulada));
         }
 
         return filas;
+    }
+
+    /// <summary>
+    /// Estado del <b>último</b> envío de cada una de esas facturas, por <c>EnviadoAt</c> (y a igualdad
+    /// por identificador, que es lo que hace estable el orden). Los envíos que nunca salieron tienen
+    /// <c>EnviadoAt</c> nulo y salen por su <c>CreatedAt</c>, que es cuando se intentó.
+    /// </summary>
+    private async Task<Dictionary<Guid, EstadoEnvio>> UltimoEnvioPorFacturaAsync(Guid[] ids, CancellationToken ct)
+    {
+        var envios = await contexto.Envio.AsNoTracking()
+            .Where(e => e.TipoDocumento == TipoDocumentoEnvio.Factura && ids.Contains(e.DocumentoId))
+            .OrderByDescending(e => e.EnviadoAt ?? e.CreatedAt)
+            .ThenByDescending(e => e.Id)
+            .Select(e => new { e.DocumentoId, e.Estado })
+            .ToListAsync(ct);
+
+        // GroupBy conserva el orden de aparición, así que el primero de cada grupo es el último envío.
+        // Se hace en memoria porque la consulta ya viene ordenada y solo trae dos columnas.
+        return envios
+            .GroupBy(e => e.DocumentoId)
+            .ToDictionary(g => g.Key, g => g.First().Estado);
+    }
+
+    /// <summary>
+    /// Las facturas de la página a las que alguien las tocó después de que saliera el último envío que
+    /// sí salió (F4-02, §3.14 y F3-08).
+    /// <para>
+    /// <b>Un envío <c>Fallido</c> no cuenta.</b> No llegó a salir nada, así que no puede haber un
+    /// documento en manos del cliente que después se haya cambiado.
+    /// </para>
+    /// </summary>
+    private async Task<HashSet<Guid>> ModificadasTrasEnvioAsync(Guid[] ids, CancellationToken ct)
+    {
+        var tocadas = await contexto.Factura.AsNoTracking()
+            .Where(f => ids.Contains(f.Id)
+                && f.ModificadaAt != null
+                && contexto.Envio.Any(e => e.TipoDocumento == TipoDocumentoEnvio.Factura
+                    && e.DocumentoId == f.Id
+                    && e.Estado != EstadoEnvio.Fallido
+                    && (e.DocumentoModificadoAt == null || f.ModificadaAt > e.DocumentoModificadoAt)))
+            .Select(f => f.Id)
+            .ToListAsync(ct);
+
+        return tocadas.ToHashSet();
     }
 
     /// <summary>
@@ -591,6 +830,11 @@ public sealed class ServicioCuentas(
                     estado.ToString(),
                     null,
                     false,
+                    null,
+
+                    // Una fianza no es un documento que se mande: no tiene PDF ni destinatario, así que
+                    // no hay envío ni «modificada después de enviar» que decir de ella. Es <c>null</c>
+                    // y no <c>false</c>, por la misma razón que el resto de columnas de fianza.
                     null,
                     pendiente > 0m && !CalculoFianza.NoCobrable(estado));
             }),

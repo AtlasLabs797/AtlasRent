@@ -23,8 +23,19 @@ public sealed class SeriePeticion
     [JsonConverter(typeof(JsonStringEnumConverter<TipoSerie>))]
     public required TipoSerie Tipo { get; init; }
 
+    /// <summary>
+    /// Nombre de la plantilla de PDF de esta serie. Nulo = la de por defecto.
+    /// <para>
+    /// Se valida contra <c>Services.RegistroPlantillasPdf</c> al guardar: un nombre desconocido es
+    /// un 400 con la lista de los válidos (F4-01).
+    /// </para>
+    /// </summary>
     [StringLength(120)]
     public string? PlantillaPdf { get; init; }
+
+    /// <summary>Condiciones de pago que se imprimen en el pie del documento (F4-01).</summary>
+    [StringLength(500)]
+    public string? CondicionesPago { get; init; }
 
     public bool SumaAFacturado { get; init; }
 
@@ -118,6 +129,7 @@ public sealed record SerieRespuesta(
     [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda? Moneda,
     [property: JsonConverter(typeof(JsonStringEnumConverter<TipoSerie>))] TipoSerie Tipo,
     string? PlantillaPdf,
+    string? CondicionesPago,
     bool SumaAFacturado,
     bool SumaASaldos,
     bool GeneraComprobante,
@@ -217,6 +229,23 @@ public sealed class SubempresaPeticion
     [StringLength(120, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
+    /// <summary>
+    /// RNC de la subempresa. F4-01 lo imprime la cabecera del PDF. Anulable porque una subempresa
+    /// sin RNC todavía es válida: lo que no es válido es apuntar a una plantilla que no existe.
+    /// </summary>
+    [StringLength(32)]
+    public string? Rnc { get; init; }
+
+    /// <summary>Domicilio fiscal, para la cabecera del PDF de factura (docs/DESIGN.md §7).</summary>
+    [StringLength(300)]
+    public string? Direccion { get; init; }
+
+    [StringLength(40)]
+    public string? Telefono { get; init; }
+
+    [StringLength(200)]
+    public string? Email { get; init; }
+
     public bool Propietaria { get; init; }
 
     public bool Facturadora { get; init; }
@@ -227,6 +256,10 @@ public sealed class SubempresaPeticion
 public sealed record SubempresaRespuesta(
     Guid Id,
     string Nombre,
+    string? Rnc,
+    string? Direccion,
+    string? Telefono,
+    string? Email,
     bool Propietaria,
     bool Facturadora,
     bool Activa);
@@ -244,10 +277,24 @@ public sealed class AjusteGeneralPeticion
 
     [JsonConverter(typeof(JsonStringEnumConverter<ModoRecordatorios>))]
     public required ModoRecordatorios ModoRecordatorios { get; init; }
+
+    /// <summary>
+    /// Días desde el vencimiento hasta el primer aviso (§3.14). Se puede dejar a nula a propósito:
+    /// el trabajo de recordatorios no manda nada y deja una alerta diciendo qué configurar
+    /// (criterio de BUG-007).
+    /// </summary>
+    [Range(typeof(int), "1", "365")]
+    public int? DiasPrimerRecordatorio { get; init; }
+
+    /// <summary>Días entre un aviso y el siguiente mientras siga habiendo saldo.</summary>
+    [Range(typeof(int), "1", "365")]
+    public int? DiasEntreRecordatorios { get; init; }
 }
 
 public sealed record AjusteGeneralRespuesta(
     Guid Id,
     decimal? ToleranciaCambioUsd,
     decimal? ToleranciaCambioDop,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<ModoRecordatorios>))] ModoRecordatorios ModoRecordatorios);
+    [property: JsonConverter(typeof(JsonStringEnumConverter<ModoRecordatorios>))] ModoRecordatorios ModoRecordatorios,
+    int? DiasPrimerRecordatorio,
+    int? DiasEntreRecordatorios);

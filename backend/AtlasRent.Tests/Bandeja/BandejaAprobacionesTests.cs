@@ -381,14 +381,33 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
 
     // ---------------------------------------------------------------- atajos
 
-    /// <summary>La bandeja tal y como la ve el gerente.</summary>
+    /// <summary>
+    /// La bandeja tal y como la ve el gerente, <b>recorrida entera</b>, página a página.
+    /// <para>
+    /// El endpoint no filtra por nada y su orden por defecto es <c>solicitadoAt</c> ascendente, así
+    /// que con la primera página sola la fila de esta prueba se sale en cuanto las solicitudes más
+    /// antiguas —las que dejan las demás pruebas de la colección— llenan esa página. Recorrer todo
+    /// hace que las afirmaciones dependan de lo que dice la bandeja y no de cuántas filas haya en la
+    /// base compartida.
+    /// </para>
+    /// </summary>
     private static async Task<List<Fila>> BandejaAsync(SesionCliente sesion, CancellationToken ct)
     {
-        var respuesta = await sesion.GetAsync("/api/v1/contratos/solicitudes", ct);
-        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+        var filas = new List<Fila>();
+        for (var pagina = 1; ; pagina++)
+        {
+            var respuesta = await sesion.GetAsync(
+                $"/api/v1/contratos/solicitudes?page={pagina}&pageSize=200&sortBy=solicitadoAt", ct);
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
 
-        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
-        return [.. cuerpo.GetProperty("data").EnumerateArray().Select(Fila.Desde)];
+            var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+            filas.AddRange(cuerpo.GetProperty("data").EnumerateArray().Select(Fila.Desde));
+
+            if (pagina >= cuerpo.GetProperty("totalPages").GetInt32())
+            {
+                return filas;
+            }
+        }
     }
 
     /// <summary>

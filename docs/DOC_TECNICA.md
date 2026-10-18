@@ -29,7 +29,8 @@ Salidas: SMTP (Google) · ExchangeRate-API · Google Drive (backups cifrados) ·
 | Hangfire.AspNetCore / Hangfire.PostgreSql | 1.8.25 / 1.21.1 |
 | Newtonsoft.Json | 13.0.4 — añadido en F1-12: Hangfire.Core 1.8.25 arrastra 11.0.1, con CVE-2024-21907 (alta). Se fija a la versión parcheada para que el `dotnet list package --vulnerable` de la CI siga limpio |
 | Serilog.AspNetCore | 10.0.0 |
-| MailKit / MimeKit | 4.18.1 |
+| MailKit / MimeKit | 4.18.1 — **añadido en F4-02** (envío de correo por SMTP, §3.14). Resolvió a MailKit 4.18.1 + MimeKit 4.18.1 + BouncyCastle.Cryptography 2.7.0 |
+| System.Security.Cryptography.Pkcs | 10.0.13 — **añadido en F4-02**: MailKit 4.18.1 arrastra la 10.0.0, con dos avisos de vulnerabilidad conocidos (GHSA-2fmv-rv2c-59x7, moderada, y GHSA-846f-f764-76mx, alta). Se fija a la versión parcheada de la misma línea que el resto de paquetes de Microsoft del repo, con el mismo criterio que Newtonsoft.Json en F1-12, para que el `dotnet list package --vulnerable` de la CI siga limpio |
 | ClosedXML | 0.105.1 |
 | QuestPDF | 2026.9.1 — **verificada en F2-02**: `LicenseType.Community` es gratuita solo si la facturación bruta anual consolidada de la organización es **< 1 M USD**. Organismos públicos y empresas cotizadas **no** pueden usarla sea cual sea su facturación; si se deja de cumplir hay 90 días para comprar licencia o dejar de usar la librería, sin retroactividad. Es *source-available*, **no** una licencia aprobada por OSI, así que `SEGURIDAD.md` §A.4 no puede asumir MIT. Pendiente de confirmar los datos de la empresa antes de producción |
 | BCrypt.Net-Next | 4.2.1 (12 rondas) — subido desde 4.2.0 en F1-04: es la última estable (5.0.0 es prerelease) |
@@ -125,6 +126,9 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Tolerancia de la diferencia de cambio: vive en `ajuste_general`, no en la configuración de despliegue.** Las columnas `tolerancia_cambio_usd` y `tolerancia_cambio_dop` son de `20261015042341_Configuracion` (F1-04) y **nacen a `NULL`**: la fila semilla se inserta sin ellas a propósito, porque §3.10.2 marca esos importes como [Supuesto] y nadie los ha aprobado. **Quién la escribe: el administrador**, desde *Configuración → Ajustes generales* (`PUT /api/v1/config/ajustes`, permiso `configuracion.editar`); el servicio de cobros la lee con `ServicioConfiguracion.LeerAjustesAsync`, el mismo camino que la pantalla. Una moneda sin valor, o con valor cero, significa **ajuste desactivado** y el intento sale en 409 diciendo dónde configurarlo. No hay segunda fuente (ni variable de entorno ni constante): dos sitios donde escribir una cifra que no sabes cuál manda es una trampa silenciosa (BUG-007).
 - **Alertas (`alerta`, F1-12 / F2-09):** lo que falló y que alguien tiene que mirar. La identidad de un fallo es **el par `(tipo, clave)`**, y lo único con unicidad estricta es la pareja **entre las alertas vivas**: `ix_alerta_tipo_clave` es `UNIQUE (tipo, clave) WHERE resuelta_at IS NULL`, más `ix_alerta_tipo_ocurrido_at` para los listados. **El filtro no es un adorno (BUG-008):** con un `UNIQUE (clave)` a secas, una alerta cerrada bloqueaba su clave para siempre —el `ON CONFLICT` de `ServicioAlertas` no insertaba nada ni la resucitaba— y un problema que aparecía, se cerraba y volvía a aparecer **no volvía a avisar**, al revés de §3.16 y de AGENTS.md §6. Cerrar es poner `resuelta_at` (nunca borrar) y, si el problema regresa, la fila **se reabre**: `RegistrarAsync` reabre la cerrada más reciente antes de insertar, y el `ON CONFLICT` sobre el índice parcial refresca la viva. `rent_app` tiene `SELECT, INSERT, UPDATE` y **no `DELETE`**.
 
+- **Correo (`envio` y `plantilla_mensaje`, F4-02):** `envio` guarda **los bytes exactos del PDF que salió** (`pdf_copia` `bytea`), no una referencia, y `GET /api/v1/envios/{id}/pdf` devuelve esa columna. El documento se apunta con una **referencia lógica** —`tipo_documento` + `documento_id` + `documento_anio`— **sin clave foránea**, porque un envío apunta a facturas, estados de cuenta, recibos, cotizaciones y contratos, que están en cuatro tablas distintas y el estado de cuenta no tiene ni fila propia; lo que sí se guarda es lo que hace falta para repetir el envío y auditarlo. La contrapartida es que nada impide dejar un envío apuntando a un documento borrado, y da igual: **un envío no se borra** y un documento tampoco (D28). `rent_app` tiene `SELECT, INSERT, UPDATE` y **no `DELETE`**. Índices: `(tipo_documento, documento_id, documento_anio)` para el envío de un documento, `(estado)` para el filtro «envío fallido» y `(tipo_documento, documento_id, documento_anio, destinatario_email)` para el antidiplicado de §3.14 —los tres últimos **no son únicos a propósito**, porque forzar un reenvío tiene que poder escribir una segunda fila y lo que evita el duplicado es la comprobación previa del servicio, no una restricción que solo daría un error sin decir a quién se lo mandó ya. `plantilla_mensaje` es `UNIQUE (tipo, idioma)`: es lo que hace que guardar sea un `PUT` que crea o edita en vez de dos endpoints con dos formas de dejar la misma fila duplicada. **Nada se borra**: una plantilla se desactiva, porque un envío antiguo tiene que poder decir qué texto encontró al salir.
+- **La clave del servidor de correo no está en la base de datos.** Vive en variables de entorno o en `dotnet user-secrets`, en la sección `Correo` (docs/SEGURIDAD.md §A.7). No hay columna donde escribirla y esa es la decisión: si se configurara en la base, acabaría en los backups y en `ajuste_general`, que es justo lo que no se quiere con una credencial.
+
 ### 4.3 Piezas críticas en SQL
 - **Exclusión de rangos:** `EXCLUDE USING gist (unidad_id WITH =, daterange(fecha_inicio, fecha_fin, '[)') WITH &&) WHERE (bloquea)` sobre `ocupacion_rango` (`btree_gist`).
 - **Medio día:** `ocupacion_dia (unidad_id, fecha, tipo int)` con `tipo` 1 = `medio_dia`, 2 = `dia_completo`; trigger que serializa por unidad con `SELECT ... FROM unidad WHERE id = NEW.unidad_id FOR UPDATE`, rechaza si hay un rango bloqueando esa fecha y aplica la capacidad de 2 medios días o 1 día completo.
@@ -133,6 +137,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **Contador de serie en la factura (F3-02):** la emisión llama a `ServicioSeries.ReservarNumeroAsync` **dentro de la transacción de la factura**, y esa llamada reutiliza la transacción abierta si la hay. Por eso un fallo posterior (un choque de índice, un cliente que ya no está) deshace el número junto con la factura: no hay número consumido sin factura detrás (D28). La red que lo hace inevitable si dos emisiones se colaran es doble: `UNIQUE (serie_id, numero)` en `factura` (índice parcial `WHERE numero IS NOT NULL`, porque un borrador no tiene número) y `UNIQUE (serie_id, numero)` en `numero_serie`.
 - **Comprobante fiscal (F3-03):** `UPDATE numerador_fiscal SET siguiente_numero = siguiente_numero + 1 WHERE serie_id = @id AND siguiente_numero <= rango_hasta RETURNING siguiente_numero - 1`, **dentro de la transacción de la factura** y reutilizando la que ya está abierta; sin fila → 409 y rollback completo. Es un contador **distinto** del de la serie (`serie.siguiente` numera facturas; `numerador_fiscal.siguiente_numero` numera comprobantes) y vive en su propia fila, 1:1 con la serie, con `UNIQUE (serie_id)` en `numerador_fiscal` y `UNIQUE (serie_id, numero)` en `comprobante_fiscal`. El `WHERE … siguiente_numero <= rango_hasta` es lo que hace el bloqueo de agotado íntegro bajo carrera; el de vencimiento va antes, en el servicio, porque es una comparación de fechas. **Ningún rango, tipo ni umbral está sembrado ni en el código**: los configura el administrador en `PUT /api/v1/config/numeradores-fiscales/{serieId}`.
 - **Periódica (F3-05):** columnas `periodo_inicio` / `periodo_fin` en `factura`, nulas en la factura tecleada a mano, e índice único parcial `NULLS NOT DISTINCT (contrato_id, periodo_inicio, concepto) WHERE periodo_inicio IS NOT NULL AND estado <> 3`. El filtro saca las facturas que no son periódicas y las anuladas (la clave se libera al anular, F3-08). `NULLS NOT DISTINCT` (PostgreSQL 15) es lo que protege también a la factura de la reserva corta, que llega con `contrato_id` nulo; **el modelo de EF no expresa esa variante**, así que si una migración reconstruye el índice hay que volver a escribirlo a mano.
+- **Documentos PDF (F4-01):** `serie.plantilla_pdf` es el nombre de la plantilla del catálogo de `Services.RegistroPlantillasPdf` (hoy solo `estandar`, la de `docs/DESIGN.md §7`) y `serie.condiciones_pago` el texto del pie. Los dos son **anulables**: nulos significan «la plantilla de por defecto» y «sin condiciones escritas», y una serie dada de alta por importación es válida así. Un `plantilla_pdf` que no está en el catálogo **no cae en la de por defecto**: se rechaza al guardar la serie con 400 y la lista de las válidas, porque imprimir cada factura con un diseño que nadie pidió es un error que sale meses después. `subempresa` gana `rnc`, `direccion`, `telefono` y `email` (los cuatro anulables, mismo criterio) para la cabecera del documento. `subempresa.rnc` **va cifrado en reposo** con el mismo AES-256-GCM y el mismo formato `v1:nonce:cifrado` que `cliente.documento` (AGENTS.md §6) —por eso la columna es `text` y no `varchar(32)`: lo que se guarda es el texto cifrado—, se descifra al leer la configuración y **no lleva índice ciego** porque no se busca por RNC (la lista solo ordena por nombre). Se ve completo en la pantalla y en la cabecera del PDF, igual que el documento del cliente (D16), y a diferencia de este no va a la auditoría. La migración es puramente aditiva y **no necesita `GRANT`**: los permisos en PostgreSQL son por tabla para `INSERT`/`UPDATE`, no por columna.
 - **Auditoría:** append-only (`db/scripts/03_auditoria_append_only.sql`) + **firma de registros** (hash encadenado SHA-256 por fila) y job diario de verificación de integridad.
 - **RLS:** activado en `documento_inmueble` (solo gerente/admin) y `auditoria` (lectura solo admin/gerente), con variable de sesión (`set_config('app.usuario_id', …, true)` y `app.rol`) fijada por la API al abrir cada transacción mediante un interceptor de EF Core.
 - **Número de cliente:** `SEQUENCE` iniciada en `max(Factusol)+1`.
@@ -287,6 +292,37 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
     rechazar, y si eso lo propone la aplicación o lo teclea quien duplica. No se resuelve aquí porque es
     una regla de negocio, no un fallo de implementación.
 
+### 6.2.3 Documento PDF de factura y proforma (F4-01)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/facturas/{id}/pdf` | `factura.ver` | PDF en memoria (`application/pdf`, `factura-{id}.pdf`) con el diseño de `docs/DESIGN.md §7`. 404 si no existe. No lleva `Idempotency-Key` ni `Mutar`: no muta nada. |
+
+- **El compositor va partido en dos: `Modelo` y `Generar`.** El texto de un PDF de QuestPDF no se
+  puede leer del archivo —incrusta las fuentes con subconjunto y escribe los caracteres como índices de
+  glifo—, así que `DocumentoFacturaPdf.Modelo` decide y formatea todo lo que el documento dice en
+  strings, sin tocar la librería, y `DocumentoFacturaPdf.Generar` solo lo pinta. Las pruebas afirman
+  sobre el modelo; del archivo solo comprueban que es un PDF, que se sirve como tal y que dos
+  generaciones dan los mismos bytes.
+- **Los totales no se recalculan en el documento.** Salen de los datos ya calculados del dominio
+  (`Factura.Subtotal/Itbis/Total/Retencion/NetoACobrar`) y, si hay cobros, de `Dominio/CalculoCobro`:
+  lo que dice el papel y lo que dice la pantalla son el mismo número. Sin cobros no hay filas de
+  pagado ni pendiente.
+- **Una factura anulada se descarga**, con la marca de agua «ANULADA». El papel marcado es lo que
+  necesita el expediente del cliente; lo que no se puede es *emitir* una anulada, y eso lo sigue
+  llevando `POST /emitir`.
+- **La empresa de la cabecera es la del contrato** y, sin contrato, la de la unidad
+  (`unidad.facturadora_por_defecto`). Sin ninguna de las dos, el bloque sale entero del documento: es
+  preferible a imprimir la de otra factura. `TODO(A#)` en `ServicioFacturas.FacturadoraAsync`, por si
+  el responsable decide otro orden.
+- **El texto de usuario no se interpreta nunca.** Conceptos, nombre del cliente y notas salen con los
+  elementos de texto de la librería, que no ejecutan marcado ni HTML ni plantillas
+  (`docs/SEGURIDAD.md`, SEC-001). La regla la vigila `InterpretacionEnPdfEnCodigoTests`, que falla si
+  algún compositor de `Services/` llama a `Html(`, `Svg(`, `.ParseHtml` o `MinifyHtml`.
+- `TODO(A#)`: las fuentes del design system (Geist y Geist Mono) siguen sin estar en el repositorio
+  (`docs/DESIGN.md §8`), así que el documento sale con la tipografía que trae la librería y el número
+  no va en mono. Es el mismo pendiente que tienen los PDF de cotización y de contrato.
+
 ### 6.3 Cobros (F3-06, F3-07)
 
 | Endpoint | Acción | Notas |
@@ -329,9 +365,49 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   juntos, y la auditoría (`cobro.registrado` y, si hubo crédito, `cobro.saldo_a_favor_usado`) va dentro.
   El ajuste es su propia transacción (`ajuste_diferencia_cambio.registrado`) con la IP en la fila **y** en
   la auditoría.
-- **TODO(F4-01): el recibo en PDF no está aquí.** Es de la fase 4, con QuestPDF y las plantillas por
-  serie. **No hay endpoint que devuelva un PDF provisional**: un recibo de dinero provisional es un
-  documento que alguien puede imprimir y archivar.
+- **El recibo en PDF es `GET /api/v1/cobros/{id}/pdf`** (F4-01, §3.10.1). Es opcional y lo pide quien
+  registra el cobro; no se genera solo. Sin `Idempotency-Key` ni `Mutar`: es lectura. 404 si el cobro no
+  existe y 409 si la plantilla del catálogo no está.
+
+### 6.3.1 Recibo de cobro en PDF (F4-01)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/cobros/{id}/pdf` | `factura.ver` | PDF en memoria (`application/pdf`, `recibo-{id}.pdf`) con el diseño de `docs/DESIGN.md §7`. 404 si el cobro no existe. No lleva `Idempotency-Key` ni `Mutar`: no muta nada. |
+
+- **El recibo lo pide quien registra el cobro y es opcional** (§3.10.1). No se genera al registrar el
+  cobro: un papel de dinero que aparece solo es un papel que alguien puede imprimir y archivar sin
+  haberlo pedido.
+- **El compositor va partido en dos: `Modelo` y `Generar`**, igual que el de la factura
+  (`DocumentoReciboPdf`): el texto de un PDF de QuestPDF no se puede leer del archivo, así que el modelo
+  decide y formatea lo que el papel dice y el render solo lo pinta. Las pruebas afirman sobre el modelo;
+  del archivo solo comprueban que es un PDF, que se sirve como tal y que dos generaciones dan los mismos
+  bytes.
+- **El número es `REC-XXXXXXXX`**: los ocho primeros caracteres del identificador del cobro en
+  mayúsculas. **Un cobro no tiene número** (`Data/Cobro.cs`) y la especificación no le pone ninguno
+  (§3.10.1 solo dice «recibo PDF opcional»), así que **no hay secuencia ni tabla nueva** para numerar
+  recibos. Lo que hace falta es que el mismo cobro reimprimido diga lo mismo, porque es un documento que
+  la gente archiva. `TODO(A#)`: si el responsable quiere una numeración propia («REC-000123» con su
+  contador), el sitio es `DocumentoReciboPdf.Identificador` y una secuencia transaccional como la de
+  facturas (§3.7). Un identificador derivado no es un número de documento y no se presenta como tal.
+- **Los datos de §3.10.2 salen cuando el cobro se registró en otra moneda**: la tabla de asignaciones
+  crece con las columnas «Recibido» y «Cambio» de cada línea —cada asignación guarda los dos importes y
+  el cambio aplicado— y los totales van por moneda, sin convertir entre ellas (§6). El tipo de cambio
+  **del día** va en los datos del cobro, con su fecha (D9); el **aplicado**, en cada línea, que es donde
+  §3.10.2 dice que se guarda.
+- **Un cobro anulado se descarga**, con la marca de agua «ANULADO» y el motivo al pie, y **sus
+  asignaciones salen con su marca** («— anulada»), igual que en `GET /api/v1/cobros/{id}`: lo que deja de
+  contar no se esconde (AGENTS.md §6). Los totales **suman solo lo que vigora**.
+- **La empresa de la cabecera es la del contrato del cobro** (`Contrato.Facturadora`). Sin contrato, el
+  bloque sale entero del documento: es preferible a imprimir la de otro cobro.
+- **El texto de usuario no se interpreta nunca** (SEC-001): la referencia, el nombre del cliente y el
+  concepto salen con los elementos de texto de la librería, que no ejecutan marcado ni HTML ni
+  plantillas. La regla la vigila `InterpretacionEnPdfEnCodigoTests`.
+- `TODO(A#)`: las fuentes del design system (Geist y Geist Mono) siguen sin estar en el repositorio
+  (`docs/DESIGN.md §8`), así que el documento sale con la tipografía que trae la librería. Es el mismo
+  pendiente que los demás PDF.
+- **Método de servicio para F4-05** (el trabajo de email): `ServicioCobros.PdfAsync(Guid id,
+  CancellationToken ct)` → `Task<byte[]>`. Devuelve los bytes, sin escribir nada en disco.
 
 ### 6.4 Comprobante fiscal (F3-03)
 
@@ -495,10 +571,26 @@ fianzas**, con una insignia de tipo en cada fila, y los totales al pie **por mon
 | `modificadas` | **Sí** | `modificada_at IS NOT NULL`. |
 | `incluirProformas` | **Sí** | Por defecto `false`: §3.13 pone las proformas «con filtro». |
 | `incluirFianzas` | **Sí** | Por defecto `true`: en esta vista son filas normales de dinero. |
-| `noEnviadas`, `envioFallido`, `modificadasTrasEnvio` | **No** | Son de **F4-01**, que es quien sabrá si un documento se envió y con qué resultado. No se aceptan: un filtro que se acepta y no se aplica devuelve filas que parecen filtradas, y alguien las persigue. `estado_envio` viene `null` por lo mismo. |
+| `noEnviadas` | **Sí** (F4-02) | **Nadie lo intentó**: no hay ninguna fila en `envio` para ese documento. |
+| `envioFallido` | **Sí** (F4-02) | **Se intentó y no salió**: hay al menos un envío `Fallido` y ninguno con estado distinto de `Fallido`. |
+| `modificadasTrasEnvio` | **Sí** (F4-02) | `factura.modificada_at IS NOT NULL` y hay un envío que salió con `documento_modificado_at IS NULL` (cuando salió, aún no se había tocado) **o** con `factura.modificada_at > envio.documento_modificado_at`. |
+
+- **Los tres de envío no se solapan a propósito.** «No enviada» y «envío fallido» son preguntas
+  distintas —«¿se le llegó a mandar?» y «¿se intentó?»— y si la primera significara «no llegó a salir»
+  serían la misma lista con dos nombres.
+- **Un envío `Fallido` nunca hace de documento «enviado»**, ni para `estado_envio` ni para
+  `modificadasTrasEnvio`: no llegó a haber un papel en manos del cliente que después se pudiera cambiar.
+- **`estado_envio` sale real**: es el estado del **último** envío del documento (por `enviado_at` y, a
+  igualdad, por identificador), o `null` si nunca se mandó. Antes de F4-02 era un `null` constante; F3-10
+  lo dejó así y escribió por qué.
+- **`modificadaTrasEnvio`** sale en la fila como `modificadaTrasEnvio`, con la misma condición que el
+  filtro y no con otra parecida: si la marca de la fila y el filtro no dijeran lo mismo, uno de los dos
+  estaría mintiendo y no habría forma de saber cuál.
 
 - **Un filtro que una fianza no puede expresar la deja fuera** (`serieId`, `estado`, `estadoCobro`,
-  `vencidas`, `modificadas`): devolverla «por si acaso» sería una fila que el filtro no tocó.
+  `vencidas`, `modificadas`, `noEnviadas`, `envioFallido`, `modificadasTrasEnvio`): devolverla «por si
+  acaso» sería una fila que el filtro no tocó. Una fianza no es un documento que se mande, así que su
+  `estado_envio` y su `modificadaTrasEnvio` son `null`.
 - **Los totales se calculan sobre todo el conjunto filtrado**, no sobre la página, y con la misma cuenta
   que las filas, para que el pie cuadre con lo que hay arriba.
 - **Paginación por mezcla.** Cada tipo se trae hasta el final de la página pedida (`page × pageSize`) y
@@ -516,6 +608,301 @@ fianzas**, con una insignia de tipo en cada fila, y los totales al pie **por mon
   objeto con ceros: cero es un total que se puede sumar, imprimir y archivar. Es el criterio de
   aceptación de la tarea.
 - El `saldo_a_devolver` de las fianzas **no se suma** en el pie: es dinero que se devuelve, no deuda.
+
+### 6.7.1 Estado de cuenta del cliente en PDF (F4-01)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/clientes/{id}/estado-de-cuenta.pdf` | `informe.ver` | PDF en memoria (`application/pdf`, `estado-de-cuenta-{id}.pdf`) con el diseño de `docs/DESIGN.md §7`. `?anio=` es opcional y es el mismo filtro que la vista. 404 si el cliente no existe. No lleva `Idempotency-Key` ni `Mutar`: no muta nada. |
+
+- **Las filas del estado de cuenta son las de la vista única** (`ServicioCuentas.ListarAsync`), no una
+  consulta propia. §3.15 exige que los informes cuadren con la vista, y un segundo cálculo de pendiente
+  es exactamente cómo se rompe eso: dos fórmulas que un día dicen cosas distintas. **Los totales se suman
+  sobre esas filas** —la misma cuenta que hace una persona al pie de la tabla— y **no se usa el bloque
+  `totales` de la respuesta**, que sale de `IPolicyService.Puede` y en un trabajo de Hangfire, sin
+  sesión, saldría `null`.
+- **El permiso es `informe.ver` y no `factura.ver`.** El documento lleva totales agregados de dinero de
+  un cliente, y AGENTS.md §6 dice que el empleado no los recibe por ningún endpoint: el empleado recibe
+  un 403 y el intento queda auditado.
+- **El servicio también comprueba el permiso**, con `IPolicyService.PuedeAsync`, y no solo el atributo
+  del endpoint: es lo que permite que F4-05 lo llame desde un trabajo, sin sesión HTTP ni filtro. El
+  intento denegado se audita antes de lanzar.
+- **El detalle está topado a 500 filas** (`ServicioCuentas.TopeFilasEstadoCuenta`) y **el recorte se dice
+  en el papel**: el documento avisa de cuántas filas muestra de cuántas hay, y los totales son los de las
+  mostradas. Un papel que recorta en silencio es peor que uno que no existe. `TODO(A#)`: si el
+  responsable lo pide, la salida es un anexo con el resto del año o partir por periodo.
+- **La cabecera no lleva empresa facturadora**: un cliente puede tener contratos con facturadoras
+  distintas, así que el bloque sale vacío antes que imprimir la de cualquiera de ellos.
+- **El compositor va partido en dos: `Modelo` y `Generar`**, igual que el de la factura
+  (`DocumentoEstadoCuentaPdf`): el texto de un PDF de QuestPDF no se puede leer del archivo.
+- **Método de servicio para F4-05** (el trabajo de email): `ServicioCuentas.PdfAsync(Guid clienteId,
+  int? anio, Guid usuario, CancellationToken ct)` → `Task<byte[]>`. El `usuario` es al que se le comprueba
+  `informe.ver`: en un trabajo no hay sesión HTTP de la que sacarlo.
+
+### 6.8 Envío de documentos por correo y plantillas (F4-02)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `POST /api/v1/envios` | `cotizacion.enviar` (ver nota) | Manda un documento a un destinatario y devuelve la fila del envío. Acepta `Idempotency-Key`. 404 si el documento no existe, **409 `API-005`** si no hay correo configurado, 409 si el documento ya se envió a ese destinatario y no viene `forzar`. |
+| `GET /api/v1/envios` | `factura.ver` | Paginado y filtrable por `tipo`, `estado` y `documentoId`. `sortBy`: `enviadoAt` (por defecto), `createdAt`, `estado`. |
+| `GET /api/v1/envios/{id}/pdf` | `factura.ver` (puerta de pelo grueso; la comprobación fina vive en el servicio, ver abajo) | Devuelve **`envio.pdf_copia`**, la columna, no una regeneración del documento. **403** si el contenido del adjunto no es del tipo de permiso que tiene quien pregunta. |
+| `GET /api/v1/config/plantillas-mensaje` | `configuracion.editar` | Listado, opcionalmente por `tipo`. |
+| `PUT /api/v1/config/plantillas-mensaje` | `plantilla.editar` | Guarda por (tipo, idioma): crea si no existe y edita si existe. No hay `DELETE`: una plantilla se desactiva. |
+
+- **El atributo de `POST /api/v1/envios` es `cotizacion.enviar` y el envío sale con `documento.enviar`,
+  y no es una errata.** §2 reparte los dos permisos y hay que elegir el más alto de los dos como puerta
+  del endpoint, porque un atributo no puede mirar qué tipo de documento trae el cuerpo.
+  `cotizacion.enviar` es el más alto (los dos roles que traen `documento.enviar` lo traen también), así
+  que el atributo no le cierra la puerta a nadie que la matriz le abra. El permiso exacto lo comprueba
+  `ServicioEnvios` con `IPolicyService` contra el usuario que se le pase, y es la misma comprobación que
+  necesitan los trabajos de Hangfire, que no tienen sesión HTTP.
+- **`GET /api/v1/envios/{id}/pdf` devuelve la copia guardada y no vuelve a componer el documento.** Si
+  regenerara, el papel cambiaría en cuanto cambiara el documento y dejaría de ser la copia de lo que el
+  cliente recibió. Es también el motivo de que `envio.pdf_copia` guarde los bytes exactos y no una
+  referencia a ellos.
+- **El permiso del adjunto se decide por su contenido, no por su tipo de envío.** Es el mapa
+  `ServicioEnvios.AccionesDeContenido(tipo)`, y se exige en los tres caminos —`EnviarAsync`,
+  `EnviarPendienteAsync` y `CopiaAsync`— con `IPolicyService` contra el usuario de la petición o del
+  trabajo. El criterio es el de §2 y AGENTS.md §6 (**lo que lleva totales agregados exige
+  `informe.ver`**):
+
+  | Tipo de envío | Acción de envío (¿puede mandarlo?) | Acción de contenido (¿puede verlo?) |
+  |---|---|---|
+  | Factura, proforma, recibo | `documento.enviar` | `factura.ver` |
+  | Cotización | `cotizacion.enviar` | `factura.ver` (es la lectura de la cotización: no hay acción propia en §2) |
+  | Contrato | `documento.enviar` | `cliente.ver` (§2, «ver clientes, unidades, reservas y contratos») |
+  | **Estado de cuenta** | `documento.enviar` | **`informe.ver`** |
+
+  - **Por qué el atributo del endpoint no puede hacer esto**: `[Accion]` solo ve el verbo y la ruta. El
+    tipo de documento está en el cuerpo y el contenido del adjunto no está en ninguna parte de la
+    petición; para `GET /{id}/pdf` la ruta solo lleva un identificador, y el contenido del archivo
+    cambia de una fila a otra. Por eso el atributo se queda como puerta de pelo grueso y la
+    comprobación fina vive en `ServicioEnvios`. **Esto no es teórico**: con el criterio anterior, la
+    copia de un estado de cuenta —que *es* el estado de cuenta, con filas, totales por moneda y saldo
+    pendiente— se descargaba con `factura.ver`, que el empleado sí tiene (§2). Ver BUG-014.
+  - **Por qué también en el camino de envío**: `documento.enviar` lo tienen gerente y administrador, y
+    quien lo tiene puede reenviar el archivo a quien quiera; ese archivo vuelve a entrar por la
+    descarga. Si «puede mandarse» y «puede verse» fueran la misma pregunta, un permiso de envío sería
+    un permiso de informe. Los recordatorios de W5 llevan el estado de cuenta adjunto y caen en la
+    misma fila de la tabla.
+  - Con los roles actuales la comprobación del envío solo cambia algo por el **recorte por usuario**
+    (`usuario_permiso`, D17): un gerente al que le apaguen `informe.ver` sigue mandando facturas y
+    deja de poder mandar o reenviar un estado de cuenta.
+- **`GET /api/v1/envios` (el listado) se queda con `factura.ver` y no aplica el mapa.** La fila que
+  devuelve es metadato —a quién, cuándo, en qué estado, con qué nombre de archivo— y ningún importe,
+  así que no deja pasar ningún total agregado. Lo que sí muestra es el hecho de que se mandó un estado
+  de cuenta y a quién. Cierre de BUG-014, punto (a) del riesgo que queda: es un hecho que la matriz no
+  le concede al empleado y sigue abierto.
+- **Los estados que esta sección describe y nadie escribe todavía.** `Pendiente` lo pone el envío masivo de
+  F4-03 al encolar, y `Enviado` el trabajo de la cola. **`Entregado` y `Leido` no los escribe nadie**: no hay
+  ninguna respuesta de confirmación del servidor de correo que los traiga, y poner «entregado» en el momento
+  del `Send` sería una afirmación que nadie ha comprobado. Quedan pendientes del webhook de confirmación del
+  proveedor o del enlace de seguimiento, con su `TODO(A#)` en `Data/Envio.cs`.
+- **Un fallo del SMTP deja la fila en `Fallido` con su motivo, y el motivo no lleva credenciales.**
+  Mismo criterio que F3-01 (§8.0.1): `ServicioEnvios.MotivoDe` copia el mensaje solo de
+  `CorreoNoConfiguradoException` y de cualquier otra excepción solo el tipo, porque el mensaje de una
+  excepción de SMTP puede traer el host, la respuesta del servidor o la cadena de conexión.
+- **El antidiplicado de §3.14 solo mira los envíos que salieron.** Un `Fallido` no bloquea nada: si
+  bloqueara, reintentar un correo que falló por un problema del servidor obligaría a forzarlo cada vez, y
+  forzar es lo que hay que reservar para el reenvío que alguien ha pedido dos veces a propósito.
+- **La llamada al servidor de correo va fuera de la transacción** a propósito: esperar a un servidor
+  ajeno con la transacción abierta mantiene bloqueadas las filas del documento que ya se está mandando.
+  Lo que sí va en la misma transacción es la fila de `envio` y su auditoría (AGENTS.md §6).
+- **Sin correo configurado el envío es un 409 `API-005` que dice qué escribir**, con los nombres de las
+  variables. Es el criterio que fijó BUG-007: un ajuste que se permite sin que nadie haya escrito un
+  valor es una pérdida silenciosa, y un «Pendiente» en la fila afirmaría que hay un envío en la cola que
+  no existe. La clave sale de variables de entorno o de `dotnet user-secrets` y **no hay ninguna columna
+  donde escribirla** (`docs/SEGURIDAD.md` §A.7).
+- **El correo va en texto plano.** Es la misma regla que los PDF por código y no por HTML y navegador
+  (SEC-001): el texto del cliente va literal, sin escapar, y un correo en texto plano no puede ejecutar
+  nada. La sustitución de las variables de la plantilla es textual y no evalúa nada.
+
+#### Tablas que añade
+
+| Tabla | Qué guarda | Notas |
+|---|---|---|
+| `envio` | Un correo con su documento adjunto y **la copia exacta del PDF que salió** | El documento se apunta con una referencia lógica (`tipo_documento` + `documento_id` + `documento_anio`), **sin clave foránea**: un envío apunta a facturas, estados de cuenta, recibos, cotizaciones y contratos, que están en cuatro tablas distintas y el estado de cuenta no tiene fila propia. La contrapartida es que nada impide dejar un envío apuntando a algo borrado, que no importa: un envío no se borra nunca y un documento tampoco (D28). `TODO(A#)`: si algún día hiciera falta integridad referencial real, la salida es una tabla por tipo con su clave foránea y una vista por encima |
+| `plantilla_mensaje` | Asunto y cuerpo por tipo de mensaje e idioma | Índice único en `(tipo, idioma)`. Nada se borra: se desactiva. |
+| `recordatorio` | **La decisión de avisar** a un cliente y una unidad un día, no el correo (F4-05) | No cabe en `envio` porque no es un documento —no tiene número ni archivo— y su clave de deduplicación es `(cliente_id, unidad_id, fecha)`, no la de un documento. Único en esa terna con **`NULLS NOT DISTINCT`** (escrito a mano en la migración, porque `unidad_id` puede ser nula y en PostgreSQL los nulos de un único no chocan entre sí). Guarda a qué envío dio lugar, el motivo si se omitió y la trazabilidad; **no guarda importes**, porque los dice el cuerpo del envío y van en su `pdf_copia`. Se concede con `SELECT, INSERT, UPDATE` y **sin `DELETE`**: un recordatorio es la explicación de por qué a un cliente se le escribió o no se le escribió un día dado. |
+
+- `envio` se concede a `rent_app` con `SELECT, INSERT, UPDATE` y **sin `DELETE`**, como todas las de F1 en
+  adelante (AGENTS.md §6). La migración siembra las **cinco plantillas en español** de §3.14 con
+  identificadores fijos: sin plantilla no hay envío, y el identificador fijo hace que la migración sea
+  idempotente.
+- **Un idioma sin plantilla no es un error.** Sale la de «es» y la fila guarda el idioma que se usó de
+  verdad, no el que se pidió sin existir. Bloquear el correo porque nadie escribió la versión en francés
+  dejaría al cliente sin factura.
+- `documento_modificado_at` guarda el `modificada_at` que el documento tenía **en el momento del envío**,
+  y es lo que permite saber si se tocó después (F3-08). Sale `null` en documentos que no tienen esa
+  columna (recibos, contratos) y en facturas que aún no se habían tocado cuando salieron.
+
+#### Método de servicio para W4 (envío masivo) y W5 (recordatorios)
+
+Un trabajo de Hangfire encola un envío de un documento a un destinatario con:
+
+```csharp
+Task<EnvioFila> ServicioEnvios.EnviarAsync(
+    EnvioPeticion peticion,      // TipoDocumento, DocumentoId, y destino por ContactoClienteId, Email o ClienteId
+    Guid usuario,                // a quién se le comprueba el permiso: el de envío (documento.enviar / cotizacion.enviar) y el del contenido del adjunto
+    string ip,
+    MutacionIdempotente? mutacion,   // null si el trabajo no lleva Idempotency-Key
+    CancellationToken ct);
+```
+
+- No hay sesión HTTP de la que sacar nada: el `usuario` va en la firma, igual que en
+  `ServicioCuentas.PdfAsync`. Un trabajo de recordatorio usa un usuario de servicio con los permisos de
+  envío.
+- **Un envío `Fallido` se reintenta sin forzar**: el antidiplicado solo mira los envíos que salieron y
+  `intentos` suma el fallo. La fila a reintentar se busca con `estado = 'Fallido'`, y el reintento es
+  otra llamada a `EnviarAsync` con la misma `EnvioPeticion`.
+- **Envío masivo**: para encolar, `POST /api/v1/envios` es de uno en uno a propósito —cada envío compone
+  su PDF, su texto y su copia, y `forzar` y el antidiplicado son de un documento y un destinatario. El
+  trabajo recorre los documentos filtrados y llama a `EnviarAsync` por cada destinatario; `Pendiente` y
+  la escritura previa de la fila son de esa tarea, no de este servicio.
+
+### 6.9 Envío masivo (F4-03)
+
+Los cuatro endpoints, todos con el permiso `mensajeria.masivo` (§2: gerente y administrador) y todos con
+`Idempotency-Key`:
+
+| Endpoint | Qué hace |
+|---|---|
+| `POST /api/v1/envios/masivo/preparar` | Cuenta qué entraría, enseña la vista previa y **no manda nada** |
+| `POST /api/v1/envios/masivo/confirmar` | Vuelve a calcular el lote, escribe las filas `Pendiente` y **encola** un trabajo por fila |
+| `GET /api/v1/envios/masivo/{loteId}` | Total, enviados, fallidos, pendientes y el detalle de los fallidos |
+| `POST /api/v1/envios/masivo/{loteId}/reintentar` | Vuelve a encolar **solo los fallidos** |
+
+#### Decisiones que sostienen la pantalla
+
+- **Los documentos salen de la vista única.** El cuerpo es `{ filtro: FiltroCuentas, idioma, forzar }` y
+  `FiltroCuentas` es el mismo tipo que devuelve `GET /api/v1/cuentas`; el lote se arma con
+  `ServicioCuentas.ListarAsync`. **No hay un filtro paralelo**: un segundo «qué facturas hay» es el
+  sitio donde una pantalla y un correo dejan de hablar de lo mismo.
+- **Confirmar vuelve a calcular el lote.** No reutiliza el resumen anterior, aunque el cliente lo mande
+  de vuelta: el resumen es para leerlo, y lo que sale es lo que se calcula en la confirmación. Un lote
+  confirmado sobre datos que alguien pudo editar entre las dos llamadas sería un lote que nadie miró.
+- **La vista previa es una promesa.** El `asunto` y el `cuerpo` del resumen llevan las variables ya
+  sustituidas y son **exactamente** los que se escriben en la fila del envío; salen de
+  `VariablesMensaje`, el mismo sustitutor que usa el envío suelto. La vista previa **no** compone el PDF:
+  encolar mil PDFs en la pantalla costaría el doble que mandarlos, y lo compone el trabajo, en el mismo
+  orden, con el mismo `ModeloPdfAsync`.
+- **Cada exclusión lleva su motivo, y son disjuntos** (`MotivoExclusionEnvio`): `YaEnviado` (salvo
+  `forzar`, y solo mira los envíos que salieron), `SinDireccionCorreo`, `SinContactoElegible`,
+  `FacturaAnulada`, `SinPlantilla`, `NoGeneraDocumento` (una fianza es una fila de dinero, no un papel) y
+  `SuperaElTopeDelLote`. **Se informa del primero que se encuentra y no se acumulan quejas**: un lote que
+  se recorta sin decir qué se quedó fuera se parece a un lote entero que funcionó.
+- **El destino es el del envío suelto, en el mismo orden**: el correo del cliente; si no lo tiene, el
+  contacto principal de §3.2 («el que se usa si no se elige otro»); si no hay principal, el único
+  contacto con casilla. **Con varias casillas y ningún principal no se elige uno: se excluye.** Mandar la
+  factura al primero de la lista sería mandarla a alguien que nadie eligió.
+- **Un idioma sin plantilla excluye en lote, no en envío suelto.** F4-02 decidió que en un envío suelto
+  no es un error y sale en «es» (§6.8); en un lote de cientos de correos eso mandaría a todos un idioma
+  que nadie pidió, así que se excluye y se dice cuál falta. Los dos criterios están escritos en el enum.
+
+#### El lote no es una tabla
+
+- `envio.lote_id uuid` anulable, con su índice. **El lote es el conjunto de las filas que comparten ese
+  identificador**: el progreso, el recuento y el reintento son agregaciones sobre esa columna.
+- Lo que hay que guardar del lote —quién lo pidió, con qué filtros y cuándo lo confirmó— lo escribe la
+  auditoría `envio.masivo.confirmado` (`entidad = "lote"`, `entidad_id = <uuid>`), que es append-only y
+  ya existe para eso (AGENTS.md §6). Una tabla de lotes sería una segunda fuente de lo mismo, y el repo
+  ya pagó por ese problema en BUG-007.
+- El reintento escribe `envio.masivo.reintentado` con la lista de envíos que vuelve a poner en la cola.
+
+#### Los estados que esta tarea pone en uso
+
+- `Pendiente` lo escribe la confirmación; `Enviado`, el trabajo. `Entregado` y `Leido` **siguen sin
+  escribir**: SMTP no dice si un mensaje llegó a su destinatario, solo que el servidor lo aceptó, y poner
+  «entregado» ahí sería una afirmación que nadie ha comprobado. Quedan pendientes del webhook de
+  confirmación del proveedor o del enlace de seguimiento. Su `TODO(A#)` sigue escrito en `Data/Envio.cs`.
+- Mientras el envío está `Pendiente`, `pdf_copia` y `nombre_archivo` van **vacíos**: todavía no ha salido
+  nada. La copia es la del intento que salga, y el reintento **reutiliza esa copia** en vez de regenerarla,
+  porque es el archivo que ya se mandó y lo que queda como prueba.
+- `intentos` empieza en `0` en una fila encolada y sube en el trabajo, antes de llamar al servidor: si la
+  llamada se cae a mitad, el contador refleja lo que pasó de verdad.
+
+#### Ventanas conocidas
+
+- Si el proceso se cae **entre el commit y el encolado** quedan filas `Pendiente` que nadie manda. La
+  cola se crea después del commit a propósito (encolar dentro de la transacción haría que un trabajo
+  encontrara filas a medio escribir, y que un trabajo encolado en una transacción deshecha mandara
+  correo que ya no está en ninguna parte). El cierre es un trabajo de barrido que re-encole lo
+  `Pendiente` más viejo de una hora, con su `TODO(A#)`.
+- El resumen lee `ModeloPdfAsync` una vez por documento: es lo que garantiza que la vista previa y el
+  correo dicen lo mismo, y se paga en tiempo de la pantalla de confirmación.
+
+### 6.10 Recordatorios (F4-05)
+
+Los tres endpoints de los avisos y el de la pausa, con el permiso que corresponde:
+
+| Endpoint | Permiso | Qué hace |
+|---|---|---|
+| `GET /api/v1/recordatorios` | `mensajeria.masivo` | Avisos filtrables por fecha, cliente, unidad y estado, con el envío al que dio lugar |
+| `GET /api/v1/recordatorios/{id}` | `mensajeria.masivo` | Un aviso con su envío |
+| `POST /api/v1/recordatorios/{id}/enviar` | `mensajeria.masivo` + `Idempotency-Key` | Confirma el envío de un aviso del modo manual |
+| `PUT /api/v1/clientes/{id}/recordatorios-pausados` | `cliente.editar` | Pausa o levanta los avisos de ese cliente |
+
+#### Decisiones que sostienen la pantalla
+
+- **La lista y el envío usan `mensajeria.masivo`, no `factura.ver`.** Los avisos dicen qué debe cada
+  cliente y a cuál no se le avisó, y eso es información de cobranza (§2: gerente y administrador). La
+  pausa usa `cliente.editar` porque es un atributo del cliente, no una operación de mensajería.
+- **El `POST .../enviar` devuelve 200 con el aviso en `Omitido`** si mientras tanto se pagó o si tiene
+  la pausa puesta. No es un error: es el resultado que se pidió, que es no molestar a quien ya pagó. El
+  409 queda para lo que sí es un conflicto (mandar dos veces el mismo aviso, mandar uno sin envío).
+- **`recordatorio` no lleva importes.** La fila y su respuesta no muestran cifras: lo que se le dice al
+  cliente está escrito en el cuerpo del envío y lo que se le adjunta en su `pdf_copia`. Una tercera
+  copia de la misma cifra es una que se puede desincronizar y que nadie lee.
+- **El aviso lo compone `VariablesMensaje.DeRecordatorio`**: `{cliente}`, `{pendiente}`,
+  `{vencimiento}` y `{unidad}`, y **ni `{total}` ni `{numero}`**, porque §3.14 con pago parcial pide
+  mencionar solo lo que falta. `{unidad}` lleva delante «Unidad:» y va vacío si el cliente no tiene
+  contrato con unidad, para que la línea desaparezca en vez de decir «pendiente de 1.000,00 USD en».
+- **El pendiente se dice por moneda** y sin convertir: un cliente y una unidad pueden tener facturas
+  en USD y en DOP, y sumarlas sería inventar un tipo de cambio (§3.12).
+- **La regla de a quién se manda es una sola.** `DestinatarioEnvio` la comparten el envío masivo de
+  F4-03 y el recordatorio, y `PendienteDeFactura` la comparten la vista de cuentas y el barrido: dos
+  sitios donde escribir la misma decisión de negocio son dos sitios que un día dejan de decir lo mismo.
+
+#### La alerta de envíos fallidos que faltaba (F4-05)
+
+§3.16 enumera «envíos fallidos» entre las alertas del sistema y hasta F4-05 no había ninguna: un envío
+que no salía se quedaba en su fila con su `ultimo_error` y nadie se enteraba salvo quien abriera esa
+fila. Ahora `ServicioEnvios` levanta, por los dos caminos de envío, una alerta de tipo `envio` con clave
+**estable por envío** (`envio:{envioId}:fallido`) y **sin fecha**, porque el asunto es «este envío falló»
+y no «hoy falló un envío»: reintentar el mismo documento mañana suma repeticiones en la misma fila en vez
+de llenar la bandeja de copias. El motivo que se copia es el que ya vive en `envio.ultimo_error`, que
+por F3-01 es el mensaje de una excepción escrita para leerse o el tipo de cualquier otra: **una alerta se
+lee fuera del sistema** y no puede llevar ni una credencial ni una cadena de conexión. Al mandar el mismo
+envío otra vez con éxito la alerta **no se resuelve sola**: se resuelve quien mira la bandeja, que es el
+camino que ya usan las alertas de F2-10.
+
+#### Método de servicio para W5 (recordatorios)
+
+Un trabajo de Hangfire que mande el estado de cuenta de un cliente, que ya es un destinatario concreto,
+va por la misma fila que el envío masivo, no por una copia:
+
+```csharp
+// 1. La fila: se escribe una vez y el trabajo la manda; el reintento sube `intentos` en esa misma fila.
+Task<EstadoEnvio> ServicioEnvios.EnviarPendienteAsync(
+    Guid envioId,          // la fila de `envio` que hay que mandar
+    Guid usuario,          // a quién se le comprueba documento.enviar (no hay sesión HTTP)
+    string ip,
+    CancellationToken ct);
+
+// 2. La cola: el trabajo se llama a sí mismo con la fila, el usuario y la IP que quedan en la auditoría.
+void IColaEnvios.EncolarEnvio(Guid envioId, Guid usuario, string ip);
+```
+
+- **No compongas el documento en el trabajo.** `EnviarPendienteAsync` compone el PDF solo si la fila no
+  tiene copia, y manda la copia si la tiene. Para el estado de cuenta eso significa: componerlo **una
+  vez**, en el endpoint que deja la fila `Pendiente`, y dejar que el trabajo mande esa copia. Regenerarlo
+  en el trabajo daría bytes distintos de los que anunciarían los que ya salieron.
+- **Repite el antidiplicado de §6.8**: mira `envio.tipo_documento`, `documento_id`, `documento_anio` y
+  `destinatario_email` de las filas con `estado <> 'Fallido'`, y salta con `forzar`. El estado de cuenta
+  no tiene fila propia: es una composición de documentos, así que la referencia lógica del envío apunta
+  al cliente y al año.
+- **Agrupa y cuenta por `lote_id`, no por tu propia tabla.** Si los recordatorios necesitan un
+  «lote», la columna es la misma y el `GET /api/v1/envios/masivo/{loteId}` ya sabe contarlo.
 
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
@@ -579,7 +966,7 @@ fianzas**, con una insignia de tipo en cada fila, y los totales al pie **por mon
   - Contador de series: `UPDATE serie SET siguiente = siguiente + 1 … RETURNING` con `UNIQUE (serie_id, numero)`. Un número emitido no se reutiliza y una factura anulada no lo libera.
   - **Las tolerancias de diferencia de cambio nacen en `null`**, no en los valores `[Supuesto]` de la especificación (1,00 USD / 50,00 DOP): una cifra fiscal no debe ser un valor por defecto en el código.
   - Los tipos de ITBIS, las retenciones, las formas de pago, las cuentas y las subempresas **no vienen sembrados**: los crea el administrador. Las series sí se siembran (1, 2, 3, 4 y 9) porque §3.7 las numera.
-  - `subempresa` va sin RNC a propósito: el cifrado AES-256-GCM llega con F1-09.
+  - `subempresa` va **sin RNC sembrado**: el cifrado AES-256-GCM llega con F1-09 y la columna con F4-01; el administrador lo configura cuando lo tiene.
   - **Prefijos de serie pendientes**: la especificación da los números pero no los prefijos, así que los pone el admin. `TODO(A#)`.
 - **Implementado en F1-06** (MFA):
   - Activación en dos pasos: se devuelve la URI `otpauth://` y el MFA **solo** queda activo tras confirmar un código válido. El QR lo dibuja el frontend; el backend no genera imágenes.
@@ -606,9 +993,9 @@ posteriores, que todavía no están escritos:
 | Avisos del numerador de comprobante (§3.7) | F3-03 | Hangfire | diario 06:00 AST | clave estable por (serie, condición) |
 | Avisos de comprobante de retención (§3.9) | F3-04 | Hangfire | diario 06:00 AST | clave estable por factura |
 | Tipo de cambio | F3-01 | Hangfire | diario 05:00 AST ⚠️ | `UNIQUE (fecha, moneda)` |
-| Recordatorios | *previsto* | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha) |
+| Recordatorios (§3.14, D12) | F4-05 | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha) en `recordatorio` |
 | Alertas de vencimiento de factura | *previsto* (F3) | Hangfire | cada hora | dedupe por (tipo, entidad) |
-| Envíos | *previsto* (F4) | Hangfire (cola) | continuo | por `envio.id` |
+| Envíos (§3.14) | F4-03 | Hangfire (**cola**) | al confirmar un lote | por `envio.id`: la fila ya enviada no se vuelve a mandar |
 | Outbox | *previsto* (F3) | Hangfire | cada minuto | por evento |
 | Limpieza de sesiones, intentos, temporales | *previsto* | Hangfire | diario | — |
 | Comprobación de actualizaciones | *previsto* | Hangfire | diario | — |
@@ -649,8 +1036,52 @@ primeras facturas. Y lo mismo con los trabajos previstos de F3 y F4: las horas d
   manual. Al revés sí: una fila de la fuente se actualiza con el valor del día, así que correr el
   trabajo dos veces no crea una segunda fila y no lanza.
 
+### 8.0.2 Reglas del trabajo de envío (F4-03)
+- **No es un trabajo recurrente.** `ProgramacionJobs` solo programa lo que se repite por reloj y su propio
+  comentario dice que los envíos no se inventan ahí: un trabajo aparece porque alguien ha pedido mandar
+  algo, no porque sea la hora. Por eso se encola con `IBackgroundJobClient.Enqueue` desde
+  `ServicioEnviosMasivos.ConfirmarAsync` y **no está en `ProgramacionJobs.Todos`**.
+- **Un trabajo por envío, no uno por lote.** Un lote son cientos de correos y un trabajo que los recorre
+  se pierde entero si se corta a mitad; uno por documento se reintenta solo y el resto del lote sigue.
+  `TrabajoEnvio.EjecutarAsync(envioId, usuario, ip, ct)` es una clase fina que solo dispara a
+  `ServicioEnvios.EnviarPendienteAsync`, para que las pruebas la llamen sin planificador.
+- **`Fallido` no es una excepción.** El trabajo no lanza cuando el correo no sale: el fallo es un dato
+  del lote que se consulta con `GET /api/v1/envios/masivo/{loteId}` y se reintenta con una llamada
+  expresa. Si el trabajo fallara, Hangfire lo reintentaría por su cuenta, sin que nadie lo pidiera, que
+  es justo lo que §3.14 deja en la persona que mira el progreso.
+- **Idempotencia en la fila, no en el planificador**: una fila ya `Enviado` no se vuelve a mandar
+  aunque el trabajo se entregue dos veces.
+- **`IColaEnvios` detrás de una interfaz**, y resuelta por fábrica: `AddHangfire` solo se registra con el
+  servidor activo, así que una instancia sin planificador (la segunda, o las pruebas) recibe
+  `ColaEnviosSinServidor`, que **falla al encolar** en vez de dejar el lote en «pendientes» para
+  siempre. `IServicioCorreo` va detrás de una interfaz por el mismo motivo.
+
+### 8.0.3 Reglas del trabajo de recordatorios (F4-05)
+- **Una transacción por cliente y unidad**, y un fallo de una no tira las demás: veinte clientes a los
+  que avisar y uno sin casilla de correo no pueden convertir los otros diecinueve avisos en nada.
+- **La idempotencia se pregunta antes de escribir** y el único de `(cliente_id, unidad_id, fecha)` es la
+  red. Preguntar evita la transacción que el índice iba a rechazar; el índice cubre la carrera entre
+  dos ejecuciones.
+- **Tras una violación del único se vacía el `ChangeTracker`.** EF deja en `Added` la fila que no pudo
+  guardar, así que el siguiente `SaveChanges` del mismo barrido la vuelve a intentar y a fallar otra
+  vez: un cliente que ya tenía aviso de hoy se llevaría por delante a todos los que sí tocaban. El
+  `23505` se cuenta como omitido —«otra ejecución se adelantó»— y el trabajo sigue, igual que en F2.
+- **Auditoría sin usuario de sesión**: `UsuarioId = null` y `Origen = "job"`, escrita dentro de la
+  transacción antes del commit, igual que los trabajos de F2.
+- **`Fallido` y `Omitido` no son una excepción.** Un cliente que ya pagó o que tiene la pausa puesta
+  produce un aviso `Omitido` **con su motivo**: es un resultado, no un fallo, y en la pantalla de
+  revisión explica por qué a ese cliente no se le escribió hoy en vez de dejar un hueco sin explicación.
+- **El trabajo no lanza nunca.** Cada grupo va en su transacción y un fallo se cuenta y se registra; el
+  trabajo diario se reintenta solo en Hangfire, y una excepción suelta dejaría clientes a medias entre
+  dos avisos.
+- **La comprobación del saldo y de la pausa está en el envío, no solo en la preparación**, y es la misma
+  en el automático y en el `POST .../enviar` de la pantalla. Es la mitad del criterio de aceptación de
+  §3.14 («se detienen al pagar») y la otra mitad es que la pausa también frena el envío manual.
+- **La clase del trabajo es fina**: `TrabajoRecordatorios.EjecutarAsync` solo dispara a
+  `ServicioRecordatorios.EjecutarAsync`, para que las pruebas lo llamen sin planificador.
+
 ### 8.1 Estado (F1-12)
-Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; **avisos del numerador de comprobante** (06:00), de F3-03; **avisos de comprobante de retención** (06:00), de F3-04; **periodos sin facturar** (06:00), de F3-05; y **fianzas sin devolver** (06:00), de F3-09. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3-10), recordatorios, envíos, outbox, limpieza y comprobación de actualizaciones.
+Implementados y programados, con la tabla de arriba como fuente de verdad: **backup cifrado** (02:00), **verificación de integridad de auditoría** (03:00) y **vigilancia de la copia** (04:00), de F1-12; **aviso de reserva a 7 días** (05:00), de F2-03; **renovaciones e incrementos** (06:00), de F2-06; **fin de contrato por fecha efectiva** (07:00), de F2-09; **avisos de operación** (08:00), de F2-10; **tipo de cambio** (05:00), de F3-01; **avisos del numerador de comprobante** (06:00), de F3-03; **avisos de comprobante de retención** (06:00), de F3-04; **periodos sin facturar** (06:00), de F3-05; **fianzas sin devolver** (06:00), de F3-09; y **recordatorios de pago** (09:00), de F4-05. Sigue esperando el dominio que todavía no existe: alertas de vencimiento de factura (F3-10), outbox, limpieza y comprobación de actualizaciones. Los **envíos de §3.14 ya existen desde F4-03**, pero no como job programado: son una **cola** que se llena al confirmar un lote, y por eso no aparecen en `ProgramacionJobs.Todos` ni tienen hora (ver §8.0.2).
 
 - **Avisos del numerador de comprobante (`TrabajoComprobantes`, 06:00 AST):** recorre los numeradores y
   levanta tres alertas de tipo `comprobante`, con clave estable por serie y condición —
@@ -722,6 +1153,37 @@ Con el único de `clave`, una alerta cerrada bloqueaba su propia clave para siem
   `conversion_rates` en vez de `rates` (el cliente entiende las dos). La columna `valor` es
   `numeric(18,6)` y se redondea con `Redondeo.TipoCambio`, que es la única razón de que el tipo de
   cambio no pase por `numeric(18,2)` de la convención global.
+- **Recordatorios de pago (`TrabajoRecordatorios`, 09:00 AST, F4-05):** recorre las facturas
+  `Emitida` **vencidas y con saldo pendiente**, las agrupa por **cliente y unidad** —§3.14 quiere «un
+  mensaje por cliente y unidad», no uno por factura— y solo avisa a los grupos cuyo atraso da la
+  vuelta exacta de los plazos: el primero a los `dias_primer_recordatorio` (5) del vencimiento y a
+  partir de ahí cada `dias_entre_recordatorios` (15), o sea a los 5, 20 y 35 días. **Ni al 6 ni al 21**:
+  un aviso diario en vez de uno cada quince no es «recordar más», es el correo que enseña a ignorar la
+  bandeja. Los dos plazos **viven en `ajuste_general`** (§6 de AGENTS.md) y los siembra la migración; con
+  ellos a `null` el trabajo **no avisa a nadie** y deja una alerta de tipo `recordatorio` con clave
+  `recordatorio:plazos-sin-configurar` que dice qué escribir, porque un recordatorio con plazos sin
+  decidir es ruido para el cliente (criterio de BUG-007). La alerta se **resuelve sola** en cuanto hay
+  plazos.
+  Va **la última del día a propósito**: un aviso que sale cuando la casa ya cerró se lee por la mañana
+  con la cabeza del día entero, que es cuando se paga; y es el único trabajo que compone un PDF por
+  cliente, así que quiere ir detrás de los que no tocan la red.
+  **Salta a los clientes con `recordatorios_pausados`** y, cuando aun así toca avisar, **el saldo se
+  vuelve a mirar en el momento de mandar**, no solo al preparar: una factura vencida que alguien paga
+  entre el resumen y el clic no puede recibir un recordatorio. Si ya está pagada, el aviso queda
+  `Omitido` con su motivo, que es un resultado y no un fallo. **La pausa también frena el envío manual**
+  de uno en uno, porque quien la activa está diciendo que a ese cliente no se le avisa y un clic en
+  «enviar» no es una excepción a eso.
+  **El PDF del estado de cuenta se compone una vez**, en el camino que deja la fila `Pendiente`, y se
+  guarda en `envio.pdf_copia`: mandar es mandar esa copia. Si se compusiera al enviar, dos generaciones
+  del mismo documento —la que se revisó y la que sale— podrían diferir (mismo criterio que el envío
+  masivo de F4-03).
+  El modo decide: `Apagado` no hace nada, `Manual` deja las filas `Pendiente` sin enviar nada, y
+  `Automatico` prepara y manda. El aviso automático lo firma **el último usuario que puso el modo**
+  (`ajuste_general.updated_by`), porque es al que se le comprueba `informe.ver` para el PDF y
+  `documento.enviar` para el envío (docs/DOC_TECNICA.md §6.7.1); si no hay ninguno, no se manda nada y
+  se deja alerta.
+  **Una transacción por cliente y unidad** y **un fallo de una no tira las demás**, como en las
+  renovaciones y los fines de contrato. Ver §8.0.
 
 - **Dónde:** `AtlasRent.Api/Jobs/`. El servidor de Hangfire arranca con la API; el panel **no** se monta (`SEGURIDAD.md` A.1).
 - **Cadencia:** `ProgramacionJobs` convierte la hora de `TZ_NEGOCIO` al UTC que le corresponde, porque Hangfire 1.8 (edición gratuita) planifica en UTC y no entiende el prefijo `CRON_TZ=` de los crons con zona. Las 02:00 AST son las 06:00 UTC. Si algún día la zona pasa a tener horario de verano, `CronDiarioEnUtc` falla al arrancar en vez de desplazar la copia una hora seis meses al año.

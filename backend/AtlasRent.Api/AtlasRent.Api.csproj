@@ -22,8 +22,13 @@
     <!-- F1-12: fija la versión parcheada de Newtonsoft.Json para todo el grafo (ver
          Directory.Packages.props): Hangfire arrastra la 11.0.1, con CVE-2024-21907. -->
     <PackageReference Include="Newtonsoft.Json" />
+    <!-- F4-02: fija la versión parcheada de Pkcs para todo el grafo: MailKit arrastra la 10.0.0,
+         con dos avisos de vulnerabilidad conocidos (ver Directory.Packages.props). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <!-- F2-02: PDF de cotizaciones por código (docs/DESIGN.md §7) -->
     <PackageReference Include="QuestPDF" />
+    <!-- F4-02: envío de correo por SMTP (docs/ESPECIFICACION.md §3.14) -->
+    <PackageReference Include="MailKit" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

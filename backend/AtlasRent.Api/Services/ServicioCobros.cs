@@ -68,6 +68,7 @@ public sealed class ServicioCobros(
     ServicioIdempotencia idempotencia,
     ServicioTiposCambio tiposCambio,
     ServicioConfiguracion configuracion,
+    ServicioCifrado cifrado,
     IPolicyService politica,
     TimeProvider reloj)
 {
@@ -139,6 +140,57 @@ public sealed class ServicioCobros(
         var cobro = await CargarAsync(id, ct);
 
         return ARespuesta(cobro);
+    }
+
+    // ---------------------------------------------------------------- recibo en PDF (F4-01)
+
+    /// <summary>
+    /// Recibo del cobro con el diseño de <c>docs/DESIGN.md §7</c> (§3.10.1): cabecera con la moneda y el
+    /// importe recibidos, cliente, datos del cobro, tabla de asignaciones y pie con el número de página.
+    /// <para>
+    /// <b>Un cobro anulado también se descarga</b>, con la marca de agua «ANULADO» y el motivo al pie:
+    /// es el papel que necesitan el expediente del cliente y el contador. Lo que no se puede es anularlo
+    /// dos veces, y eso lo sigue llevando <see cref="AnularAsync"/>.
+    /// </para>
+    /// <para>
+    /// Es el método que usará F4-05 al enviar el recibo por email: devuelve los bytes y no escribe nada
+    /// en disco.
+    /// </para>
+    /// </summary>
+    public async Task<byte[]> PdfAsync(Guid id, CancellationToken ct) =>
+        DocumentoReciboPdf.Generar(await ModeloPdfAsync(id, ct));
+
+    /// <summary>
+    /// Lo que el recibo va a decir, separado del render (F4-01).
+    /// <para>
+    /// El texto de un PDF de QuestPDF no se puede leer del archivo —incrusta las fuentes con subconjunto y
+    /// escribe los caracteres como índices de glifo—, así que sin este paso intermedio las pruebas solo
+    /// podrían comprobar que el archivo existe. Es <c>internal</c> porque por fuera de la API solo sale el
+    /// PDF.
+    /// </para>
+    /// </summary>
+    internal async Task<DocumentoReciboPdfModelo> ModeloPdfAsync(Guid id, CancellationToken ct)
+    {
+        var cobro = await CargarParaDocumentoAsync(id, ct);
+
+        var facturadora = cobro.Contrato?.Facturadora;
+
+        // La carga es sin seguimiento, así que sustituir aquí el RNC cifrado por el descifrado no lo
+        // guarda nadie: es lo que hace que el compositor reciba el valor y no el cifrado, igual que el
+        // documento del cliente (D16). Es el mismo cambio en memoria que hace `ServicioFacturas`.
+        if (facturadora is not null && facturadora.Rnc is { } rncCifrado)
+        {
+            facturadora.Rnc = cifrado.Descifrar(rncCifrado);
+        }
+
+        return DocumentoReciboPdf.Modelo(
+            cobro,
+            // Un recibo no pertenece a ninguna serie —las plantillas por serie son de los documentos que
+            // tienen serie (§3.7)—, así que usa la de por defecto del catálogo.
+            RegistroPlantillasPdf.Resolver(nombre: null),
+            facturadora,
+            // El documento del cliente va descifrado solo para el papel (D16); en la fila sigue cifrado.
+            cobro.Cliente?.Documento is { } documentoCifrado ? cifrado.Descifrar(documentoCifrado) : null);
     }
 
     /// <summary>
@@ -1491,6 +1543,35 @@ public sealed class ServicioCobros(
             .Include(c => c.Asignaciones).ThenInclude(a => a.Fianza)
             .FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new KeyNotFoundException($"El cobro '{id:D}' no existe.");
+    }
+
+    /// <summary>
+    /// Carga para el recibo (F4-01). Va aparte de <see cref="CargarAsync"/> por la misma razón que en
+    /// <c>ServicioFacturas</c>: el contrato con su facturadora y la serie de cada factura solo las
+    /// necesita el documento, y añadirlas a la carga de lectura metería un <c>JOIN</c> extra en todos los
+    /// caminos de escritura.
+    /// </summary>
+    private async Task<Cobro> CargarParaDocumentoAsync(Guid id, CancellationToken ct)
+    {
+        var cobro = await contexto.Cobro
+            .AsNoTracking()
+            .Include(c => c.Cliente)
+            .Include(c => c.Contrato)
+            .ThenInclude(c => c!.Facturadora)
+            .Include(c => c.Contrato)
+            .ThenInclude(c => c!.Unidad)
+            .Include(c => c.FormaPago)
+            .Include(c => c.CuentaReceptora)
+            .Include(c => c.Asignaciones)
+            .ThenInclude(a => a.Factura)
+            .ThenInclude(f => f!.Serie)
+            .Include(c => c.Asignaciones)
+            .ThenInclude(a => a.Fianza)
+            .SingleOrDefaultAsync(c => c.Id == id, ct);
+
+        return cobro is null
+            ? throw new KeyNotFoundException($"El cobro '{id:D}' no existe.")
+            : cobro;
     }
 
     private async Task<FormaPago> CargarFormaPagoAsync(Guid id, CancellationToken ct)
