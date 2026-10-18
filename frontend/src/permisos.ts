@@ -20,6 +20,9 @@ export const ACCIONES = {
   mensajeriaMasivo: 'mensajeria.masivo',
   plantillaEditar: 'plantilla.editar',
   informeVer: 'informe.ver',
+  // Herramienta de consulta (F6-03). No está en la matriz de la especificación §2 como el resto, pero
+  // pasa por `[Accion]` igual que todas: sin ella el endpoint queda denegado.
+  iaConsultar: 'ia.consultar',
   auditoriaVer: 'auditoria.ver',
   ipDesbloquear: 'ip.desbloquear',
   cuentaDesbloquear: 'cuenta.desbloquear',
