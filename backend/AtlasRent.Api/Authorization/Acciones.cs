@@ -126,10 +126,8 @@ public static class Acciones
     public const string IaConsultar = "ia.consultar";
 
     /// <summary>
-    /// F6-01: proponer una acción para que la apruebe alguien. Ningún endpoint la usa todavía.
-    /// <para>
-    /// TODO(F6-03): la usan las propuestas del asistente cuando ese trabajo construya el endpoint.
-    /// </para>
+    /// F6-03: proponer una acción para que la apruebe alguien. La usan <c>POST /api/v1/ia/propuesta</c>
+    /// y <c>POST /api/v1/agente/propuesta</c>; aprobar y rechazar son de otra acción, <c>mensajeria.masivo</c>.
     /// </summary>
     public const string IaProponer = "ia.proponer";
 
