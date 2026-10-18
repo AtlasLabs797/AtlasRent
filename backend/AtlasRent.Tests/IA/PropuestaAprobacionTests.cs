@@ -267,6 +267,88 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
         (await bandeja.Content.ReadAsStringAsync(ct)).Should().Contain(nombre);
     }
 
+    /// <summary>
+    /// La justificación es texto libre y la escribe quien propone. Si ese texto va en claro al
+    /// <c>payload_json</c> y al <c>comentario</c> que ve el aprobador, el nombre real se queda
+    /// guardado en la fila y contradice lo que el resto del bloque promete. Pasa por el mismo
+    /// <see cref="MapaSeudonimos"/> que el resto del texto; el aprobador no pierde nada porque el
+    /// nombre real lo lee de la tabla <c>cliente</c> al armar la bandeja.
+    /// </summary>
+    [Fact]
+    public async Task LaJustificacionSeGuardaSeudonimizadaYNoEnClaro()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, escenario, _) = await EscenarioAsync(ct);
+        var nombre = await NombreDelClienteAsync(escenario.ClienteId, ct);
+
+        var respuesta = await admin.PostAsync(
+            "/api/v1/ia/propuesta",
+            new
+            {
+                clienteId = escenario.ClienteId,
+                tipo = ServicioPropuestasAgente.TipoRecordatorioSaldo,
+                justificacion = $"{nombre} lleva dos vencimientos sin pagar.",
+            },
+            ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+        var id = (await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
+
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+        var fila = await contexto.SolicitudAprobacion.AsNoTracking().SingleAsync(s => s.Id == id, ct);
+
+        fila.PayloadJson.Should().NotContain(nombre, because: "el payload guarda seudónimos, no nombres");
+        fila.PayloadJson.Should().Contain("[[cliente_1]]");
+        fila.Comentario.Should().NotBeNull();
+        fila.Comentario.Should().NotContain(nombre, because: "el comentario es lo que lee el aprobador");
+        fila.Comentario.Should().Contain("[[cliente_1]]");
+    }
+
+    /// <summary>
+    /// El día también deja vieja la propuesta: el texto del aviso dice cuántos días lleva de atraso,
+    /// así que lo que se aprobaría mañana ya no es lo que se propuso hoy. Lo que se comprueba aquí es
+    /// además el <b>motivo</b>: tiene que decir que el aviso cambió, sin inventar por qué —el saldo
+    /// puede no haber cambiado ni un céntimo y el motivo lo daba por cierto—.
+    /// </summary>
+    [Fact]
+    public async Task UnaPropuestaDelDiaAnteriorCaducaConUnMotivoQueNoCulpaAlSaldo()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // Fábrica propia: el salto de día solo puede vivir en una instancia, porque el JWT de sesión
+        // se valida contra el reloj real y uno emitido «mañana» no vale (AUT-002). La aprobación se
+        // hace entonces con un token de agente, que no depende del reloj.
+        using var fabrica = new ApiTestFactoryCorreo(bd);
+        var (admin, escenario, _) = await EscenarioAsync(ct, fabrica);
+
+        var propuesta = await ProponerAsync(admin, escenario.ClienteId, ct);
+
+        using var aprobador = ClienteConToken(fabrica, await TokenEnBaseAsync([Acciones.MensajeriaMasivo], ct));
+
+        // Solo pasa el día: ni un cobro, ni una factura nueva, nada que toque el saldo.
+        fabrica.Reloj.Avanzar(TimeSpan.FromDays(1));
+
+        var respuesta = await aprobador.PostAsJsonAsync(
+            $"/api/v1/ia/propuestas/{propuesta.Id:D}/aprobacion", new { }, ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        cuerpo.GetProperty("resultado").GetString().Should().Be(nameof(ResultadoSolicitud.Caducada));
+
+        var motivo = cuerpo.GetProperty("motivoCaducidad").GetString();
+        motivo.Should().NotBeNullOrWhiteSpace();
+        motivo!.Should().NotContain("saldo", because: "el saldo puede no haber cambiado: el motivo no puede afirmar lo que no sabe");
+        motivo.Should().NotContain("cobró");
+        motivo.Should().NotContain("pago");
+
+        (await AyudaRecordatorios.CorreosDe(bd, fabrica, escenario.ClienteId, ct))
+            .Should().BeEmpty("una propuesta vieja no manda correos");
+        (await AyudaRecordatorios.AvisosAsync(bd, escenario.ClienteId, ct))
+            .Single()
+            .Estado.Should().Be(EstadoRecordatorio.Pendiente, "el aviso se queda como estaba");
+    }
+
     // ---------------------------------------------------------------- ayuda
 
     /// <summary>
@@ -274,15 +356,17 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
     /// aviso queda <c>Pendiente</c> y sin mandar, que es lo único que se puede proponer.
     /// </summary>
     private async Task<(SesionCliente Admin, AyudaCuentas.Escenario Escenario, Guid FacturaId)> EscenarioAsync(
-        CancellationToken ct)
+        CancellationToken ct,
+        ApiTestFactoryCorreo? instancia = null)
     {
-        var (admin, _) = await AyudaRecordatorios.SesionAsync(bd, api, Roles.Admin, ct);
+        var fabrica = instancia ?? api;
+        var (admin, _) = await AyudaRecordatorios.SesionAsync(bd, fabrica, Roles.Admin, ct);
         await AyudaRecordatorios.PonerModoAsync(admin, ModoRecordatorios.Manual, ct: ct);
 
         var escenario = await AyudaCuentas.EscenarioAsync(admin, bd, ct);
         var facturaId = await AyudaCuentas.EmitidaAsync(admin, escenario, escenario.Hoy.AddDays(-5), 300m, ct);
 
-        await AyudaRecordatorios.EjecutarTrabajoAsync(api, ct);
+        await AyudaRecordatorios.EjecutarTrabajoAsync(fabrica, ct);
 
         (await AyudaRecordatorios.AvisosAsync(bd, escenario.ClienteId, ct))
             .Should().ContainSingle("el trabajo deja un aviso por cliente y unidad");
@@ -290,7 +374,11 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
         return (admin, escenario, facturaId);
     }
 
-    private async Task<Propuesta> ProponerAsync(SesionCliente sesion, Guid clienteId, CancellationToken ct)
+    private async Task<Propuesta> ProponerAsync(
+        SesionCliente sesion,
+        Guid clienteId,
+        CancellationToken ct,
+        string? justificacion = null)
     {
         var respuesta = await sesion.PostAsync(
             "/api/v1/ia/propuesta",
@@ -298,7 +386,7 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
             {
                 clienteId,
                 tipo = ServicioPropuestasAgente.TipoRecordatorioSaldo,
-                justificacion = "Tiene saldo vencido.",
+                justificacion = justificacion ?? "Tiene saldo vencido.",
             },
             ct);
 
@@ -365,9 +453,11 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
         return secreto;
     }
 
-    private HttpClient ClienteConToken(string token)
+    private HttpClient ClienteConToken(string token) => ClienteConToken(api, token);
+
+    private static HttpClient ClienteConToken(ApiTestFactory instancia, string token)
     {
-        var cliente = api.CrearClienteSinCookies();
+        var cliente = instancia.CrearClienteSinCookies();
         cliente.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return cliente;
     }

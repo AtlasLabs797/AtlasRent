@@ -83,6 +83,17 @@ public sealed class MatrizPermisosTests(ContenedorBdFixture bd)
     [InlineData(Roles.Empleado, Acciones.AuditoriaVer, false)]
     [InlineData(Roles.Empleado, Acciones.IpDesbloquear, false)]
     [InlineData(Roles.Empleado, Acciones.CuentaDesbloquear, false)]
+    // F6: las tres acciones que la migración de tokens de agente siembra por encima de la matriz de
+    // la especificación. Van aquí para que el techo de C# quede atado a lo que hay sembrado.
+    [InlineData(Roles.Admin, Acciones.AgenteToken, true)]
+    [InlineData(Roles.Gerente, Acciones.AgenteToken, false)]
+    [InlineData(Roles.Empleado, Acciones.AgenteToken, false)]
+    [InlineData(Roles.Admin, Acciones.IaConsultar, true)]
+    [InlineData(Roles.Gerente, Acciones.IaConsultar, true)]
+    [InlineData(Roles.Empleado, Acciones.IaConsultar, false)]
+    [InlineData(Roles.Admin, Acciones.IaProponer, true)]
+    [InlineData(Roles.Gerente, Acciones.IaProponer, true)]
+    [InlineData(Roles.Empleado, Acciones.IaProponer, false)]
     public async Task LaMatrizSembradaCoincideConLaEspecificacion(string rol, string accion, bool enElTecho)
     {
         var ct = TestContext.Current.CancellationToken;

@@ -10,6 +10,7 @@ using AtlasRent.Tests.Facturas;
 using AtlasRent.Tests.Infra;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
 using Xunit;
 
@@ -84,7 +85,7 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
             default:
                 var baseEsperada = nombre switch
                 {
-                    "openai" => "https://api.openai.io/v1/chat/completions",
+                    "openai" => "https://api.openai.com/v1/chat/completions",
                     "openrouter" => "https://openrouter.ai/api/v1/chat/completions",
                     _ => "https://api.minimax.io/v1/chat/completions",
                 };
@@ -102,6 +103,33 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
 
                 break;
         }
+    }
+
+    /// <summary>
+    /// La URL por defecto de cada proveedor es un <b>contrato escrito</b>, no una costumbre: el host
+    /// es el que documenta el proveedor y el resto de la ruta la pone la clase que llama.
+    /// <para>
+    /// <b>Aquí no se resuelve DNS a propósito.</b> La suite corre sin red y un nombre que se resuelve
+    /// un día y no al siguiente no es una prueba de nada: sería un test que falla por el entorno.
+    /// Lo que se fija es el contrato —host y URL completa—, así que si alguien escribe mal el host
+    /// (como con <c>api.openai.io</c>, que no existe) la prueba cae, y si el proveedor está caído o
+    /// sin DNS esta sigue en verde, que es lo que corresponde: eso no lo arregla el código.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(ProveedorIa.Anthropic, "api.anthropic.com", "https://api.anthropic.com")]
+    [InlineData(ProveedorIa.Openai, "api.openai.com", "https://api.openai.com/v1")]
+    [InlineData(ProveedorIa.Openrouter, "openrouter.ai", "https://openrouter.ai/api/v1")]
+    [InlineData(ProveedorIa.Minimax, "api.minimax.io", "https://api.minimax.io/v1")]
+    public void LaUrlPorDefectoDeCadaProveedorApuntaASuHost(ProveedorIa proveedor, string host, string url)
+    {
+        var opciones = OpcionesIa.Desde(new ConfigurationBuilder().Build());
+
+        var baseUrl = opciones.Del(proveedor).BaseUrl;
+
+        baseUrl.Should().Be(url);
+        Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri).Should().BeTrue();
+        uri!.Host.Should().Be(host);
     }
 
     // ------------------------------------------------------------------ 2. Privacidad
@@ -258,6 +286,36 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
             bd, "resultado = 'denegado' AND origen = 'agente'", ct);
 
         denegaciones.Should().Contain(fila => fila.Accion == $"permiso.denegado.{Acciones.InformeVer}");
+    }
+
+    /// <summary>
+    /// <b>El permiso va antes que el proveedor.</b> Con <c>ia.consultar</c> pero sin la acción del
+    /// alcance, la respuesta es <b>403</b> aunque el proveedor no tenga clave: si se mirara antes el
+    /// proveedor, quien no puede leer los datos se llevaría un 503 que le dice cuál está elegido y si
+    /// está configurado, que es información de la instalación que no le corresponde.
+    /// </summary>
+    [Fact]
+    public async Task SinPermisoDeAlcanceDevuelve403AunqueElProveedorNoTengaClave()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fabrica = new ApiTestFactoryIaSinClave(bd);
+
+        var gerente = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Gerente, ct: ct);
+        var (secreto, _) = await AyudaIa.TokenEnBaseAsync(bd, gerente.Id, [Acciones.IaConsultar], ct);
+
+        using var cliente = ClienteConToken(fabrica, secreto);
+
+        var respuesta = await cliente.PostAsJsonAsync(
+            AyudaIa.RutaAgente,
+            new { pregunta = "¿Cuánto se facturó?", alcance = "informes" },
+            ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var cuerpo = await respuesta.Content.ReadAsStringAsync(ct);
+        cuerpo.Should().Contain(Problemas.PermisoDenegado);
+        cuerpo.Should().NotContain("clave configurada",
+            because: "no se puede filtrar la configuración del proveedor a quien no tiene permiso");
     }
 
     /// <summary>Una sesión sin <c>ia.consultar</c> (el empleado) recibe 403 en la ruta de navegador.</summary>
