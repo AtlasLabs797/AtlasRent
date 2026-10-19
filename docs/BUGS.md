@@ -22,6 +22,19 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-018 · La CI terminaba en rojo sin ejecutar ningún job, por un `hashFiles` en un `if` de nivel de job
+- Fecha detectado: 15/10/2026 · Fecha corregido: 19/10/2026 (orquestador)
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: CI (`.github/workflows/ci.yml`)
+- Detectado por: agente, revisando el estado del repositorio en F0-05. **El defecto estaba documentado en `tarea/F0-preparacion` desde el 15/10/2026 y nunca se integró; se descubre al unificar esa rama.**
+- Síntoma: los disparos de `CI` terminaban en `failure` con `total_count: 0` jobs y `created_at` = `updated_at`. Ni siquiera se creaba el job `secretos`, que no usa ninguna expresión.
+- Cómo reproducir: hacer push de cualquier commit a una rama con el workflow anterior y abrir la pestaña Actions.
+- Causa raíz: el `if` de nivel de job con `hashFiles(...)` en los jobs `backend` y `frontend`. En `jobs.<job_id>.if` GitHub solo admite las funciones `always`, `cancelled`, `success` y `failure`; `hashFiles` está permitido en `steps.if` pero **no** en el `if` de nivel de job ([contexts](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts)). Cuando la expresión no se puede evaluar, GitHub invalida el workflow entero. Se descartó que fuera un problema de codificación (sin BOM ni tabuladores), de YAML (`yaml.safe_load` lo parsea sin errores) o de estructura: validado contra el esquema oficial, el archivo antiguo da 0 errores igual que el nuevo, así que el rechazo no era de esquema sino de evaluación en ejecución. Tampoco es un problema de permisos ni de saldo de Actions.
+- Solución: se eliminó el `if` de nivel de job. Los tres jobs se crean siempre; cada uno empieza con un paso de detección que escribe `existe=true|false` en `$GITHUB_OUTPUT`, y los pasos de build y test se condicionan con `if: steps.detecta.outputs.existe == 'true'`. El detector de la solución busca el `.sln`/`.slnx` en todo el subárbol y no solo en la raíz, porque los proyectos van en `backend/`; el de `frontend` fija `working-directory: .` para que no herede el `frontend` del job.
+- Test que lo cubre: no hay suite todavía. Comprobación manual: que el disparo cree jobs. Verificado en local con tres pruebas: validación contra el esquema oficial `json.schemastore.org/github-workflow.json` (0 errores en el archivo nuevo), simulación de los dos scripts bash en seis escenarios (repo vacío, `.sln` en la raíz, `.sln` anidada en `backend/`, `frontend` presente desde la raíz, `cwd=frontend` con y sin `package.json`), y contraste con la tabla de contextos de GitHub.
+- Commit/PR: `tarea/F0-preparacion` (documentado) y `V-01.00` (integrado).
+- Datos afectados: ninguno.
+- **Riesgo que queda (dicho, no arreglado):** al integrar este arreglo se han conservado a mano las dos comprobaciones que F6-ia había añadido después al `ci.yml` y que la versión de F0 no tenía —el `setup-node` 24.15.0 en el job `backend` y la verificación de que el paquete publicado lleva `wwwroot/index.html`. Un merge directo de `tarea/F0-preparacion` habría revertido las dos. Si vuelve a tocarse este fichero, comprobar las tres cosas juntas: paso `detecta`, Node 24.15.0 en `backend`, y `test -f /tmp/paquete/wwwroot/index.html`.
+
 ### BUG-017 · El dashboard ignoraba el filtro de dueña en silencio, por un `propietarioId` mal escrito
 - Fecha detectado: 18/10/2026 · Fecha corregido: 18/10/2026 (orquestador)
 - Gravedad: **Media** · Estado: CORREGIDO · Módulo: F5-01 · informes / dashboard

@@ -1,36 +1,55 @@
 name: CI
-# CI de Atlas Rent. Los jobs backend y frontend se activan solos cuando existen la solución y frontend/package.json (F1-01 / F1-13).
+# CI de Atlas Rent. Los jobs backend y frontend se detectan solos cuando existen la solución y
+# frontend/package.json.
+# La detección se hace con un paso, no con un `if` de nivel de job: en `jobs.<job_id>.if` GitHub solo
+# admite `always`, `cancelled`, `success` y `failure`, así que `hashFiles` ahí invalida el workflow
+# entero y la CI termina en rojo sin crear ni un job (BUG-018). En `steps.if` sí se admite.
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, V-01.00]
 permissions:
   contents: read
 jobs:
   secretos:
+    name: Secretos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   backend:
+    name: Backend
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('**/*.sln', '**/*.slnx') != '' }}   # se activa en F1-01
     steps:
       - uses: actions/checkout@v4
+      # Los proyectos van en backend/, así que el detector busca en todo el subárbol y no en la raíz.
+      - name: Detectar solución
+        id: detecta
+        shell: bash
+        run: |
+          sol=$(find . -path ./.git -prune -o \( -name '*.sln' -o -name '*.slnx' \) -print -quit)
+          if [ -n "$sol" ]; then echo "existe=true" >> "$GITHUB_OUTPUT"; else echo "existe=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-dotnet@v4
+        if: steps.detecta.outputs.existe == 'true'
         with: { global-json-file: global.json }
       # También hace falta Node aquí, no solo en el job `frontend`: el paso de empaquetado de más
       # abajo compila el frontend. Sin esto se usaría el Node que traiga el runner, que no es el
       # 24.15.0 de DOC_TECNICA §2.
       - uses: actions/setup-node@v4
+        if: steps.detecta.outputs.existe == 'true'
         with: { node-version: '24.15.0', cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: dotnet restore --locked-mode
-      - run: dotnet build -c Release -warnaserror --no-restore
+        if: steps.detecta.outputs.existe == 'true'
+      - run: dotnet build -c Release --warnaserror --no-restore
+        if: steps.detecta.outputs.existe == 'true'
       - run: dotnet test -c Release --no-build   # integración con Testcontainers (Docker disponible en el runner)
+        if: steps.detecta.outputs.existe == 'true'
       - name: Paquetes vulnerables
+        if: steps.detecta.outputs.existe == 'true'
         run: |
           dotnet list package --vulnerable --include-transitive | tee vuln.txt
           ! grep -E "High|Critical" vuln.txt
@@ -38,22 +57,36 @@ jobs:
       # comprobación, el fallo que ya ocurrió —publicar sin frontend en wwwroot— volvería a
       # colarse sin que nadie se entere, y se instalaría un servicio sin interfaz.
       - name: El paquete incluye el frontend compilado
+        if: steps.detecta.outputs.existe == 'true'
         run: |
           npm ci --prefix frontend
           npm run build --prefix frontend
           dotnet publish backend/AtlasRent.Api -c Release -o /tmp/paquete
           test -f /tmp/paquete/wwwroot/index.html
   frontend:
+    name: Frontend
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('frontend/package.json') != '' }}
+    # working-directory: . en el paso detector para que no herede el `frontend` del job.
     defaults: { run: { working-directory: frontend } }
     steps:
       - uses: actions/checkout@v4
+      - name: Detectar frontend
+        id: detecta
+        shell: bash
+        working-directory: .
+        run: test -f frontend/package.json && echo "existe=true" >> "$GITHUB_OUTPUT" || echo "existe=false" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
+        if: steps.detecta.outputs.existe == 'true'
         with: { node-version: '24.15.0', cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm audit --audit-level=high
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm run lint
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm run typecheck
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm test
+        if: steps.detecta.outputs.existe == 'true'
       - run: npm run build
+        if: steps.detecta.outputs.existe == 'true'

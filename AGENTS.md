@@ -32,6 +32,7 @@ Cada documento tiene un papel. Referencia, no dupliques.
 | `docs/ESPECIFICACION.md` | QUÉ construir. Fuente de verdad funcional; manda sobre el resto | Solo con decisión del responsable |
 | `docs/PLAN.md` | Fases, tareas, criterios de aceptación, estado | Al empezar y cerrar cada tarea |
 | `docs/PROCEDIMIENTOS.md` | Pasos fijos: siguiente tarea, cerrar tarea, registrar bug, registrar seguridad, revisión de seguridad | Si cambia el flujo de trabajo |
+| `docs/F0/` | Procedimiento de cada preparativo humano de la Fase 0 (`00-estado.md` es el índice) | Al cerrar o cambiar el estado de una tarea de F0 |
 | `docs/DESIGN.md` | **Todo lo de diseño**: reglas de interfaz, tokens, temas claro/oscuro, componentes, contenido, PDF y dónde está el design system | Al añadir o cambiar un patrón visual |
 | `docs/DOC_TECNICA.md` | CÓMO está construido: versiones, estructura, BD, API, jobs | En cada cambio estructural, de BD, API, jobs o versiones |
 | `docs/MANUAL_USUARIO.md` | Uso para usuarios finales, lenguaje simple | Al terminar una función visible |

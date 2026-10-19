@@ -16,6 +16,16 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [19/10/2026 05:30] CONFIG · V-01.00 · Se unifican todas las ramas en V-01.00 (orquestador)
+
+- **Qué:** `V-01.00` se rehace desde `tarea/F6-ia` (no desde `main`), de modo que la rama contiene F0 y los bloques F1 a F6. Se incorpora lo que estaba huérfano: los 8 documentos de `docs/F0/` que vivían solo en `tarea/F0-preparacion` y no existían en ninguna otra rama, y el arreglo de la CI de BUG-001 de esa rama, registrado aquí como **BUG-018**. Se añade `V-01.00` a `docs/DOC_TECNICA.md` §2 y a la tabla de documentos de `AGENTS.md`. No se ha tocado ningún fichero de `backend/` ni de `frontend/`.
+- **Por qué:** petición del responsable —que todo el trabajo esté en una sola rama y baste un `git push`. `V-01.00` estaba congelada en un commit de documentación del 15/10/2026, **78 commits por detrás**, sin backend ni frontend ni una sola prueba; y `tarea/F0-preparacion` tenía 3 commits que no estaban ni en `main` ni en F6, entre ellos el arreglo de una CI que estaba rota.
+- **Verificado:** el YAML de `.github/workflows/ci.yml` parsea y valida contra el esquema oficial `json.schemastore.org/github-workflow.json` con **0 errores**; los dos detectores probados con bash real en **9 escenarios** (repo vacío, `.sln` en la raíz, `.sln` anidada en `backend/`, ambas, solo frontend; y `frontend/package.json` presente, ausente, solo en la raíz y vacío), todos con la salida esperada; suite completa de pruebas en verde. **NO verificado:** el comportamiento real de la CI en GitHub — eso solo se ve cuando se hace push.
+- **Migraciones:** no.
+- **Riesgo / pendiente:** (1) El arreglo de la CI se aplicó **a mano sobre el `ci.yml` de F6-ia**, no con un merge, porque el de F0 era anterior: no tenía el `setup-node` 24.15.0 en el job `backend` ni la comprobación de que el paquete publicado lleva `wwwroot/index.html`. Un merge directo de `tarea/F0-preparacion` habría revertido las dos. Si se vuelve a tocar ese fichero, comprobar las tres cosas: paso `detecta`, Node 24.15.0 en `backend`, y `test -f /tmp/paquete/wwwroot/index.html`. (2) El disparo de la CI se ha ampliado a `branches: [main, V-01.00]`: mientras `V-01.00` no sea la rama por defecto, sin eso no habría CI al hacer push a ella. (3) Sigue sin decidirse si `main` se queda como trunk y `V-01.00` como rama de release, o si `V-01.00` pasa a ser la rama por defecto. `main` está protegida (1 aprobación, sin force push), así que no se puede reescribir: si debe quedar al día, es por PR. (4) Las 19 ramas `tarea/*` y `F1-*` siguen existiendo en local; son históricas y se pueden borrar cuando se confirme que nada falta.
+- **Respaldo:** la `V-01.00` anterior está en el tag `respaldo/V-01.00-antes-de-unificar`.
+- **Commit/PR:** rama `V-01.00`.
+
 ## [19/10/2026 02:40] FIX · F6-ia · Dos trampas de la infraestructura de pruebas que el bloque F6 destapó (worker)
 
 - **Qué:** solo infraestructura de pruebas. `backend/AtlasRent.Tests/Infra/ApiTestFactory.cs` y `backend/AtlasRent.Tests/Seguridad/LoginFabricaNormalTests.cs` (nuevo, 1 prueba), más dos comprobaciones probabilistas de `backend/AtlasRent.Tests/Clientes/CifradoTests.cs`. **No se ha tocado `backend/AtlasRent.Api/` ni nada de `frontend/`.**

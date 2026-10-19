@@ -22,6 +22,7 @@ Salidas: SMTP (Google) · ExchangeRate-API · Google Drive (backups cifrados) ·
 ## 2. Versiones (consultadas en npm y NuGet el 14/10/2026)
 | Componente | Versión |
 |---|---|
+| **Atlas Rent (la aplicación)** | **V-01.00**. Es la rama de entrega: contiene F0 y los bloques F1 a F6. El equivalente SemVer que exigen `dotnet` (`Version`) y `npm` (`version`) es `1.0.0`; la decisión se cerró al unificar las ramas |
 | .NET SDK | 10.0.302 (`global.json`, `rollForward: latestFeature`) |
 | ASP.NET Core / EF Core | 10.0 / 10.0.13 |
 | Npgsql.EntityFrameworkCore.PostgreSQL | 10.0.3 |
