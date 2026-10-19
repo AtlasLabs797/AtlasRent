@@ -276,6 +276,17 @@ export const textos = {
       vacioCuerpo: 'Escribe una pregunta y elige el alcance para ver aquí lo que responde la IA.',
       fuente: 'Respuesta de {proveedor} · {modelo}',
     },
+    /**
+     * Aviso de privacidad de F6-04. Es permanente y visible antes de escribir nada, no un modal: lo
+     * que protege no es una acción puntual sino un envío que va a pasar cada vez que se consulte.
+     * Y termina en la instrucción que de verdad sirve, que es la que el sistema no puede imponer:
+     * la seudonimización cubre los datos que carga el servicio, no lo que escribe la persona.
+     */
+    privacidad: {
+      titulo: 'Tu pregunta sale de Atlas Rent',
+      cuerpo:
+        'La pregunta y los datos del alcance elegido se envían al proveedor de IA configurado en esta instalación, fuera de Atlas Rent. Los nombres, teléfonos y documentos se sustituyen por seudónimos antes de salir, pero lo que escribas tú va tal cual: no pongas datos personales en la pregunta.',
+    },
     /** Fallbacks: si la API manda su `detail` de `ProblemDetails`, ese texto es el que se enseña. */
     errores: {
       sesionCaducada: {

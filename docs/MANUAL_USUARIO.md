@@ -220,7 +220,31 @@ fianzas retenidas y diferencias de cambio. Cada bloque sale en **USD y DOP por s
 emitió, no el de hoy. Por eso un informe del mes pasado no cambia al verlo mañana, y por eso dos facturas
 iguales en meses distintos pueden consolidar distinto.
 
-## 15. Preguntas frecuentes
+## 15. Asistente (gerente y administrador) ✅
+> Construido en F6-03, con el aviso de privacidad de F6-04. **Pendiente:** nadie lo ha abierto
+> todavía en un navegador, así que su aspecto en tema claro y oscuro está sin revisar.
+
+Escribes una pregunta, eliges **sobre qué** quieres la respuesta (clientes, cuentas, facturas,
+contratos o informes) y la IA contesta sobre esos datos. No hay conversación guardada: cada
+pregunta va sola y no queda historial en el navegador.
+
+**Tus datos personales no salen**, pero tu pregunta sí:
+
+- Los **nombres, teléfonos y documentos** que carga el sistema se sustituyen por seudónimos
+  (`[[cliente_1]]`) antes de enviarse, y al volver la respuesta se vuelve a poner el nombre real.
+- **Lo que escribas en la pregunta va tal cual** al proveedor de IA. Si escribes «¿cuánto debe
+  Juan Pérez?», ese nombre viaja. La pantalla te avisa de esto antes de la primera consulta.
+- El aviso es permanente, no sale solo la primera vez.
+
+Lo que **no** hace, para que nadie espere otra cosa: **no toca datos**. Ni cobra, ni emite facturas,
+ni crea contratos. Solo lee y responde. Lo único que escribe es una **propuesta** (por ejemplo,
+enviar un recordatorio de saldo), y eso tiene que **aprobarlo una persona** con permiso; si entre
+que se propone y se aprueba el saldo del cliente cambia, la propuesta caduca y no se envía nada.
+
+Cada respuesta dice al pie qué proveedor y qué modelo han contestado. Si no hay IA configurada en la
+instalación, la pantalla lo dice y no hay que enviar nada para enterarse.
+
+## 16. Preguntas frecuentes
 - **Me equivoqué en una factura emitida.** El gerente la modifica (si no tiene comprobante) o la anula y emite otra.
 - **No veo un botón.** Tu usuario no tiene ese permiso.
 - **El cliente dice que pagó y no aparece.** Solo el gerente registra cobros; pásale el justificante.

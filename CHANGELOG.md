@@ -58,6 +58,18 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 - **Commit/PR:** `fix(tests): límites de login por fábrica y comprobaciones de cifrado deterministas` en `tarea/F6-ia`. **Sin push.**
 
 ---
+## [19/10/2026 05:15] FEAT · F6-04 · Aviso de privacidad en la pantalla del asistente (orquestador)
+- **Qué:** `frontend/src/paginas/Asistente.tsx` (un `Alert` de tono `info` antes del formulario), `frontend/src/i18n/textos.ts` (bloque `asistente.privacidad`) y `frontend/tests/asistente.test.ts` (una prueba). Documentación: `docs/MANUAL_USUARIO.md` §15, nueva, y `docs/PLAN.md` (F6-04 a HECHA).
+- **Por qué:** el supuesto I4 de la fase. La seudonimización cubre los datos que carga el servicio, **no lo que teclea la persona**: si se escribe «¿cuánto debe Juan Pérez?», ese nombre viaja al proveedor. No hay filtro que lo arregle —detectar nombres en texto libre es adivinar—, así que la mitigación es de transparencia: que esté escrito en la interfaz y no solo en `DOC_TECNICA.md`.
+- **Dos decisiones que el encargo dejaba abiertas, tomadas aquí y reversibles:**
+  - **Aviso permanente, no modal.** No protege una acción puntual sino todos los envíos, y un modal que sale una vez es justo lo que se cierra sin leer.
+  - **Sin casilla de aceptación.** Es una herramienta interna con `ia.consultar` restringida a gerente y administrador; una puerta de fricción permanente para una advertencia que ya está visible: solo molestaría. Si el responsable decide lo contrario, es marcar una casilla.
+  - **El proveedor no se nombra antes de la primera consulta**, solo cuando ya hay respuesta (la respuesta sí lo nombra, con el modelo). Ponerlo antes necesita un endpoint nuevo; se deja apuntado en `PLAN.md` I4 por si más adelante se quiere.
+- **Verificado:** `npm --prefix frontend run lint` y `typecheck` sin avisos; `npm --prefix frontend test` → **35/35** (la nueva prueba comprueba que el aviso no lleva marcadores sin sustituir, que dice lo de los seudónimos y que dice lo que el sistema no puede imponer); `npm --prefix frontend run build` en verde.
+- **NO verificado:** **nadie ha abierto la pantalla en un navegador.** El aspecto del aviso en tema claro y oscuro está sin revisar, igual que el resto de la página. Es la misma situación que F5-01 dejó anotada para Informes.
+- **Migraciones:** no.
+- **Riesgo / pendiente:** el texto es una decisión de producto. Está en un solo sitio (`textos.asistente.privacidad`), así que cambiarlo es una línea.
+
 ## [19/10/2026 01:40] FIX · F6-ia · Correcciones de la auditoría adversarial del bloque F6 (worker)
 - **Qué:** seis arreglos, todos del informe de auditoría, sin ampliar alcance.
   - **H-1 · URL por defecto de OpenAI.** `api.openai.io` **no existe en DNS** (`Resolve-DnsName` → NXDOMAIN; `api.openai.com` resuelve). Corregido en `Services/OpcionesIa.cs` (las dos apariciones: property initializer y `LeerProveedor`), `config/variables-entorno.example`, el comentario de `Services/ProveedorChatCompletions.cs` y la constante del test `IA/ConsultaIaTests.cs`.

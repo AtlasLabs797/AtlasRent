@@ -71,6 +71,16 @@ export default function Asistente() {
         ]}
       />
 
+      {/* F6-04: aviso permanente, antes del formulario y no solo después de la primera consulta.
+          Va aquí y no en un modal porque no protege una acción puntual sino todos los envíos, y un
+          modal que aparece una vez es justo lo que la gente cierra sin leer. El proveedor concreto
+          no se nombra hasta que hay respuesta —la respuesta sí lo dice, con modelo incluido—. */}
+      <Alert tone="info" title={t.privacidad.titulo}>
+        {t.privacidad.cuerpo}
+      </Alert>
+
+      <div style={{ height: 24 }} />
+
       <Card title={t.formulario.titulo}>
         <p style={{ margin: '0 0 var(--space-9)', color: 'var(--text-muted)' }}>{t.formulario.descripcion}</p>
 

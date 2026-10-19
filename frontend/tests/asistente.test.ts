@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { ACCIONES } from '../src/permisos.ts';
 import { entradasNavegables, menuPermitido, puedeVerRuta } from '../src/navegacion/menu.ts';
 import { ALCANCES, avisoDeError, cuerpoConsulta } from '../src/ia/consulta.ts';
+import { textos } from '../src/i18n/textos.ts';
 
 const modulos = (permisos: string[]): string[] =>
   menuPermitido(permisos).flatMap((grupo) => grupo.entradas.map((e) => String(e.clave)));
@@ -77,6 +78,18 @@ test('el texto que manda la API es el que se enseña, con el título de la panta
 
   assert.equal(aviso.mensaje, 'Se alcanzó el límite del día. Vuelve mañana.');
   assert.equal(aviso.titulo, 'Se ha alcanzado el límite de consultas');
+});
+
+test('el aviso de privacidad (F6-04) existe y no enseña un marcador sin sustituir', () => {
+  const aviso = textos.asistente.privacidad;
+
+  assert.ok(aviso.titulo.length > 0 && aviso.cuerpo.length > 0);
+  // El aviso va antes de la primera consulta, así que no puede depender de una respuesta: si
+  // alguien lo copia de `respuesta.fuente` sin quitar los marcadores, el usuario vería literalmente
+  // «{proveedor}» en pantalla. Aquí es donde se cae eso.
+  assert.doesNotMatch(aviso.cuerpo, /\{(proveedor|modelo)\}/, 'el aviso no lleva marcadores sin sustituir');
+  assert.match(aviso.cuerpo, /seud[oó]nim/i, 'el aviso dice que los datos personales van seudonimizados');
+  assert.match(aviso.cuerpo, /no pongas datos personales/i, 'el aviso dice lo que el sistema no puede imponer');
 });
 
 test('un fallo sin respuesta de la API es un aviso genérico reintentable', () => {
