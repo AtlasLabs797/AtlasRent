@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using AtlasRent.Api.Services;
 using AwesomeAssertions;
 using Microsoft.Extensions.Configuration;
@@ -41,8 +42,18 @@ public sealed class CifradoTests
         partes.Should().HaveCount(3);
         partes[0].Should().Be("v1", "la versión de clave viaja con el valor para poder rotarla");
         Convert.FromBase64String(partes[1]).Should().HaveCount(ServicioCifrado.BytesNonce);
-        cifrado.Should().NotContain("001");
-        cifrado.Should().NotContain("1234567");
+
+        // El documento no sale legible del texto cifrado. La comprobación va sobre los bytes
+        // descodificados, no buscando "001" dentro del texto: el nonce y el texto cifrado son
+        // aleatorios, y una secuencia de tres caracteres sale sola cada pocas mil ejecuciones
+        // (unas 78 posiciones sobre un alfabeto de 64, ~0,03%) sin que el cifrado tenga nada que
+        // ver. Lo que sí es cierto siempre es que el documento en claro no está entre los bytes
+        // que se guardan, y eso es lo que se comprueba.
+        var documento = Encoding.UTF8.GetBytes("001-1234567-8");
+        Contiene(Convert.FromBase64String(partes[1]), documento)
+            .Should().BeFalse("el nonce es aleatorio y no lleva el documento");
+        Contiene(Convert.FromBase64String(partes[2]), documento)
+            .Should().BeFalse("del texto cifrado no se puede leer el documento sin la clave");
     }
 
     [Fact]
@@ -109,11 +120,18 @@ public sealed class CifradoTests
     {
         // La huella es determinista (buscar) y no reversible (no leer). Se comprueba que el HMAC no
         // es el documento ni el texto cifrado, y que otra clave da otra huella.
+        // <para>
+        // «No es el documento» se compara con el documento, no buscando un trozo de él dentro de
+        // la huella: la huella son 64 hexes aleatorios y «001» sale dentro por casualidad con una
+        // probabilidad de unas 62/16³, algo más del 1,5% de las ejecuciones. Esa comprobación
+        // hacía fallar la prueba sola de vez en cuando sin que hubiera nada roto.
+        // </para>
         var indice = Indice();
 
         var huella = indice.Huella("001-1234567-8")!;
 
-        huella.Should().NotContain("001");
+        huella.Should().NotBe("00112345678", "la huella no es el documento: es el HMAC de su forma normalizada");
+        huella.Should().NotBe("001-1234567-8");
         huella.Should().NotBe(Servicio().Cifrar("001-1234567-8"));
 
         var otraClave = new IndiceCiegoDocumento(Opciones(Clave, CrearClave(32))).Huella("001-1234567-8");
@@ -182,4 +200,24 @@ public sealed class CifradoTests
 
     private static string Capturar(Action accion) =>
         (accion.Should().Throw<Exception>()).Which.Message;
+
+    /// <summary>
+    /// Si <paramref name="aguja"/> aparece como bloque dentro de <paramref name="paja"/>.
+    /// <para>
+    /// Va sobre los bytes descodificados y no sobre el texto: en el Base64 o el hexadecimal, una
+    /// secuencia corta sale por casualidad y la comprobación depende del azar.
+    /// </para>
+    /// </summary>
+    private static bool Contiene(byte[] paja, byte[] aguja)
+    {
+        for (var i = 0; i <= paja.Length - aguja.Length; i++)
+        {
+            if (paja.AsSpan(i, aguja.Length).SequenceEqual(aguja))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

@@ -100,8 +100,10 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
 
     /// <summary>
     /// Ajustes de configuración propios de una instancia. Las subclases los usan para probar caminos
-    /// que con los valores de producción no se pueden ver (un límite de 3 peticiones por minuto,
-    /// una IP en la lista blanca).
+    /// que con los valores de las pruebas no se pueden ver (un límite de 3 peticiones por minuto,
+    /// una IP en la lista blanca). Lo que no se hereeda de la base son los ajustes del diccionario de
+    /// <see cref="ConfigureWebHost"/>: esa llamada no encadena, así que una subclase que sobrescriba
+    /// este método y no llame a la base no los pisa, simplemente no los ve.
     /// </summary>
     protected virtual void ConfigurarAjustes(IDictionary<string, string?> ajustes)
     {
@@ -130,6 +132,24 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
             // conectan con el almacenamiento del planificador ni ejecutan la copia de seguridad
             // sobre la máquina de pruebas.
             [$"{OpcionesJobs.Seccion}:ServidorActivo"] = "false",
+            // Límites de peticiones que aquí no están probando nada, alzados para que no corten.
+            // <para>
+            // El limitador cuenta por IP y la IP es una por instancia de fábrica, o sea una por
+            // clase (ver <see cref="Resolutor"/>), y la ventana es de un minuto. Los valores de
+            // producción (20 logins/min) valen para una instalación, no para una clase de pruebas:
+            // las pruebas de una clase comparten instancia, IP y ventana, y con MFA cada sesión
+            // cuenta dos veces (entrar y verificar el segundo factor), así que una clase normal
+            // de diez sesiones se come el límite entero y revienta con un 429 que no dice nada de
+            // lo que la prueba mide. Pasó con <c>IA/PropuestaAprobacionTests</c>.
+            // </para>
+            // <para>
+            // El único límite estrecho es el de <see cref="ApiTestFactoryLimites"/>, que existe
+            // para que <c>Seguridad/LimitesPeticionesTests</c> pueda provocar el 429 sin miles de
+            // peticiones. La subclase lo vuelve a bajar sobrescribiendo una clave de este
+            // diccionario, así que subirlo aquí no le quita nada a esa prueba.
+            // </para>
+            [$"{OpcionesLimites.Seccion}:LoginPorMinuto"] = "500",
+            [$"{OpcionesLimites.Seccion}:GlobalPorMinuto"] = "5000",
         };
         ConfigurarAjustes(ajustes);
 
@@ -236,7 +256,15 @@ public sealed class ApiTestFactoryIpPermitida(ContenedorBdFixture bd) : ApiTestF
         ajustes["Seguridad:IpListaBlanca"] = $"{IpCliente},198.51.100.250";
 }
 
-/// <summary>Fábrica con límites estrechos, para poder provocar un 429 sin miles de peticiones.</summary>
+/// <summary>
+/// Fábrica con límites estrechos, para poder provocar un 429 sin miles de peticiones.
+/// <para>
+/// Es la <b>única</b> instancia que baja el límite de login por debajo de lo que da la base. El
+/// único uso es <c>Seguridad/LimitesPeticionesTests</c>, que es quien prueba el limitador de
+/// verdad; el guardián de que ninguna otra fábrica lo baje es
+/// <c>Seguridad/LoginFabricaNormalTests</c>.
+/// </para>
+/// </summary>
 public sealed class ApiTestFactoryLimites(ContenedorBdFixture bd) : ApiTestFactory(bd)
 {
     protected override void ConfigurarAjustes(IDictionary<string, string?> ajustes)
@@ -250,6 +278,11 @@ public sealed class ApiTestFactoryLimites(ContenedorBdFixture bd) : ApiTestFacto
 /// Fábrica sin el límite estrecho de login. Las pruebas de bloqueo necesitan más de 20 intentos de
 /// login seguidos (30 en el escalado de IP), y el limitador los cortaría por lo medio: esos tests
 /// miden el bloqueo, no el límite.
+/// <para>
+/// El valor que pone aquí es el mismo que ya pone la base, así que hoy es redundante. Se deja por
+/// las cuarenta clases que la nombran: que su propio ajuste siga escrito es lo que deja claro que
+/// estas pruebas miden el bloqueo y no el límite.
+/// </para>
 /// </summary>
 public sealed class ApiTestFactoryBloqueos(ContenedorBdFixture bd) : ApiTestFactory(bd)
 {

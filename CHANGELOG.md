@@ -16,6 +16,48 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [19/10/2026 02:40] FIX · F6-ia · Dos trampas de la infraestructura de pruebas que el bloque F6 destapó (worker)
+
+- **Qué:** solo infraestructura de pruebas. `backend/AtlasRent.Tests/Infra/ApiTestFactory.cs` y `backend/AtlasRent.Tests/Seguridad/LoginFabricaNormalTests.cs` (nuevo, 1 prueba), más dos comprobaciones probabilistas de `backend/AtlasRent.Tests/Clientes/CifradoTests.cs`. **No se ha tocado `backend/AtlasRent.Api/` ni nada de `frontend/`.**
+- **Por qué:** dos pruebas fallaban de forma intermitente y solo al correr la suite entera. Ninguna de las dos era un defecto de F6: eran trampas de las fábricas de prueba que F6 destapó al añadir 38 pruebas.
+
+- **Fallo 1 · 429 en el login (arreglado).**
+  - **La premisa del encargo era inexacta, y el arreglo que pedía habría empeorado las cosas.** El `LoginPorMinuto = "3"` de `ApiTestFactory.cs:244` **no está en la fábrica base**: está en `ApiTestFactoryLimites`, que solo usa `Seguridad/LimitesPeticionesTests`. La base no fijaba ningún límite y heredaba el de producción, `LoginPorMinuto = 20` (`Services/OpcionesLimites.cs:36`). El culpable era ese 20, y el arreglo correcto era subir la base, no bajarla a 3.
+  - **Mecánica:** la clave de partición del límite de login es `login:{IP}` (`Services/ClavesLimite.cs:41`) y la IP la pone una instancia de fábrica, o sea **una por clase** (`ApiTestFactory.Resolutor`); la ventana es de un minuto. Con MFA una sesión consume **dos**: entrar (`AuthController.cs:33`) y verificar el segundo factor (`MfaController.cs:102`). Las 11 pruebas de `IA/PropuestaAprobacionTests` comparten la instancia de `ApiTestFactoryCorreo` y se pasan del 20: la que falla es la octava, que es justo cuando el limitador empieza a cortar. Por eso era intermitente y por eso solo con la suite entera.
+  - **Evidencia:** suite completa **antes** del arreglo: `PropuestaAprobacionTests.ElPayloadYLaAuditoriaLlevanElSeudonimoYNoElNombre` falla en `AyudaPermisos.cs:111`, que es el propio POST de login, con `429 (Too Many Requests)`.
+  - **Arreglo:** `LoginPorMinuto = 500` y `GlobalPorMinuto = 5000` en el diccionario de `ConfigureWebHost` de `ApiTestFactory`, que se rellena **antes** de `ConfigurarAjustes(ajustes)`. Así los heredan todas las instancias, y `ApiTestFactoryLimites` los vuelve a bajar a 3/600 después, sin cambiar.
+  - **No debilita nada:** comprobado por búsqueda que la **única** prueba que asserta 429 por login es `LimitesPeticionesTests`, y usa su propia fábrica estrecha. Los otros dos 429 de la suite (`IA/ConsultaIaTests.cs:366` y `:398`) son el tope de consultas de IA (`Problemas.LimiteConsultasIa`), otro mecanismo, y este ajuste no los toca.
+  - `ApiTestFactoryBloqueos` ponía 500 y ahora es redundante con la base. Se deja: la nombran 40 clases y que su propio ajuste siga escrito es lo que documenta que esas pruebas miden el bloqueo y no el límite.
+  - **Prueba nueva:** `LoginFabricaNormalTests.LaFabricaNormalNoCortaLaBateriaDeLoginsDeUnaClase` (25 logins seguidos contra la fábrica base). Escrita **antes** de tocar la fábrica y vista caer por su causa exacta: `Expected HttpStatusCode.OK ... but found HttpStatusCode.TooManyRequests`. Después del arreglo pasa.
+  - **Lo que sigue probando el limitador:** `LimitesPeticionesTests.SuperadoElLimiteDeLoginDevuelve429ConCodigoDeReferencia` conserva su fábrica estrecha, sus 3 logins dentro, el 429, `Problemas.LimitePeticiones`, `"status":429` y la cookie vacía. Verificado en verde.
+
+- **Fallo 2 · «no se puede abrir conexión a la BD» (NO confirmado; no se ha tocado nada).**
+  - La hipótesis del encargo, agotamiento del pool o `max_connections`, **no se sostiene**, así que no se ha inventado un arreglo:
+    1. La suite completa **antes** del arreglo (861 pruebas) **no reprodujo ningún fallo de conexión**. Los únicos errores Npgsql del log son `No password has been provided ... SASL/SCRAM-SHA-256`, de la prueba negativa intencionada `ApiTestFactorySinBd` (la aplicación sin cadena de conexión), que no falla nada.
+    2. `Clientes/CifradoTests` **no abre ninguna conexión**: es una clase de cifrado en memoria, sin `[Collection(nameof(ColeccionBd))]`, que construye `ServicioCifrado` e `IndiceCiegoDocumento` a mano. Su pila no puede contener `RelationalConnection.OpenInternalAsync`.
+    3. **Medido en vivo** durante la suite completa contra el contenedor: `max_connections = 100` y pico de **51** conexiones concurrentes a `atlas_rent`, media 7,5 (60 muestras cada 10 s). Hay margen y no hubo agotamiento.
+  - **Riesgo residual que se declara sin arreglar:** ese pico de 51 sobre 100 deja el margen justo. Acotar `Maximum Pool Size` por cadena en `ContenedorBdFixture` es barato y probablemente preventivo, pero no hay ningún fallo que lo justifique, así que no se ha hecho. Queda como decisión aparte, no como parte de este arreglo.
+
+- **Tercer hallazgo, fuera de los dos fallos del encargo.** `CifradoTests` tenía dos comprobaciones **probabilistas** sobre salida criptográfica aleatoria, y es la causa real que hay detrás del fallo 2 aunque se le atribuyera a la base de datos:
+  - `LaHuellaNoSirveParaRecuperarElDocumento` buscaba `NotContain("001")` dentro de la huella, que son **64 hexes aleatorios** (`IndiceCiegoDocumento.LongitudHuella = 64`). Medido: **1,489 %** de las ejecuciones (7.443/500.000). Es exactamente la prueba que el informe nombraba.
+  - `ElTextoCifradoLlevaVersionYNonceYNoContieneElClaro` buscaba `NotContain("001")` en el Base64 del cifrado: medido **0,0225 %**. **Falló en vivo** en la suite posterior a arreglar el 429.
+  - Arreglo: las dos comparan ahora sobre los **bytes descodificados** (`Contiene` sobre `Convert.FromBase64String` y el documento entero) en vez de sobre el texto. No debilita nada: la afirmación vieja era más débil y además dependía del azar. En la huella, «no es el documento» se dice comparando con el documento (`NotBe("00112345678")`), que es literalmente lo que el comentario de la propia prueba afirma.
+
+- **Verificado:**
+  - `dotnet build AtlasRent.slnx -c Release -warnaserror` → 0 errores, 0 advertencias.
+  - `AtlasRent.Tests.exe -class ...LoginFabricaNormalTests -class ...LimitesPeticionesTests -class ...Clientes.CifradoTests` → 13 pruebas, 0 fallos.
+  - Suite completa **antes** del arreglo → **861 pruebas, 1 fallo** (el 429).
+  - Suite completa **con** el arreglo del 429 → **862 pruebas, 1 fallo** (el de `CifradoTests` que se cazó en vivo).
+  - Suite completa, **criterio de aceptación** → **862 pruebas, 0 fallos** (18 min 10 s).
+- **NO verificado:**
+  - Que el pool de conexiones no dé problemas: **no está verificado, porque no hay evidencia de que haya un fallo**. Lo que sí está medido es el pico de 51 conexiones de 100 durante una suite completa.
+  - Que `CifradoTests` ya no sea intermitente: verificado **por construcción** (las dos comprobaciones ya no dependen del azar), no por 500 ejecuciones seguidas.
+  - No se ha ejecutado en CI ni en otra máquina: solo aquí, y una vez por versión.
+- **Migraciones:** no.
+- **Es defecto de infraestructura, no de producto:** no aplica `docs/BUGS.md`, que es para defectos de negocio. Nada de esto cambia lo que la aplicación hace; es la red de seguridad que la mide la que estaba mal puesta.
+- **Commit/PR:** `fix(tests): límites de login por fábrica y comprobaciones de cifrado deterministas` en `tarea/F6-ia`. **Sin push.**
+
+---
 ## [19/10/2026 01:40] FIX · F6-ia · Correcciones de la auditoría adversarial del bloque F6 (worker)
 - **Qué:** seis arreglos, todos del informe de auditoría, sin ampliar alcance.
   - **H-1 · URL por defecto de OpenAI.** `api.openai.io` **no existe en DNS** (`Resolve-DnsName` → NXDOMAIN; `api.openai.com` resuelve). Corregido en `Services/OpcionesIa.cs` (las dos apariciones: property initializer y `LeerProveedor`), `config/variables-entorno.example`, el comentario de `Services/ProveedorChatCompletions.cs` y la constante del test `IA/ConsultaIaTests.cs`.
