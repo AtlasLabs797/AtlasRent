@@ -111,6 +111,12 @@ public static class Problemas
     public const string LimiteConsultasIa = "IA-002";
 
     /// <summary>
+    /// Excepción no controlada: el manejador global responde 500 con este código y sin traza ni
+    /// mensaje de la excepción (SEC-014). El detalle queda solo en el log.
+    /// </summary>
+    public const string ErrorInterno = "SYS-001";
+
+    /// <summary>
     /// Construye la respuesta de error y la registra. No lleva traza: solo el código, el título y
     /// una explicación que no delate datos internos.
     /// </summary>

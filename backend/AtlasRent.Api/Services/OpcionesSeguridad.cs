@@ -30,6 +30,17 @@ public sealed class OpcionesSeguridad
     /// </summary>
     public IReadOnlySet<string> IpListaBlanca { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Proxies inversos de los que se acepta <c>X-Forwarded-For</c> y <c>X-Forwarded-Proto</c>
+    /// (<c>Seguridad__ProxiesConfianza</c>, IP o redes CIDR separadas por comas). Vacío = no hay proxy
+    /// y no se cree ninguna cabecera <c>X-Forwarded-*</c>: cualquiera puede mandarlas y con ellas
+    /// elegiría la IP con la que se cuentan los bloqueos (SEC-014).
+    /// </summary>
+    public IReadOnlyList<IPAddress> ProxiesConfianza { get; init; } = [];
+
+    /// <summary>Redes CIDR de <see cref="ProxiesConfianza"/>, aparte porque ASP.NET las configura en otra lista.</summary>
+    public IReadOnlyList<IPNetwork> RedesProxiesConfianza { get; init; } = [];
+
     /// <summary>Si la IP está en la lista blanca: nunca se bloquea ni se le cuenta como ataque.</summary>
     public bool EsIpPermitida(string ip) => IpListaBlanca.Contains(ip);
 
@@ -117,8 +128,12 @@ public sealed class OpcionesSeguridad
                 $"Seguridad__CifradoVersion tiene que ser {VersionCifradoInicial} o mayor; se pidió {versionCifrado}.");
         }
 
+        var (proxies, redes) = LeerProxies(configuracion[$"{Seccion}:ProxiesConfianza"]);
+
         return new OpcionesSeguridad
         {
+            ProxiesConfianza = proxies,
+            RedesProxiesConfianza = redes,
             ClaveJwt = bytes,
             RondasBcrypt = rondas,
             IpListaBlanca = LeerListaBlanca(configuracion[$"{Seccion}:IpListaBlanca"]),
@@ -159,6 +174,39 @@ public sealed class OpcionesSeguridad
         }
 
         return clave;
+    }
+
+    /// <summary>
+    /// Lee <c>Seguridad__ProxiesConfianza</c>. A diferencia de la lista blanca, un valor mal escrito
+    /// aquí hace fallar el arranque: ignorarlo dejaría al servidor sin proxy de confianza y todas las
+    /// peticiones llegarían con la IP del proxy, que es justo el fallo que esta variable evita.
+    /// </summary>
+    private static (List<IPAddress> Proxies, List<IPNetwork> Redes) LeerProxies(string? valor)
+    {
+        var proxies = new List<IPAddress>();
+        var redes = new List<IPNetwork>();
+        foreach (var texto in (valor ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (texto.Contains('/'))
+            {
+                if (!IPNetwork.TryParse(texto, out var red))
+                {
+                    throw new InvalidOperationException($"{Seccion}__ProxiesConfianza tiene una red CIDR no válida: '{texto}'.");
+                }
+
+                redes.Add(red);
+            }
+            else if (IPAddress.TryParse(texto, out var direccion))
+            {
+                proxies.Add(direccion);
+            }
+            else
+            {
+                throw new InvalidOperationException($"{Seccion}__ProxiesConfianza tiene un valor que no es una IP ni una red CIDR: '{texto}'.");
+            }
+        }
+
+        return (proxies, redes);
     }
 
     private static IReadOnlySet<string> LeerListaBlanca(string? valor)

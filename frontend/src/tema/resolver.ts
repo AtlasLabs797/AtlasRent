@@ -4,7 +4,7 @@ export type PreferenciaTema = 'claro' | 'oscuro' | 'sistema';
 /** Tema efectivo que se fija en <html data-theme="…">. */
 export type Tema = 'light' | 'dark';
 
-/** Clave de localStorage. La copia de esta clave está en el script en línea de index.html. */
+/** Clave de localStorage. La copia de esta clave está en public/tema-inicial.js. */
 export const CLAVE_TEMA = 'atlas-rent.tema';
 
 export const PREFERENCIAS: PreferenciaTema[] = ['claro', 'oscuro', 'sistema'];

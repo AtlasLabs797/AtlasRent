@@ -13,7 +13,7 @@ const NoEncontrada = lazy(() => import('./paginas/NoEncontrada'));
 
 /**
  * Tres estados, y solo tres: cargando la sesión, sin sesión (pantalla de acceso) y con sesión
- * (el `Layout` con menú y rutas). El tema lo fija el script en línea de `index.html` antes del primer
+ * (el `Layout` con menú y rutas). El tema lo fija el script inicial (`public/tema-inicial.js`) antes del primer
  * pintado, así que cambiar de estado no cambia los colores y no hay parpadeo.
  */
 export function App() {
