@@ -36,6 +36,12 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
     public string CadenaApp { get; private set; } = string.Empty;
 
     /// <summary>
+    /// Rol del servidor de jobs (Hangfire, SEC-020), contra su base <c>atlas_rent_jobs</c>. No es
+    /// miembro de <c>rent_owner</c> ni conecta a <c>atlas_rent</c>.
+    /// </summary>
+    public string CadenaJobs { get; private set; } = string.Empty;
+
+    /// <summary>
     /// Rol con el que se hace el <c>pg_dump</c> de la copia de seguridad, con su puerto publicado
     /// en el host. F1-12 lo necesita para comprobar que el volcado sale con datos de verdad y no
     /// vacío por la RLS.
@@ -56,6 +62,7 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
         var claveMigrador = ContrasenaAleatoria();
         var claveApp = ContrasenaAleatoria();
         var claveBackup = ContrasenaAleatoria();
+        var claveJobs = ContrasenaAleatoria();
 
         _contenedor = new PostgreSqlBuilder(ImagenPostgres)
             .WithDatabase("postgres")
@@ -81,6 +88,10 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
         CadenaMigrador = Conectar("rent_migrador", claveMigrador).ConnectionString;
         CadenaApp = Conectar("rent_app", claveApp).ConnectionString;
         CadenaBackup = Conectar("rent_backup", claveBackup).ConnectionString;
+        CadenaJobs = new NpgsqlConnectionStringBuilder(Conectar("rent_jobs", claveJobs).ConnectionString)
+        {
+            Database = "atlas_rent_jobs",
+        }.ConnectionString;
         CadenaBackupDentro = new NpgsqlConnectionStringBuilder(CadenaBackup)
         {
             // localhost y 5432 son los que ve el proceso que corre dentro del contenedor.
@@ -93,7 +104,8 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
         var scriptRoles = (await LeerScriptAsync("01_roles.sql"))
             .Replace(":pw_migrador", $"'{claveMigrador}'", StringComparison.Ordinal)
             .Replace(":pw_app", $"'{claveApp}'", StringComparison.Ordinal)
-            .Replace(":pw_backup", $"'{claveBackup}'", StringComparison.Ordinal);
+            .Replace(":pw_backup", $"'{claveBackup}'", StringComparison.Ordinal)
+            .Replace(":pw_jobs", $"'{claveJobs}'", StringComparison.Ordinal);
         await EjecutarScriptAsync(cadenaSuperusuarioMantenimiento, scriptRoles);
 
         // 2) Base atlas_rent. El script tiene un \connect que parte el fichero en dos: la primera
@@ -102,6 +114,14 @@ public sealed class ContenedorBdFixture : IAsyncLifetime
             .Split("\\connect atlas_rent");
         await EjecutarScriptAsync(cadenaSuperusuarioMantenimiento, partesBase[0]);
         await EjecutarScriptAsync(CadenaSuperusuario, partesBase[1]);
+
+        // 2b) Base del planificador (04_base_jobs.sql), también con el nnect que parte el fichero.
+        var partesJobs = (await LeerScriptAsync("04_base_jobs.sql"))
+            .Split("\\connect atlas_rent_jobs");
+        await EjecutarScriptAsync(cadenaSuperusuarioMantenimiento, partesJobs[0]);
+        await EjecutarScriptAsync(
+            new NpgsqlConnectionStringBuilder(cadenaSuperusuarioMantenimiento) { Database = "atlas_rent_jobs" }.ConnectionString,
+            partesJobs[1]);
 
         // 3) Migración de F1-03 con el rol de migraciones.
         await using (var contexto = CrearContexto(CadenaMigrador))

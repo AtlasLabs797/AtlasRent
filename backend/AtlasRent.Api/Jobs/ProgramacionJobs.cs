@@ -44,12 +44,12 @@ public static class ProgramacionJobs
     public const string BaseDeDatos = "atlas_rent_jobs";
 
     /// <summary>
-    /// Cadena del almacenamiento de jobs. Sale de <c>ConnectionStrings__Migraciones</c> (el rol
-    /// <c>rent_migrador</c>, el único con permisos sobre esas tablas) con la base cambiada por
-    /// <see cref="BaseDeDatos"/>: misma credencial, base distinta.
+    /// Cadena del almacenamiento de jobs. Sale de <c>ConnectionStrings__Jobs</c> (el rol
+    /// <c>rent_jobs</c>, dueño de esa base y sin acceso a <c>atlas_rent</c>) con la base fijada a
+    /// <see cref="BaseDeDatos"/>, para que una cadena mal copiada no apunte a la base de la aplicación.
     /// </summary>
-    public static string ConexionDeJobs(string cadenaMigrador) =>
-        new NpgsqlConnectionStringBuilder(cadenaMigrador) { Database = BaseDeDatos }.ConnectionString;
+    public static string ConexionDeJobs(string cadenaJobs) =>
+        new NpgsqlConnectionStringBuilder(cadenaJobs) { Database = BaseDeDatos }.ConnectionString;
 
     public const string RutaCopiaSeguridad = "copias-seguridad";
     public const string RutaIntegridadAuditoria = "integridad-auditoria";

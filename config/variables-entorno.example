@@ -10,6 +10,8 @@ TZ_NEGOCIO=America/Santo_Domingo
 ConnectionStrings__Default=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_app;Password=<secreto>
 ConnectionStrings__Migraciones=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_migrador;Password=<secreto>
 ConnectionStrings__Backup=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_backup;Password=<secreto>
+# SEC-020: servidor de jobs (Hangfire). Rol rent_jobs, dueño solo de atlas_rent_jobs; la base se fija en código.
+ConnectionStrings__Jobs=Host=localhost;Port=5432;Database=atlas_rent_jobs;Username=rent_jobs;Password=<secreto>
 
 Kestrel__Certificates__Default__Path=<ruta .pfx>
 Kestrel__Certificates__Default__Password=<secreto>
