@@ -328,6 +328,10 @@ public sealed class ServicioCobros(
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
+        // BUG-019: el cerrojo va antes de leer ningún pendiente; el segundo cobro espera aquí y luego ve
+        // lo que dejó el primero.
+        await CerrojoCobros.TomarAsync(contexto, peticion.ContratoId, peticion.ClienteId, ct);
+
         var plan = await PlanificarAsync(peticion, ct);
 
         var respuesta = await GuardadoAuditado.GuardarAsync(
@@ -415,6 +419,16 @@ public sealed class ServicioCobros(
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
+        // BUG-019: el contrato del cobro se lee sin seguimiento para poder tomar el cerrojo antes de
+        // cargar (y por tanto de ver) el estado que se va a cambiar.
+        var origen = await contexto.Cobro.AsNoTracking()
+            .Where(c => c.Id == id)
+            .Select(c => new { c.ContratoId, c.ClienteId })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new KeyNotFoundException($"El cobro '{id:D}' no existe.");
+
+        await CerrojoCobros.TomarAsync(contexto, origen.ContratoId, origen.ClienteId, ct);
+
         var cobro = await CargarAsync(id, ct);
 
         if (cobro.Estado != EstadoCobro.Registrado)
@@ -424,6 +438,31 @@ public sealed class ServicioCobros(
         }
 
         var saldo = await CargarSaldoAsync(cobro.ContratoId, cobro.MonedaRecibida, ct);
+
+        // BUG-032: anular saca del saldo el excedente que dejó este cobro y devuelve el crédito que
+        // gastó. Si el saldo ya no llega, es que ese excedente financió otro cobro: no se esconde con un
+        // clamp a cero, se pide anular antes el cobro que lo gastó.
+        if (saldo is not null && Redondeo.Importe(saldo.Importe + cobro.SaldoFavorUsado - cobro.Excedente) < 0m)
+        {
+            var gastadores = await contexto.Cobro.AsNoTracking()
+                .Where(c => c.ContratoId == cobro.ContratoId
+                    && c.MonedaRecibida == cobro.MonedaRecibida
+                    && c.Estado == EstadoCobro.Registrado
+                    && c.SaldoFavorUsado > 0m
+                    && c.Id != cobro.Id
+                    && c.CreatedAt >= cobro.CreatedAt)
+                .OrderBy(c => c.CreatedAt)
+                .Select(c => c.Id)
+                .ToListAsync(ct);
+
+            throw new InvalidOperationException(
+                $"El cobro '{id:D}' dejó {cobro.Excedente} {cobro.MonedaRecibida} de saldo a favor y ese crédito "
+                    + "ya se gastó en otro cobro. Hay que anular antes "
+                    + (gastadores.Count > 0
+                        ? "el cobro " + string.Join(", ", gastadores.Select(g => $"'{g:D}'"))
+                        : "el cobro que consumió ese crédito")
+                    + ".");
+        }
 
         await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -452,8 +491,7 @@ public sealed class ServicioCobros(
                 // sale el excedente que este cobro dejó y vuelve el crédito que consumió.
                 if (saldo is not null)
                 {
-                    saldo.Importe = Redondeo.Importe(
-                        Math.Max(0m, saldo.Importe + cobro.SaldoFavorUsado - cobro.Excedente));
+                    saldo.Importe = Redondeo.Importe(saldo.Importe + cobro.SaldoFavorUsado - cobro.Excedente);
                     saldo.UpdatedAt = reloj.GetUtcNow();
                     saldo.UpdatedBy = usuario;
                 }
@@ -523,6 +561,17 @@ public sealed class ServicioCobros(
                 nameof(peticion));
         }
 
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        // BUG-019/BUG-035: mismo cerrojo que el cobro, tomado antes de leer el estado y el pendiente.
+        var origen = await contexto.Factura.AsNoTracking()
+            .Where(f => f.Id == peticion.FacturaId)
+            .Select(f => new { f.ContratoId, f.ClienteId })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new KeyNotFoundException($"La factura '{peticion.FacturaId:D}' no existe.");
+
+        await CerrojoCobros.TomarAsync(contexto, origen.ContratoId, origen.ClienteId, ct);
+
         var factura = await contexto.Factura
             .Include(f => f.Serie)
             .FirstOrDefaultAsync(f => f.Id == peticion.FacturaId, ct)
@@ -540,6 +589,22 @@ public sealed class ServicioCobros(
         {
             throw new InvalidOperationException(
                 $"La factura {NumeroDe(factura)} no tiene nada pendiente: ya está pagada y no hay diferencia que ajustar.");
+        }
+
+        // BUG-035: el ajuste existe para el céntimo que deja un pago en otra moneda. Sin un cobro vigente
+        // en moneda distinta a la de la factura, cerrar el pendiente sería perdonar deuda con otro nombre.
+        var hayCobroEnOtraMoneda = await contexto.CobroAsignacion.AsNoTracking()
+            .AnyAsync(a => a.FacturaId == factura.Id
+                && a.Vigente
+                && a.Cobro!.Estado == EstadoCobro.Registrado
+                && a.Cobro.MonedaRecibida != factura.Moneda, ct);
+
+        if (!hayCobroEnOtraMoneda)
+        {
+            throw new InvalidOperationException(
+                $"La factura {NumeroDe(factura)} no tiene ningún cobro vigente en una moneda distinta de "
+                    + $"{factura.Moneda}: el ajuste por diferencia de cambio solo cierra lo que dejó un pago en "
+                    + "otra moneda. Para el resto, se cobra el pendiente.");
         }
 
         var tolerancia = await ToleranciaDeAjusteAsync(factura.Moneda, ct);
@@ -569,7 +634,7 @@ public sealed class ServicioCobros(
             Ip = string.IsNullOrWhiteSpace(ip) ? null : ip,
         };
 
-        return await GuardadoAuditado.GuardarAsync(
+        var guardado = await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
             contexto.AjusteDiferenciaCambio, ajuste,
             esAlta: true,
@@ -580,7 +645,12 @@ public sealed class ServicioCobros(
             mutacion,
             proyectar: AAjusteRespuesta,
             datosAuditoria: DatosAuditoriaAjuste,
+            enTransaccionDelLlamador: true,
             ct: ct);
+
+        await transaccion.CommitAsync(ct);
+
+        return guardado;
     }
 
     /// <summary>
@@ -1007,8 +1077,9 @@ public sealed class ServicioCobros(
         decimal disponible,
         CancellationToken ct)
     {
+        // Con seguimiento: las líneas cuelgan de estas facturas y las candidatas del contrato ya están
+        // seguidas; otra instancia con el mismo Id haría fallar el guardado.
         var encontradas = await contexto.Factura
-            .AsNoTracking()
             .Include(f => f.Serie)
             .Where(f => marcadas.Contains(f.Id))
             .ToDictionaryAsync(f => f.Id, ct);
@@ -1035,17 +1106,31 @@ public sealed class ServicioCobros(
                         + "está pagada. Solo se cobra lo que se debe.");
             }
 
-            var importe = Redondeo.Importe(Math.Min(pendiente, restante));
-            var linea = LineaFactura(
-                new CobroAsignacionPeticion { FacturaId = facturaId, Importe = importe },
+            // BUG-031: lo que queda del cobro está en la moneda recibida y el pendiente en la de la
+            // factura. Se valida con la línea por el pendiente entero (que da el cambio) y se recorta
+            // igual que la FIFO: primero en moneda recibida, luego de vuelta a la de la factura.
+            var completa = LineaFactura(
+                new CobroAsignacionPeticion { FacturaId = facturaId, Importe = pendiente },
                 peticion,
                 cambioAplicado,
                 pendientes,
                 encontradas,
-                importe);
+                pendiente);
 
-            restante = Redondeo.Importe(restante - linea.Consumido);
-            lineas.Add(linea);
+            var recibido = Redondeo.Importe(Math.Min(restante, Redondeo.Importe(pendiente * completa.Cambio)));
+            var importe = Redondeo.Importe(Math.Min(recibido / completa.Cambio, pendiente));
+            if (importe <= 0m)
+            {
+                continue;
+            }
+
+            restante = Redondeo.Importe(restante - recibido);
+            lineas.Add(LineaPlan.NuevaFactura(
+                completa.Factura!,
+                importe,
+                completa.ImporteRecibido is null ? null : recibido,
+                completa.Cambio,
+                pendiente));
         }
 
         return lineas;
