@@ -204,13 +204,23 @@ public sealed class ServicioBloqueos(
             return;
         }
 
-        // Un acierto borra el contador: a partir de él solo cuentan los fallos siguientes.
+        var usuario = await contexto.Usuario.SingleAsync(u => u.Id == id, ct);
+
+        // Un bloqueo vigente no se prorroga: los fallos de mientras tanto no lo alargan.
+        if (CuentaBloqueada(usuario))
+        {
+            return;
+        }
+
+        // El contador arranca en lo más reciente entre el último acierto y el fin del último
+        // bloqueo: tras expirar hacen falta otros N fallos, no basta uno.
         var ultimoExito = await contexto.IntentoLogin
             .Where(i => i.UsuarioId == id && i.Exito)
             .MaxAsync(i => (DateTimeOffset?)i.OcurridoAt, ct);
+        var desde = new[] { ultimoExito, usuario.BloqueadaHasta }.Max() ?? DateTimeOffset.MinValue;
 
         var fallos = await contexto.IntentoLogin.CountAsync(
-            i => i.UsuarioId == id && !i.Exito && i.OcurridoAt > (ultimoExito ?? DateTimeOffset.MinValue),
+            i => i.UsuarioId == id && !i.Exito && i.OcurridoAt > desde,
             ct);
 
         if (fallos < limites.IntentosParaBloquearCuenta)
@@ -218,14 +228,7 @@ public sealed class ServicioBloqueos(
             return;
         }
 
-        var usuario = await contexto.Usuario.SingleAsync(u => u.Id == id, ct);
         var hasta = reloj.GetUtcNow().AddMinutes(limites.MinutosBloqueoCuenta);
-
-        // Con el bloqueo ya puesto no se arrastra: el quinto fallo no alarga lo que ya está corriendo.
-        if (usuario.BloqueadaHasta is { } actual && actual > hasta)
-        {
-            return;
-        }
 
         usuario.BloqueadaHasta = hasta;
         await contexto.SaveChangesAsync(ct);

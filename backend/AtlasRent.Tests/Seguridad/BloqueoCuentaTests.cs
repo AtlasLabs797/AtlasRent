@@ -112,4 +112,67 @@ public sealed class BloqueoCuentaTests(ContenedorBdFixture bd, ApiTestFactoryBlo
         (await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, Contrasena, ct))
             .StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    /// <summary>SEC-012: un fallo durante un bloqueo vigente no lo prorroga.</summary>
+    [Fact]
+    public async Task UnFalloConElBloqueoVigenteNoLoProrroga()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        api.Reloj.Avanzar(TimeSpan.FromMinutes(20));
+        var usuario = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, ct: ct);
+        using var cliente = api.CrearCliente();
+
+        for (var intento = 1; intento <= 5; intento++)
+        {
+            await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, ContrasenaMala, ct);
+        }
+        var primerBloqueo = await BloqueadaHastaAsync(usuario.Id, ct);
+        primerBloqueo.Should().NotBeNull();
+
+        api.Reloj.Avanzar(TimeSpan.FromMinutes(20));
+        (await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, ContrasenaMala, ct))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        (await BloqueadaHastaAsync(usuario.Id, ct)).Should().Be(primerBloqueo);
+    }
+
+    /// <summary>
+    /// SEC-012: al expirar el bloqueo el contador arranca de cero. Un solo fallo no vuelve a bloquear;
+    /// hacen falta otros cinco.
+    /// </summary>
+    [Fact]
+    public async Task TrasExpirarElBloqueoHacenFaltaOtrosCincoFallosParaBloquearDeNuevo()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        api.Reloj.Avanzar(TimeSpan.FromMinutes(20));
+        var usuario = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, ct: ct);
+        using var cliente = api.CrearCliente();
+
+        for (var intento = 1; intento <= 5; intento++)
+        {
+            await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, ContrasenaMala, ct);
+        }
+        var primerBloqueo = await BloqueadaHastaAsync(usuario.Id, ct);
+
+        api.Reloj.Avanzar(TimeSpan.FromMinutes(31));
+
+        for (var intento = 1; intento <= 4; intento++)
+        {
+            await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, ContrasenaMala, ct);
+            (await BloqueadaHastaAsync(usuario.Id, ct)).Should().Be(primerBloqueo);
+        }
+
+        // El quinto fallo posterior al bloqueo es el que bloquea de nuevo.
+        await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, ContrasenaMala, ct);
+
+        var segundoBloqueo = await BloqueadaHastaAsync(usuario.Id, ct);
+        segundoBloqueo.Should().BeAfter(primerBloqueo!.Value);
+        segundoBloqueo.Should().BeCloseTo(api.Reloj.GetUtcNow().AddMinutes(30), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task<DateTimeOffset?> BloqueadaHastaAsync(Guid usuarioId, CancellationToken ct)
+    {
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+        return (await contexto.Usuario.AsNoTracking().SingleAsync(u => u.Id == usuarioId, ct)).BloqueadaHasta;
+    }
 }

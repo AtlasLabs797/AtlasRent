@@ -21,6 +21,7 @@ public sealed class ServicioEmergencia(
     AtlasRentDbContext contexto,
     ServicioEmisionSesion emision,
     ServicioMfa mfa,
+    ServicioBloqueos bloqueos,
     IPolicyService politica,
     AuditoriaService auditoria,
     TimeProvider reloj)
@@ -144,14 +145,28 @@ public sealed class ServicioEmergencia(
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
-        var solicitud = await contexto.AccesoEmergencia
-            .SingleAsync(a => a.Id == solicitudId, ct);
+        // Escritura condicional: dos aprobaciones simultáneas leen "sin aprobar" a la vez, y solo la
+        // que consiga marcar la fila puede fijar el código. Si el UPDATE no toca filas, otro se
+        // adelantó y su código es el único válido (SEC-025).
+        var caduca = ahora.AddMinutes(MinutosCodigo);
+        var hashCodigo = EmisorTokens.HashToken(ServicioMfa.Normalizar(codigo));
+        var afectadas = await contexto.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE acceso_emergencia
+               SET aprobado_por_id = {aprobador.Id},
+                   aprobado_at = {ahora},
+                   caduca_at = {caduca},
+                   codigo_hash = {hashCodigo}
+             WHERE id = {solicitudId}
+               AND aprobado_por_id IS NULL
+            """, ct);
 
-        solicitud.AprobadoPorId = aprobador.Id;
-        solicitud.AprobadoAt = ahora;
-        solicitud.CaducaAt = ahora.AddMinutes(MinutosCodigo);
-        solicitud.CodigoHash = EmisorTokens.HashToken(ServicioMfa.Normalizar(codigo));
-        await contexto.SaveChangesAsync(ct);
+        if (afectadas != 1)
+        {
+            await transaccion.RollbackAsync(ct);
+            await AuditarDenegadoAsync("ya_aprobada", aprobador.Id, solicitudId, pendiente.Motivo, ip, ct);
+            return null;
+        }
 
         await auditoria.RegistrarAsync(new RegistroAuditoria
         {
@@ -159,8 +174,8 @@ public sealed class ServicioEmergencia(
             Ip = ip,
             UsuarioId = aprobador.Id,
             Entidad = "acceso_emergencia",
-            EntidadId = solicitud.Id.ToString("D"),
-            DatosJson = $$"""{"usuario_objetivo":"{{solicitud.UsuarioId:D}}","caduca":"{{solicitud.CaducaAt:yyyy-MM-ddTHH:mm:ssZ}}"}""",
+            EntidadId = solicitudId.ToString("D"),
+            DatosJson = $$"""{"usuario_objetivo":"{{pendiente.UsuarioId:D}}","caduca":"{{caduca:yyyy-MM-ddTHH:mm:ssZ}}"}""",
             Resultado = "permitido",
             Origen = "api",
         }, ct);
@@ -169,7 +184,7 @@ public sealed class ServicioEmergencia(
 
         // Solo aquí y solo ahora se muestra el código: no se escribe en la base de datos ni en la
         // auditoría, y no hay forma de recuperarlo después.
-        return new AprobacionEmergencia(codigo, solicitud.CaducaAt!.Value);
+        return new AprobacionEmergencia(codigo, caduca);
     }
 
     /// <summary>
@@ -189,6 +204,22 @@ public sealed class ServicioEmergencia(
             return null;
         }
 
+        var usuario = await contexto.Usuario
+            .SingleOrDefaultAsync(u => u.Id == desafio.UsuarioId && u.Activo && u.DeletedAt == null, ct);
+
+        if (usuario is null)
+        {
+            return null;
+        }
+
+        // SEC-025: una cuenta bloqueada no prueba códigos de emergencia, y cada código malo cuenta
+        // como intento fallido igual que una contraseña incorrecta.
+        if (bloqueos.CuentaBloqueada(usuario))
+        {
+            await bloqueos.RegistrarIntentoFallidoAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
+            return null;
+        }
+
         var hash = EmisorTokens.HashToken(ServicioMfa.Normalizar(codigo));
         var ahora = reloj.GetUtcNow();
 
@@ -202,14 +233,7 @@ public sealed class ServicioEmergencia(
 
         if (acceso is null)
         {
-            return null;
-        }
-
-        var usuario = await contexto.Usuario
-            .SingleOrDefaultAsync(u => u.Id == desafio.UsuarioId && u.Activo && u.DeletedAt == null, ct);
-
-        if (usuario is null)
-        {
+            await bloqueos.RegistrarIntentoFallidoAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
             return null;
         }
 
