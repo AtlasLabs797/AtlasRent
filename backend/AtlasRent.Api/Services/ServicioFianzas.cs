@@ -297,7 +297,9 @@ public sealed class ServicioFianzas(
         }
 
         var ahora = reloj.GetUtcNow();
-        var nuevaDecision = completa ? EstadoFianza.Devuelta : EstadoFianza.RetenidaParcial;
+        // §3.11: con descuento el dinero no vuelve entero, así que es «Retenida parcial» aunque el
+        // total agote el saldo. TODO(A#): confirmar con el responsable que «Devuelta» es solo sin descuento.
+        var nuevaDecision = completa && descontado <= 0m ? EstadoFianza.Devuelta : EstadoFianza.RetenidaParcial;
 
         var devolucion = new FianzaDevolucion
         {

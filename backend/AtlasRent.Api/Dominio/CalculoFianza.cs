@@ -21,15 +21,13 @@ public static class CalculoFianza
     /// cuentan dos veces: el descuento sale de la fianza igual que la devolución, y §3.11 los baja
     /// juntos.
     /// <para>
-    /// <b>Nunca baja de cero</b>, y no solo porque el servicio no lo deje. Anular el cobro que pagó la
-    /// fianza (F3-06) deja de contar lo cobrado, y si parte ya se había devuelto la resta da negativa;
-    /// un saldo negativo no es un saldo, es un desajuste, y quien lo ve en la pantalla no puede saber
-    /// qué hacer con él. Se muestra en cero y el movimiento que lo produjo sigue a la vista en
-    /// <c>cobro</c>, que es donde se explica.
+    /// <b>No esconde un negativo</b> (BUG-034): un saldo negativo es un desajuste y tiene que verse.
+    /// No debería darse: devolver más de lo cobrado es un 409 y anular el cobro de una fianza ya
+    /// devuelta también.
     /// </para>
     /// </summary>
     public static decimal Saldo(decimal cobrado, decimal devuelto, decimal descontado) =>
-        Math.Max(0m, Redondeo.Importe(cobrado - devuelto - descontado));
+        Redondeo.Importe(cobrado - devuelto - descontado);
 
     /// <summary>
     /// Cuánto falta por cobrar de la fianza: lo exigido menos lo cobrado, sin bajar de cero.

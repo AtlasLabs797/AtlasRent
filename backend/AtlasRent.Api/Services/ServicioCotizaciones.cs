@@ -403,7 +403,9 @@ public sealed class ServicioCotizaciones(
         cotizacion.ProspectoId = peticion.ProspectoId;
         cotizacion.UnidadId = peticion.UnidadId;
         cotizacion.Moneda = peticion.Moneda;
-        cotizacion.Total = Redondeo.Importe(peticion.Lineas.Sum(l => l.Cantidad * l.PrecioUnitario));
+        // Suma de los importes de línea ya redondeados (half-up por línea, AGENTS.md §6), igual que
+        // las líneas que se guardan en ConstruirLineas: BUG-030.
+        cotizacion.Total = ConstruirLineas(peticion).Sum(l => l.Importe);
     }
 
     /// <summary>

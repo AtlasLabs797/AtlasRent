@@ -423,6 +423,8 @@ public sealed class ServicioCobros(
                 $"El cobro '{id:D}' ya está en {cobro.Estado} y no se anula dos veces.");
         }
 
+        await ExigirAnulableSinFianzaDevueltaAsync(cobro, ct);
+
         var saldo = await CargarSaldoAsync(cobro.ContratoId, cobro.MonedaRecibida, ct);
 
         await GuardadoAuditado.GuardarAsync(
@@ -466,6 +468,38 @@ public sealed class ServicioCobros(
         await transaccion.CommitAsync(ct);
 
         return ARespuesta(cobro);
+    }
+
+    /// <summary>
+    /// BUG-034: no se anula un cobro asignado a una fianza si, sin él, lo devuelto más lo descontado
+    /// de esa fianza superaría lo que queda cobrado. Dejaría la fianza con más salidas que entradas y
+    /// el dinero ya devuelto sin respaldo; primero hay que corregir la devolución.
+    /// </summary>
+    private async Task ExigirAnulableSinFianzaDevueltaAsync(Cobro cobro, CancellationToken ct)
+    {
+        var porFianza = cobro.Asignaciones
+            .Where(a => a.Vigente && a.FianzaId is not null)
+            .GroupBy(a => a.FianzaId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Importe));
+
+        foreach (var (fianzaId, importeCobro) in porFianza)
+        {
+            var cobrado = await contexto.CobroAsignacion.AsNoTracking()
+                .Where(a => a.FianzaId == fianzaId && a.Vigente && a.Cobro!.Estado == EstadoCobro.Registrado)
+                .SumAsync(a => (decimal?)a.Importe, ct) ?? 0m;
+
+            var salidas = await contexto.FianzaDevolucion.AsNoTracking()
+                .Where(d => d.FianzaId == fianzaId)
+                .SumAsync(d => (decimal?)(d.Importe + d.ImporteDescontado), ct) ?? 0m;
+
+            var restante = Redondeo.Importe(cobrado - importeCobro);
+            if (salidas > restante)
+            {
+                throw new InvalidOperationException(
+                    $"No se puede anular el cobro '{cobro.Id:D}': la fianza '{fianzaId:D}' ya tiene {salidas} "
+                        + $"devueltos o descontados y, sin este cobro, solo quedarían {restante} cobrados.");
+            }
+        }
     }
 
     // ---------------------------------------------------------------- ajuste por diferencia de cambio
