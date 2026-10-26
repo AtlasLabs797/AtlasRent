@@ -37,6 +37,7 @@ public sealed class AutenticacionAgenteMiddleware(RequestDelegate siguiente)
         HttpContext http,
         ContextoSesion contextoSesion,
         ServicioAgentes agentes,
+        ServicioBloqueos bloqueos,
         IPolicyService politica,
         IResolutorIpPeticion resolutorIp)
     {
@@ -60,6 +61,9 @@ public sealed class AutenticacionAgenteMiddleware(RequestDelegate siguiente)
         {
             // Desconocido, revocado, caducado o de un usuario que ya no puede entrar: el mismo 401
             // para los cuatro, sin decir en cuál falló y sin dejar rastro del valor recibido.
+            // SEC-029: cuenta como fallo de la IP (el mismo contador que el login), sin usuario ni
+            // nombre: ni el token ni nada derivado de él se guarda.
+            await bloqueos.RegistrarIntentoFallidoAsync(null, null, resolutorIp.Resolver(http), ct);
             await Problemas.EscribirAsync(http, Problemas.Construir(
                 StatusCodes.Status401Unauthorized,
                 Problemas.TokenAgenteInvalido,
@@ -75,21 +79,31 @@ public sealed class AutenticacionAgenteMiddleware(RequestDelegate siguiente)
         contextoSesion.AgenteTokenId = agente.TokenId;
         contextoSesion.AgenteAcciones = agente.Acciones;
 
-        await siguiente(http);
+        // SEC-029: la fila de auditoría se escribe aunque el resto del pipeline lance; si lanza, la
+        // petición se audita como denegada (el 500 aún no está en la respuesta).
+        var fallo = true;
+        try
+        {
+            await siguiente(http);
+            fallo = false;
+        }
+        finally
+        {
+            var resultado = !fallo && http.Response.StatusCode < 400 ? "permitido" : "denegado";
+            var ruta = endpoint.Metadata.GetMetadata<RouteEndpoint>()?.RoutePattern.RawText
+                ?? http.Request.Path.Value
+                ?? string.Empty;
 
-        var resultado = http.Response.StatusCode < 400 ? "permitido" : "denegado";
-        var ruta = endpoint.Metadata.GetMetadata<RouteEndpoint>()?.RoutePattern.RawText
-            ?? http.Request.Path.Value
-            ?? string.Empty;
-
-        await agentes.MarcarUsoAsync(agente.TokenId, ct);
-        await agentes.AuditarPeticionAsync(
-            agente.TokenId,
-            agente.UsuarioId,
-            http.Request.Method,
-            ruta,
-            resultado,
-            resolutorIp.Resolver(http),
-            ct);
+            // CancellationToken.None: si el cliente cortó, la petición igualmente ocurrió.
+            await agentes.MarcarUsoAsync(agente.TokenId, CancellationToken.None);
+            await agentes.AuditarPeticionAsync(
+                agente.TokenId,
+                agente.UsuarioId,
+                http.Request.Method,
+                ruta,
+                resultado,
+                resolutorIp.Resolver(http),
+                CancellationToken.None);
+        }
     }
 }

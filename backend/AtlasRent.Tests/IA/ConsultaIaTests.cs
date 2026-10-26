@@ -148,33 +148,56 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
         var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var sesion = await AyudaPermisos.SesionAsync(api, admin, Contrasena, ct);
 
-        var nombres = await AyudaIa.NombresDeClientesAsync(sesion, ct);
-        nombres.Should().NotBeEmpty();
-
-        var respuesta = await sesion.PostAsync(
-            AyudaIa.RutaSesion,
-            new { pregunta = "¿Quiénes son los clientes activos?", alcance = "clientes" },
+        // Un cliente con tilde, teléfono y correo propios: con los datos de otras pruebas (sin tilde)
+        // un nombre filtrado pasaba desapercibido porque el JSON del proveedor escapa los no ASCII.
+        var sufijo = Guid.NewGuid().ToString("N")[..6];
+        var nombreConTilde = $"José Peña {sufijo}";
+        var correo = $"jose.{sufijo}@example.test";
+        var telefono = $"809-555-{Random.Shared.Next(1000, 9999)}";
+        var alta = await sesion.PostAsync(
+            "/api/v1/clientes",
+            new { nombre = nombreConTilde, tipo = "PersonaFisica", email = correo, telefono },
             ct);
+        alta.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
+        var nombres = await AyudaIa.NombresDeClientesAsync(sesion, ct);
+        nombres.Should().Contain(nombreConTilde);
 
-        var enviado = api.Proveedor.Cuerpos[0];
+        var personales = await AyudaIa.DatosPersonalesDeClientesAsync(sesion, ct);
+        personales.Should().Contain([nombreConTilde, correo, telefono]);
 
-        // Teléfono y correo tampoco: son contacto, y contacto identifica igual que un nombre.
-        enviado.Should().NotContain("cliente@example.test");
-        foreach (var nombre in nombres.Where(n => n.Length > 4))
+        string? respuestaClientes = null;
+        foreach (var alcance in ServicioConsultaIa.Alcances)
         {
-            enviado.Should().NotContain(nombre, because: "un nombre real no puede salir del proceso");
+            api.Proveedor.Limpiar();
+            var respuesta = await sesion.PostAsync(
+                AyudaIa.RutaSesion,
+                new { pregunta = "¿Quiénes son los clientes activos?", alcance },
+                ct);
+
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK, because: alcance);
+
+            // Texto des-escapado del cuerpo que salió hacia el proveedor.
+            var enviado = AyudaIa.TextoDesescapado(api.Proveedor.Cuerpos[0]);
+            foreach (var valor in personales.Where(v => v.Length > 4))
+            {
+                enviado.Should().NotContain(valor, because: $"un dato personal no puede salir ({alcance})");
+            }
+
+            // El documento no sale porque el DTO de resumen no lo lleva: no es que esté seudonimizado,
+            // es que nunca se carga. La comprobación está para que, si algún día el resumen lo incluye,
+            // alguien tenga que mirar aquí.
+            enviado.Should().NotContain("\"documento\"");
+
+            if (alcance == "clientes")
+            {
+                enviado.Should().Contain("[[cliente_");
+                respuestaClientes = await respuesta.Content.ReadAsStringAsync(ct);
+            }
         }
 
-        // El documento no sale porque el DTO de resumen no lo lleva: no es que esté seudonimizado,
-        // es que nunca se carga. La comprobación está para que, si algún día el resumen lo incluye,
-        // alguien tenga que mirar aquí.
-        enviado.Should().NotContain("\"documento\"");
-        enviado.Should().Contain("[[cliente_");
-
         // Y lo que vuelve al usuario sí trae nombres de verdad.
-        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var cuerpo = JsonDocument.Parse(respuestaClientes!).RootElement;
         var texto = cuerpo.GetProperty("respuesta").GetString()!;
         texto.Should().NotContain("[[cliente_");
         nombres.Should().Contain(nombre => texto.Contains(nombre, StringComparison.Ordinal));
@@ -397,6 +420,82 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
 
         respuesta.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
         (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain(Problemas.LimiteConsultasIa);
+    }
+
+    /// <summary>
+    /// SEC-029: con peticiones en paralelo, el límite diario no se supera. Antes todas contaban «0
+    /// usadas» a la vez y todas llegaban al proveedor.
+    /// </summary>
+    [Fact]
+    public async Task PeticionesEnParaleloNoSuperanElLimiteDiarioDelToken()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fabrica = new ApiTestFactoryIaAnthropic(bd);
+        var gerente = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Gerente, ct: ct);
+        var (secreto, tokenId) = await AyudaIa.TokenEnBaseAsync(
+            bd, gerente.Id, [Acciones.IaConsultar, Acciones.ClienteVer], ct, limiteConsultasDia: 2);
+        using var cliente = ClienteConToken(fabrica, secreto);
+
+        const int Peticiones = 8;
+        using var barrera = new Barrier(Peticiones);
+        var tareas = Enumerable.Range(0, Peticiones).Select(_ => Task.Run(async () =>
+        {
+            barrera.SignalAndWait(ct);
+            return (await cliente.PostAsJsonAsync(
+                AyudaIa.RutaAgente, new { pregunta = "¿Cuántos clientes hay?", alcance = "clientes" }, ct)).StatusCode;
+        }, ct)).ToArray();
+
+        var estados = await Task.WhenAll(tareas);
+
+        estados.Count(e => e == HttpStatusCode.OK).Should().Be(2);
+        estados.Count(e => e == HttpStatusCode.TooManyRequests).Should().Be(Peticiones - 2);
+        ((ApiTestFactoryIaBase)fabrica).Proveedor.Cuerpos.Should().HaveCount(2);
+
+        var reservas = await FilasDeAuditoriaAsync(
+            bd,
+            $"accion = '{ServicioConsultaIa.ConsultaAccion}' AND entidad_id = '{tokenId:D}' AND resultado = 'reservado'",
+            ct);
+        reservas.Should().HaveCount(2);
+    }
+
+    /// <summary>SEC-029: si algo lanza después del middleware de agente, la llamada queda auditada igualmente.</summary>
+    [Fact]
+    public async Task UnErrorPosteriorAlMiddlewareDeAgenteDejaFilaDeAuditoria()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fabrica = new ApiTestFactoryIaAnthropic(bd);
+        var gerente = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Gerente, ct: ct);
+        var (secreto, tokenId) = await AyudaIa.TokenEnBaseAsync(
+            bd, gerente.Id, [Acciones.IaConsultar, Acciones.ClienteVer], ct);
+        using var cliente = ClienteConToken(fabrica, secreto);
+
+        ((ApiTestFactoryIaBase)fabrica).Proveedor.Fallo = new InvalidOperationException("fallo inesperado de prueba");
+
+        var respuesta = await cliente.PostAsJsonAsync(
+            AyudaIa.RutaAgente, new { pregunta = "¿Cuántos clientes hay?", alcance = "clientes" }, ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+
+        var filas = await FilasDeAuditoriaAsync(
+            bd, $"accion = 'agente.peticion' AND entidad_id = '{tokenId:D}'", ct);
+        filas.Should().ContainSingle().Which.Resultado.Should().Be("denegado");
+    }
+
+    /// <summary>SEC-029: los 401 por token inválido cuentan para el bloqueo de IP, como los fallos de login.</summary>
+    [Fact]
+    public async Task LosTokensInvalidosBloqueanLaIpComoLosFallosDeLogin()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fabrica = new ApiTestFactoryIaAnthropic(bd);
+        using var cliente = ClienteConToken(fabrica, "token-que-no-existe");
+
+        HttpStatusCode ultimo = default;
+        for (var i = 0; i < 12; i++)
+        {
+            ultimo = (await cliente.GetAsync("/api/v1/agente/clientes", ct)).StatusCode;
+        }
+
+        ultimo.Should().Be(HttpStatusCode.Forbidden, "tras el décimo fallo la IP queda bloqueada");
     }
 
     // ------------------------------------------------------------------ 6. Sin clave o desactivada

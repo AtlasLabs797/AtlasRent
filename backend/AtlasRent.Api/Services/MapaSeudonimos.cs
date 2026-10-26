@@ -54,6 +54,29 @@ public sealed class MapaSeudonimos
         ["notas"] = "nota",
     };
 
+    /// <summary>
+    /// Red de seguridad por tipo de dato (SEC-026): una propiedad cuyo nombre contiene alguno de estos
+    /// fragmentos se seudonimiza aunque nadie la haya escrito en <see cref="Prefijos"/>, de modo que
+    /// una propiedad personal nueva en un DTO no sale en claro por olvido.
+    /// </summary>
+    private static readonly (string Fragmento, string Prefijo)[] PorTipo =
+    [
+        ("email", "mail"), ("correo", "mail"),
+        ("telefono", "tel"), ("movil", "tel"), ("celular", "tel"),
+        ("direccion", "dir"),
+        ("documento", "doc"), ("cedula", "doc"), ("rnc", "doc"), ("pasaporte", "doc"),
+        ("razonsocial", "cliente"), ("titular", "cliente"),
+    ];
+
+    private static readonly System.Text.RegularExpressions.Regex Email =
+        new(@"[^\s@""]+@[^\s@""]+\.[^\s@""]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly JsonSerializerOptions Salida = new()
+    {
+        WriteIndented = false,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     private readonly Dictionary<string, string> _porValor = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _porSeudonimo = new(StringComparer.Ordinal);
     private int _indice;
@@ -70,7 +93,73 @@ public sealed class MapaSeudonimos
     {
         var copia = nodo?.DeepClone();
         Recorrer(copia);
-        return copia?.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) ?? "{}";
+        ComprobarSinFugas(copia);
+        return copia?.ToJsonString(Salida) ?? "{}";
+    }
+
+    /// <summary>
+    /// Última comprobación antes de que el JSON salga: ningún valor personal que el mapa conoce
+    /// puede aparecer ya en ningún texto del resultado (en otro campo, dentro de una frase), ni
+    /// puede quedar nada con forma de correo. Si aparece, no se envía nada. Se compara sobre los
+    /// textos ya des-escapados, no sobre el JSON impreso, donde las tildes salen escapadas (XXXX).
+    /// </summary>
+    private void ComprobarSinFugas(JsonNode? nodo)
+    {
+        var textos = new List<string>();
+        Textos(nodo, textos);
+
+        foreach (var texto in textos)
+        {
+            if (Email.IsMatch(texto)
+                || _porValor.Keys.Any(valor => valor.Length >= 4
+                    && texto.Contains(valor, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new ProveedorIaException(
+                    "No se envió la consulta: se detectaron datos personales sin seudonimizar.");
+            }
+        }
+    }
+
+    private static void Textos(JsonNode? nodo, List<string> destino)
+    {
+        switch (nodo)
+        {
+            case JsonObject objeto:
+                foreach (var (_, hijo) in objeto)
+                {
+                    Textos(hijo, destino);
+                }
+
+                break;
+            case JsonArray lista:
+                foreach (var hijo in lista)
+                {
+                    Textos(hijo, destino);
+                }
+
+                break;
+            case JsonValue valor when valor.TryGetValue<string>(out var texto):
+                destino.Add(texto);
+                break;
+        }
+    }
+
+    private static string? PrefijoDe(string propiedad)
+    {
+        if (Prefijos.TryGetValue(propiedad, out var prefijo))
+        {
+            return prefijo;
+        }
+
+        foreach (var (fragmento, porTipo) in PorTipo)
+        {
+            if (propiedad.Contains(fragmento, StringComparison.OrdinalIgnoreCase))
+            {
+                return porTipo;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -126,9 +215,13 @@ public sealed class MapaSeudonimos
                 {
                     var valor = objeto[propiedad];
 
-                    if (Prefijos.TryGetValue(propiedad, out var prefijo) && valor is JsonValue { } texto)
+                    if (PrefijoDe(propiedad) is { } prefijo && valor is JsonValue { } texto)
                     {
-                        var original = texto.GetValue<string>();
+                        // Un número (teléfono guardado como número) o cualquier otro tipo también
+                        // se seudonimiza: se pasa a texto en vez de lanzar.
+                        var original = texto.TryGetValue<string>(out var cadena)
+                            ? cadena
+                            : texto.ToJsonString().Trim('"');
                         if (!string.IsNullOrWhiteSpace(original))
                         {
                             objeto[propiedad] = Seudonimo(prefijo, original);

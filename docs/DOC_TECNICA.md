@@ -1357,7 +1357,9 @@ en el código): dos sitios donde escribir una cifra sin saber cuál manda es la 
 documenta. Un cero también desactiva el ajuste: es una decisión activa de no cerrar diferencias, y no lo
 mismo que no haber configurado nada. `TODO(A#)` sigue pendiente de confirmar con la gerencia.
 
-**Actualizaciones:** paquetes publicados en GitHub Releases (, validación de integridad y firma, copia previa, recuperación ante error) mediante `scripts/update.ps1` y Watchdog.
+**Actualizaciones (SEC-021):** paquetes ZIP mediante `scripts/update.ps1` y `AtlasRent.Watchdog actualizar <paquete.zip> <carpeta>`.
+- **Firma.** Cada `paquete.zip` va con `paquete.zip.sig`: firma ECDSA P-256/SHA-256 del ZIP en base64 (`ecdsa.SignData(zip, SHA256)`), generada en el equipo de release; la clave privada no se guarda en el repo ni en el servidor. El Watchdog verifica con `Watchdog__ClavePublicaActualizacion` (`ecdsa.ExportSubjectPublicKeyInfo()` en base64). Sin clave, sin `.sig` o con firma inválida: registro crítico, código de salida 3 y no se toca nada.
+- **Orden.** Firma, copia de seguridad verificada, copia `<instalación>.prev` (hermana, nunca dentro; se normaliza la barra final), extracción a `<instalación>.nueva` (copia de la instalación + ZIP encima) y solo entonces se vuelca sobre la instalación. Si falla a mitad se restaura desde `.prev` (borrando lo añadido) y sale con código 4.
 
 **Si comparte servidor con otras aplicaciones:** puertos distintos o el mismo 443 con Caddy enrutando por subdominio; carpetas, servicios, roles de BD y claves separados.
 

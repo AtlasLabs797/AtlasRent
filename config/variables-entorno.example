@@ -38,6 +38,9 @@ Backup__GoogleDrive__Carpeta=<id carpeta propia de Atlas Rent>
 Backup__GoogleDrive__Credenciales=<secreto>
 Backup__ClaveCifrado=<secreto>
 Backup__Conservar=4
+# SEC-021: clave PUBLICA ECDSA P-256 (SubjectPublicKeyInfo en base64) para verificar la firma .sig de los
+# paquetes de actualizacion. No es secreta; la privada nunca sale del equipo de release.
+Watchdog__ClavePublicaActualizacion=<base64>
 
 # F4-02: servidor de correo para el envío de documentos (docs/ESPECIFICACION.md §3.14).
 # La clave vive AQUÍ, en variables de entorno o en «dotnet user-secrets», y nunca en la base de datos

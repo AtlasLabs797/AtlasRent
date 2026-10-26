@@ -47,8 +47,12 @@ public sealed class ManejadorFalso : HttpMessageHandler
     /// <summary>Código de estado con el que contesta, para probar el 503 de proveedor caído.</summary>
     public HttpStatusCode Estado { get; set; } = HttpStatusCode.OK;
 
+    /// <summary>Si no es nulo, el transporte lanza esta excepción (para probar el 500).</summary>
+    public Exception? Fallo { get; set; }
+
     public void Limpiar()
     {
+        Fallo = null;
         Cuerpos.Clear();
         Urls.Clear();
         Cabeceras.Clear();
@@ -58,7 +62,15 @@ public sealed class ManejadorFalso : HttpMessageHandler
         HttpRequestMessage peticion,
         CancellationToken ct)
     {
-        Urls.Add(peticion.RequestUri!.AbsoluteUri);
+        if (Fallo is not null)
+        {
+            throw Fallo;
+        }
+
+        lock (Urls)
+        {
+            Urls.Add(peticion.RequestUri!.AbsoluteUri);
+        }
         Cuerpos.Add(await peticion.Content!.ReadAsStringAsync(ct));
         Cabeceras.Add(peticion.Headers
             .Concat(peticion.Content!.Headers)
@@ -222,7 +234,7 @@ public sealed class ApiTestFactoryIaTopeMes(ContenedorBdFixture bd) : ApiTestFac
         using var comando = new NpgsqlCommand(
             """
             SELECT count(*) FROM auditoria
-            WHERE accion = 'ia.consulta' AND resultado = 'permitido'
+            WHERE accion = 'ia.consulta' AND resultado = 'reservado'
               AND created_at >= (date_trunc('month', now() AT TIME ZONE 'America/Santo_Domingo')
                                  AT TIME ZONE 'America/Santo_Domingo')
             """,
@@ -275,6 +287,53 @@ internal static class AyudaIa
         return [.. pagina.GetProperty("data").EnumerateArray()
             .Select(fila => fila.GetProperty("nombre").GetString()!)
             .Where(nombre => !string.IsNullOrWhiteSpace(nombre))];
+    }
+
+    /// <summary>Nombres, correos y teléfonos de los clientes, por la API.</summary>
+    public static async Task<List<string>> DatosPersonalesDeClientesAsync(SesionCliente sesion, CancellationToken ct)
+    {
+        var respuesta = await sesion.GetAsync("/api/v1/clientes?page=1&pageSize=200", ct);
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var pagina = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        return [.. pagina.GetProperty("data").EnumerateArray()
+            .SelectMany(fila => new[] { "nombre", "email", "telefono" }
+                .Select(campo => fila.TryGetProperty(campo, out var v) && v.ValueKind == JsonValueKind.String
+                    ? v.GetString()!
+                    : string.Empty))
+            .Where(valor => !string.IsNullOrWhiteSpace(valor))];
+    }
+
+    /// <summary>Todos los textos de un cuerpo JSON, ya des-escapados.</summary>
+    public static string TextoDesescapado(string cuerpo)
+    {
+        var textos = new List<string>();
+        void Recorrer(JsonElement e)
+        {
+            switch (e.ValueKind)
+            {
+                case JsonValueKind.String:
+                    textos.Add(e.GetString()!);
+                    break;
+                case JsonValueKind.Object:
+                    foreach (var p in e.EnumerateObject())
+                    {
+                        Recorrer(p.Value);
+                    }
+
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var h in e.EnumerateArray())
+                    {
+                        Recorrer(h);
+                    }
+
+                    break;
+            }
+        }
+
+        Recorrer(JsonDocument.Parse(cuerpo).RootElement);
+        return string.Join("\n", textos);
     }
 
     /// <summary>
