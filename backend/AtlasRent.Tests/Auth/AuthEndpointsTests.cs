@@ -72,13 +72,16 @@ public sealed class AuthEndpointsTests(ContenedorBdFixture bd, ApiTestFactory ap
         var login = await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, Contrasena, ct);
         login.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Se desactiva la cuenta por la vía real: otra conexión a la base de datos.
-        await using (var contexto = bd.CrearContexto(bd.CadenaApp))
-        {
-            var fila = await contexto.Usuario.SingleAsync(u => u.Id == usuario.Id, ct);
-            fila.Activo = false;
-            await contexto.SaveChangesAsync(ct);
-        }
+        // Petición autenticada: calienta la caché de sesión (30 s). Es el caso real que este test
+        // no cubría al desactivar antes de que la caché guardase nada (SEC-019).
+        (await cliente.GetAsync("/api/v1/auth/yo", ct)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Se desactiva la cuenta por la vía real: el endpoint de administración.
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        using var sesionAdmin = await AyudaPermisos.SesionAsync(api, admin, Contrasena, ct);
+        var desactivar = await sesionAdmin.PutAsync(
+            $"/api/v1/usuarios/{usuario.Id}/activo", new { activo = false }, ct);
+        desactivar.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var yo = await cliente.GetAsync("/api/v1/auth/yo", ct);
 

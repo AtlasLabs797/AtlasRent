@@ -1,6 +1,7 @@
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.DTOs;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace AtlasRent.Api.Services;
@@ -15,6 +16,9 @@ namespace AtlasRent.Api.Services;
 public sealed class ServicioUsuarios(
     AtlasRentDbContext contexto,
     ServicioContrasenas contrasenas,
+    ValidadorContrasena validador,
+    ServicioSesiones sesiones,
+    ServicioBloqueos bloqueos,
     IPolicyService politica,
     AuditoriaService auditoria,
     TimeProvider reloj)
@@ -62,6 +66,9 @@ public sealed class ServicioUsuarios(
         }
 
         var nombreAcceso = Usuario.NormalizarNombreAcceso(peticion.NombreAcceso);
+
+        // Antes de la transacción: es una llamada de red y no debe tenerla abierta.
+        var comprobada = await validador.ValidarAsync(peticion.Contrasena, ct);
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
@@ -124,14 +131,14 @@ public sealed class ServicioUsuarios(
             Entidad = "usuario",
             EntidadId = usuario.Id.ToString("D"),
             // Ni la contraseña ni el hash: solo el rol con el que nace.
-            DatosJson = $$"""{"rol":"{{peticion.Rol}}"}""",
+            DatosJson = DatosAuditoria(comprobada, ("rol", peticion.Rol)),
             Resultado = "permitido",
             Origen = "api",
         }, ct);
 
         await transaccion.CommitAsync(ct);
 
-        return new UsuarioCreadoRespuesta(usuario.Id, usuario.NombreAcceso, peticion.Rol);
+        return new UsuarioCreadoRespuesta(usuario.Id, usuario.NombreAcceso, peticion.Rol, comprobada);
     }
 
     /// <summary>
@@ -234,5 +241,180 @@ public sealed class ServicioUsuarios(
         }, ct);
 
         await transaccion.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// JSON de auditoría de una operación con contraseña. Si HaveIBeenPwned no pudo comprobarla,
+    /// lo deja anotado (<c>hibp: no_disponible</c>). Nunca lleva la contraseña.
+    /// </summary>
+    private static string DatosAuditoria(bool comprobada, params (string Clave, object Valor)[] datos)
+    {
+        var diccionario = datos.ToDictionary(d => d.Clave, d => d.Valor);
+        if (!comprobada)
+        {
+            diccionario["hibp"] = "no_disponible";
+        }
+
+        return JsonSerializer.Serialize(diccionario);
+    }
+
+    /// <summary>
+    /// Activa o desactiva a un usuario. Al desactivar, revoca todas sus sesiones en la misma
+    /// transacción y vacía su caché (SEC-019): la siguiente petición suya da 401 sin esperar a los
+    /// 30 s de la caché. Un administrador no puede desactivarse a sí mismo.
+    /// </summary>
+    public async Task FijarActivoAsync(
+        Guid usuarioId,
+        bool activo,
+        Guid usuarioAdmin,
+        string ip,
+        CancellationToken ct)
+    {
+        if (!activo && usuarioId == usuarioAdmin)
+        {
+            throw new InvalidOperationException("No puedes desactivar tu propia cuenta.");
+        }
+
+        IReadOnlyList<Guid> revocadas = [];
+        await using (var transaccion = await contexto.Database.BeginTransactionAsync(ct))
+        {
+            var usuario = await contexto.Usuario.SingleOrDefaultAsync(
+                u => u.Id == usuarioId && u.DeletedAt == null, ct)
+                ?? throw new KeyNotFoundException("El usuario no existe.");
+
+            usuario.Activo = activo;
+            usuario.UpdatedAt = reloj.GetUtcNow();
+            usuario.UpdatedBy = usuarioAdmin;
+            await contexto.SaveChangesAsync(ct);
+
+            if (!activo)
+            {
+                revocadas = await sesiones.RevocarTodasDelUsuarioAsync(
+                    usuarioId, MotivosRevocacion.UsuarioDesactivado, excepto: null, ct);
+            }
+
+            await auditoria.RegistrarAsync(new RegistroAuditoria
+            {
+                Accion = activo ? "usuario.activado" : "usuario.desactivado",
+                Ip = ip,
+                UsuarioId = usuarioAdmin,
+                Entidad = "usuario",
+                EntidadId = usuarioId.ToString("D"),
+                DatosJson = DatosAuditoria(true, ("sesiones_revocadas", revocadas.Count)),
+                Resultado = "permitido",
+                Origen = "api",
+            }, ct);
+
+            await transaccion.CommitAsync(ct);
+        }
+
+        sesiones.InvalidarCache(revocadas);
+    }
+
+    /// <summary>
+    /// Restablece la contraseña de otro usuario: el usuario queda obligado a cambiarla y todas sus
+    /// sesiones caen. Devuelve si HaveIBeenPwned pudo comprobarla.
+    /// </summary>
+    public async Task<bool> RestablecerPasswordAsync(
+        Guid usuarioId,
+        string contrasena,
+        Guid usuarioAdmin,
+        string ip,
+        CancellationToken ct)
+    {
+        var comprobada = await validador.ValidarAsync(contrasena, ct);
+
+        IReadOnlyList<Guid> revocadas;
+        await using (var transaccion = await contexto.Database.BeginTransactionAsync(ct))
+        {
+            var usuario = await contexto.Usuario.SingleOrDefaultAsync(
+                u => u.Id == usuarioId && u.DeletedAt == null, ct)
+                ?? throw new KeyNotFoundException("El usuario no existe.");
+
+            usuario.PasswordHash = contrasenas.Hashar(contrasena);
+            usuario.DebeCambiarPassword = true;
+            usuario.UpdatedAt = reloj.GetUtcNow();
+            usuario.UpdatedBy = usuarioAdmin;
+            await contexto.SaveChangesAsync(ct);
+
+            revocadas = await sesiones.RevocarTodasDelUsuarioAsync(
+                usuarioId, MotivosRevocacion.PasswordCambiada, excepto: null, ct);
+
+            await auditoria.RegistrarAsync(new RegistroAuditoria
+            {
+                Accion = "usuario.password_restablecida",
+                Ip = ip,
+                UsuarioId = usuarioAdmin,
+                Entidad = "usuario",
+                EntidadId = usuarioId.ToString("D"),
+                DatosJson = DatosAuditoria(comprobada, ("sesiones_revocadas", revocadas.Count)),
+                Resultado = "permitido",
+                Origen = "api",
+            }, ct);
+
+            await transaccion.CommitAsync(ct);
+        }
+
+        sesiones.InvalidarCache(revocadas);
+        return comprobada;
+    }
+
+    /// <summary>
+    /// Cambio de la contraseña propia. Exige la actual (un fallo cuenta como login fallido para el
+    /// bloqueo de cuenta e IP), aplica las reglas de <see cref="ValidadorContrasena"/>, quita el
+    /// cambio pendiente y revoca las demás sesiones del usuario; la actual sigue viva.
+    /// </summary>
+    public async Task<bool> CambiarPasswordPropiaAsync(
+        Guid usuarioId,
+        Guid sesionActual,
+        string contrasenaActual,
+        string contrasenaNueva,
+        string ip,
+        CancellationToken ct)
+    {
+        var existente = await contexto.Usuario.AsNoTracking()
+            .SingleOrDefaultAsync(u => u.Id == usuarioId && u.DeletedAt == null, ct)
+            ?? throw new KeyNotFoundException("El usuario no existe.");
+
+        if (!contrasenas.Verificar(contrasenaActual, existente.PasswordHash))
+        {
+            await bloqueos.RegistrarIntentoFallidoAsync(usuarioId, existente.NombreAcceso, ip, ct);
+            throw new ContrasenaRechazadaException("La contraseña actual no es correcta.");
+        }
+
+        var comprobada = await validador.ValidarAsync(contrasenaNueva, ct);
+
+        IReadOnlyList<Guid> revocadas;
+        await using (var transaccion = await contexto.Database.BeginTransactionAsync(ct))
+        {
+            var usuario = await contexto.Usuario.SingleAsync(u => u.Id == usuarioId, ct);
+            usuario.PasswordHash = contrasenas.Hashar(contrasenaNueva);
+            usuario.DebeCambiarPassword = false;
+            usuario.UpdatedAt = reloj.GetUtcNow();
+            usuario.UpdatedBy = usuarioId;
+            await contexto.SaveChangesAsync(ct);
+
+            revocadas = await sesiones.RevocarTodasDelUsuarioAsync(
+                usuarioId, MotivosRevocacion.PasswordCambiada, excepto: sesionActual, ct);
+
+            await auditoria.RegistrarAsync(new RegistroAuditoria
+            {
+                Accion = "usuario.password_cambiada",
+                Ip = ip,
+                UsuarioId = usuarioId,
+                Entidad = "usuario",
+                EntidadId = usuarioId.ToString("D"),
+                DatosJson = DatosAuditoria(comprobada, ("sesiones_revocadas", revocadas.Count)),
+                Resultado = "permitido",
+                Origen = "api",
+            }, ct);
+
+            await transaccion.CommitAsync(ct);
+        }
+
+        sesiones.InvalidarCache(revocadas);
+        // La sesión actual sigue viva, pero su estado en caché lleva el cambio pendiente.
+        sesiones.InvalidarCache(sesionActual);
+        return comprobada;
     }
 }

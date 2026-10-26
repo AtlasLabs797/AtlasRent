@@ -21,6 +21,7 @@ namespace AtlasRent.Api.Controllers;
 public sealed class AuthController(
     ServicioAutenticacion autenticacion,
     ServicioMfa mfa,
+    ServicioUsuarios usuarios,
     CookiesSesion cookies,
     ContextoSesion contextoSesion,
     IPolicyService politica,
@@ -117,6 +118,40 @@ public sealed class AuthController(
         // El cierre de sesión se responde 204 aunque el token ya no existiera: al cliente le da
         // igual y así no se le dice si su sesión estaba viva.
         return NoContent();
+    }
+
+    /// <summary>
+    /// Cambia la contraseña propia (SEC-015): exige la actual, aplica el mínimo de 12 y
+    /// HaveIBeenPwned, quita el cambio pendiente y cierra las demás sesiones del usuario. Es de las
+    /// pocas operaciones permitidas con el cambio de contraseña pendiente.
+    /// </summary>
+    [HttpPost("password")]
+    [Accion(Acciones.SesionPassword)]
+    public async Task<IActionResult> CambiarPassword([FromBody] CambiarPasswordPeticion peticion)
+    {
+        try
+        {
+            var comprobada = await usuarios.CambiarPasswordPropiaAsync(
+                contextoSesion.UsuarioId!.Value,
+                SesionIdDeLaPeticion(),
+                peticion.ContrasenaActual,
+                peticion.ContrasenaNueva,
+                IpDeLaPeticion(),
+                HttpContext.RequestAborted);
+            return Ok(new PasswordCambiadaRespuesta(comprobada));
+        }
+        catch (ContrasenaRechazadaException rechazada)
+        {
+            return UsuariosController.ContrasenaRechazada(rechazada);
+        }
+        catch (KeyNotFoundException)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status401Unauthorized,
+                Problemas.SesionNoValida,
+                "No autenticado",
+                "El usuario de la sesión ya no existe.");
+        }
     }
 
     /// <summary>Identidad del usuario de la petición.</summary>

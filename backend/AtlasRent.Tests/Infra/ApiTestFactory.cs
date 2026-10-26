@@ -45,6 +45,12 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
 
     public string IpCliente => Resolutor.Ip;
 
+    /// <summary>
+    /// Sustituto de HaveIBeenPwned (SEC-015): ninguna prueba de la API consulta la red real. Por
+    /// defecto no hay contraseñas filtradas.
+    /// </summary>
+    public ManejadorHibpFalso Hibp { get; } = new();
+
     private readonly string _claveJwt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
 
     /// <summary>
@@ -174,6 +180,9 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
             // (builder.Configure) deja el pipeline sin endpoints y todo responde 404.
             servicios.RemoveAll<IResolutorIpPeticion>();
             servicios.AddSingleton<IResolutorIpPeticion>(Resolutor);
+
+            servicios.AddHttpClient<ServicioComplicidad>()
+                .ConfigurePrimaryHttpMessageHandler(() => Hibp);
         });
     }
 

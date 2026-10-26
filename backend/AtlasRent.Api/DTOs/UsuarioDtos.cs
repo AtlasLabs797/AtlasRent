@@ -28,7 +28,7 @@ public sealed class UsuarioCrearPeticion
     public string? Email { get; init; }
 
     [Required]
-    [StringLength(ServicioContrasenas.LongitudMaxima, MinimumLength = 1)]
+    [StringLength(ServicioContrasenas.LongitudMaxima, MinimumLength = ServicioContrasenas.LongitudMinima)]
     public required string Contrasena { get; init; }
 
     /// <summary>Clave de <c>rol</c>: <c>admin</c>, <c>gerente</c> o <c>empleado</c>.</summary>
@@ -75,7 +75,45 @@ public sealed record UsuarioResumen(
 public sealed record UsuarioPermisosRespuesta(Guid Id, string Rol, IReadOnlyList<string> Permisos);
 
 /// <summary>Respuesta del alta de usuario.</summary>
-public sealed record UsuarioCreadoRespuesta(Guid Id, string NombreAcceso, string Rol);
+/// <param name="ContrasenaComprobada">
+/// Falso si HaveIBeenPwned no respondió: la contraseña se aceptó sin comprobar si está filtrada.
+/// </param>
+public sealed record UsuarioCreadoRespuesta(Guid Id, string NombreAcceso, string Rol, bool ContrasenaComprobada = true);
+
+/// <summary>Activar o desactivar un usuario.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class UsuarioActivoPeticion
+{
+    public required bool Activo { get; init; }
+}
+
+/// <summary>
+/// Restablecimiento de contraseña por el administrador. El usuario queda obligado a cambiarla en su
+/// primer acceso, porque la conoce quien la fijó.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class UsuarioPasswordPeticion
+{
+    [Required]
+    [StringLength(ServicioContrasenas.LongitudMaxima, MinimumLength = ServicioContrasenas.LongitudMinima)]
+    public required string Contrasena { get; init; }
+}
+
+/// <summary>Cambio de la contraseña propia: exige la actual.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class CambiarPasswordPeticion
+{
+    [Required]
+    [StringLength(ServicioContrasenas.LongitudMaxima, MinimumLength = 1)]
+    public required string ContrasenaActual { get; init; }
+
+    [Required]
+    [StringLength(ServicioContrasenas.LongitudMaxima, MinimumLength = ServicioContrasenas.LongitudMinima)]
+    public required string ContrasenaNueva { get; init; }
+}
+
+/// <param name="ContrasenaComprobada">Falso si HaveIBeenPwned no respondió (se aceptó sin comprobar).</param>
+public sealed record PasswordCambiadaRespuesta(bool ContrasenaComprobada);
 
 /// <summary>Desbloqueo de IP: cuerpo y respuesta.</summary>
 public sealed class IpDesbloquearPeticion

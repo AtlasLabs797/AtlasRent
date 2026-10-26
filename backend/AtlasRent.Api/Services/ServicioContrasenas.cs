@@ -14,6 +14,9 @@ public sealed class ServicioContrasenas
     /// </summary>
     public const int LongitudMaxima = 72;
 
+    /// <summary>Longitud mínima al fijar una contraseña (docs/ESPECIFICACION.md §7, SEC-015).</summary>
+    public const int LongitudMinima = 12;
+
     private readonly OpcionesSeguridad _opciones;
 
     /// <summary>
