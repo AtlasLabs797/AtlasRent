@@ -159,6 +159,16 @@ public sealed class ServicioUsuarios(
 
         await politica.ExigirDentroDelTechoAsync(usuarioId, peticion.Accion, peticion.Permitido, ct);
 
+        // SEC-025: a un administrador no se le quitan las salvaguardas de seguridad (ni a otro ni a
+        // uno mismo): un admin comprometido o malicioso se las quitaría a los demás para suplantarlos.
+        if (!peticion.Permitido
+            && peticion.Accion is Acciones.MfaObligatorio or Acciones.SeguridadAccesoEmergencia
+            && await EsAdminAsync(usuarioId, ct))
+        {
+            throw new ReglaDeAdministradorException(
+                $"A un administrador no se le puede quitar el permiso '{peticion.Accion}'.");
+        }
+
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
         var fila = await contexto.UsuarioPermiso
@@ -221,6 +231,21 @@ public sealed class ServicioUsuarios(
         if (fila is null)
         {
             throw new KeyNotFoundException("El usuario no tiene rol.");
+        }
+
+        // SEC-025: no se puede quitar el rol de administrador al último administrador activo.
+        if (fila.RolClave == Roles.Admin && rol != Roles.Admin)
+        {
+            var otrosAdminsActivos = await contexto.UsuarioRol.CountAsync(
+                r => r.RolClave == Roles.Admin
+                    && r.UsuarioId != usuarioId
+                    && contexto.Usuario.Any(u => u.Id == r.UsuarioId && u.Activo && u.DeletedAt == null),
+                ct);
+            if (otrosAdminsActivos == 0)
+            {
+                throw new ReglaDeAdministradorException(
+                    "No se puede quitar el rol de administrador al último administrador activo.");
+            }
         }
 
         fila.RolClave = rol;
@@ -417,4 +442,7 @@ public sealed class ServicioUsuarios(
         sesiones.InvalidarCache(sesionActual);
         return comprobada;
     }
+
+    private Task<bool> EsAdminAsync(Guid usuarioId, CancellationToken ct) =>
+        contexto.UsuarioRol.AnyAsync(r => r.UsuarioId == usuarioId && r.RolClave == Roles.Admin, ct);
 }

@@ -89,6 +89,10 @@ public sealed class UsuariosController(
                 $"El rol '{fueraDeTecho.Rol}' no trae el permiso '{fueraDeTecho.Accion}': los permisos "
                 + "de un usuario solo recortan los de su rol, nunca los amplían.");
         }
+        catch (ReglaDeAdministradorException regla)
+        {
+            return ReglaDeAdministrador(regla);
+        }
         catch (KeyNotFoundException)
         {
             return NoEncontrado();
@@ -103,6 +107,10 @@ public sealed class UsuariosController(
         {
             await usuarios.CambiarRolAsync(id, peticion.Rol, UsuarioDeLaPeticion(), Ip(), ct);
             return NoContent();
+        }
+        catch (ReglaDeAdministradorException regla)
+        {
+            return ReglaDeAdministrador(regla);
         }
         catch (KeyNotFoundException)
         {
@@ -164,6 +172,13 @@ public sealed class UsuariosController(
             Problemas.ContrasenaRechazada,
             "Contraseña no válida",
             rechazada.Message);
+
+    private static IActionResult ReglaDeAdministrador(ReglaDeAdministradorException regla) =>
+        Problemas.Construir(
+            StatusCodes.Status409Conflict,
+            Problemas.Validacion,
+            "Cambio no permitido",
+            regla.Message);
 
     private Guid UsuarioDeLaPeticion() => contextoSesion.UsuarioId!.Value;
 

@@ -32,6 +32,7 @@ public sealed class MfaController(
     ServicioMfa mfa,
     CookiesSesion cookies,
     IPolicyService politica,
+    ServicioSesiones sesiones,
     IResolutorIpPeticion resolutorIp) : ControllerBase
 {
     /// <summary>
@@ -145,9 +146,41 @@ public sealed class MfaController(
                 .SingleOrDefaultAsync(u => u.Id == desafio.UsuarioId && u.Activo && u.DeletedAt == null, ct);
         }
 
-        return UsuarioDeLaSesion() is { } usuarioId
-            ? await contexto.Usuario.SingleOrDefaultAsync(u => u.Id == usuarioId && u.Activo, ct)
-            : null;
+        // Camino de sesión (MFA opcional del resto de roles). El endpoint es [AllowAnonymous], así que
+        // el middleware no ha validado la sesión: se hace aquí contra la base de datos, igual que
+        // en cualquier otro endpoint. Un JWT firmado pero de sesión revocada (logout), caducada o de
+        // un usuario desactivado no vale (SEC-013).
+        if (User.Identity?.IsAuthenticated != true
+            || UsuarioDeLaSesion() is not { } usuarioId
+            || !Guid.TryParse(User.FindFirst("sid")?.Value, out var sesionId))
+        {
+            return null;
+        }
+
+        // [SaltarCsrf] sigue siendo necesario por el camino del token provisional (no hay cookie de
+        // CSRF todavía); en el camino de sesión la comprobación se hace aquí, a mano.
+        if (!CsrfCorrecto())
+        {
+            return null;
+        }
+
+        if (!(await sesiones.ValidarAsync(sesionId, ct)).Valida)
+        {
+            return null;
+        }
+
+        return await contexto.Usuario.SingleOrDefaultAsync(u => u.Id == usuarioId && u.Activo && u.DeletedAt == null, ct);
+    }
+
+    private bool CsrfCorrecto()
+    {
+        var cabecera = Request.Headers["X-CSRF-Token"].ToString();
+        var cookie = Request.Cookies[NombresCookies.Csrf];
+
+        return !string.IsNullOrEmpty(cookie)
+            && !string.IsNullOrEmpty(cabecera)
+            && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(cabecera), System.Text.Encoding.UTF8.GetBytes(cookie));
     }
 
     private async Task<IActionResult> ResponderSesion(ResultadoSesion? sesion)

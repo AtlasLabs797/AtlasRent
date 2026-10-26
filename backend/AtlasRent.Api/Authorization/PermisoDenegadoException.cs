@@ -25,3 +25,10 @@ public sealed class PermisoFueraDeTechoException(string accion, string rol)
 
     public string Rol { get; } = rol;
 }
+
+/// <summary>
+/// Cambio que dejaría al sistema sin su salvaguarda de administración: quitar a un administrador
+/// los permisos que lo protegen (MFA obligatorio, acceso de emergencia) o dejar sin administrador
+/// activo a la instalación (SEC-025).
+/// </summary>
+public sealed class ReglaDeAdministradorException(string mensaje) : Exception(mensaje);

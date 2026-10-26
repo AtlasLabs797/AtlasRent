@@ -200,11 +200,19 @@ public sealed class ServicioMfa(
             return null;
         }
 
+        // SEC-025: una cuenta bloqueada no prueba códigos, y cada código malo cuenta como fallo.
+        if (bloqueos.CuentaBloqueada(usuario))
+        {
+            await RegistrarFalloAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
+            return null;
+        }
+
         // F1-09: el secreto está cifrado en reposo; hay que descifrarlo para comprobar el código.
         var secreto = cifrado.Descifrar(secretoCifrado);
 
         if (!CodigoValido(secreto, codigo))
         {
+            await RegistrarFalloAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
             return null;
         }
 
@@ -274,6 +282,14 @@ await contexto.CodigoRecuperacion
         }
 
         var usuario = await UsuarioDelDesafioAsync(desafio, ct);
+
+        // SEC-025: con la cuenta bloqueada no se prueban códigos; el intento cuenta como fallo.
+        if (usuario is not null && bloqueos.CuentaBloqueada(usuario))
+        {
+            await RegistrarFalloAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
+            return null;
+        }
+
         if (usuario is null
             || !usuario.MfaActivado
             || usuario.MfaSecreto is not { } secretoCifrado
@@ -323,6 +339,12 @@ await contexto.CodigoRecuperacion
         if (usuario is null)
         {
             await RegistrarFalloAsync(desafio.UsuarioId, null, ip, ct);
+            return null;
+        }
+
+        if (bloqueos.CuentaBloqueada(usuario))
+        {
+            await RegistrarFalloAsync(usuario.Id, usuario.NombreAcceso, ip, ct);
             return null;
         }
 

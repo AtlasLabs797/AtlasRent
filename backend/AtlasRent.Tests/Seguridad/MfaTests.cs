@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AtlasRent.Api.Authorization;
@@ -151,10 +151,15 @@ public sealed class MfaTests(ContenedorBdFixture bd, ApiTestFactory api)
         using var cliente = api.CrearCliente();
 
         // Sin MFA no hay desafío: entra directamente.
-        (await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, Contrasena, ct))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var login = await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, Contrasena, ct);
+        login.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var uri = await AyudaMfa.ActivarAsync(cliente, ct);
+        // Con sesión (sin token provisional) el alta exige el doble envío de CSRF (SEC-013).
+        var activar = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/mfa/activar");
+        activar.Headers.Add("X-CSRF-Token", AyudaAuth.Cookie(login, NombresCookies.Csrf).Valor);
+        var respuesta = await cliente.SendAsync(activar, ct);
+        respuesta.EnsureSuccessStatusCode();
+        var uri = (await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("uri").GetString()!;
         var identidad = await cliente.GetFromJsonAsync<JsonElement>("/api/v1/auth/yo", ct);
 
         identidad.GetProperty("mfaActivado").GetBoolean().Should().BeFalse();
