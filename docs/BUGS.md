@@ -22,6 +22,18 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-053 · Suite de Backup en rojo con core.autocrlf=true
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Baja** · Estado: ABIERTO · Módulo: backup / pruebas
+- Detectado por: agente (AUD-03)
+- Síntoma: en un checkout con `core.autocrlf=true` (los worktrees de esta máquina) fallan 8 tests de Backup: 7 de `RotacionCopiaTests` y `CifradoCopiaTests.ElVolcadoConUnaFilaSeConsideraConDatos`. En el checkout principal, con ficheros en LF, pasan.
+- Cómo reproducir: crear un worktree o clon con `core.autocrlf=true` en Windows y ejecutar el namespace Backup de `backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe`.
+- Causa raíz: los literales de cadena multilínea llegan con `\r\n`, y `ServicioBackup.TieneFilas` y `EsCabeceraCopy` no toleran el `\r`. Por eso cualquier volcado de prueba parece sin filas. El mismo defecto haría que un volcado real con CRLF se considerara vacío.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: los 8 tests citados, que hoy fallan en un checkout con CRLF.
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
 ### BUG-052 · Varios menores
 - Fecha detectado: 26/10/2026 · Fecha corregido: —
 - Gravedad: **Baja** · Estado: ABIERTO · Módulo: varios

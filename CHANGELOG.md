@@ -16,6 +16,16 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [26/10/2026 21:58] SEC · AUD-02/AUD-03 · Correcciones de seguridad (orquestador)
+- Qué: corregidos SEC-010, 011, 012, 013, 014, 015 (Altos, AUD-02) y SEC-016, 017, 019, 020, 021, 023, 024, 025, 026, 027, 028, 029 (Medios y Bajos, AUD-03). Resumen: lista blanca de acciones de token de agente y sin aprobaciones por agente (010, 011); bloqueo de cuenta que no se prorroga y MFA con sesión validada (012, 013, 025); cabeceras, ForwardedHeaders y errores sin trazas (014); contraseña de 12 con HIBP, cambio de contraseña y revocación al desactivar (015, 019); rol `rent_jobs` para Hangfire (020); STARTTLS obligatorio (016); JSON de auditoría serializado (017); firma ECDSA del Watchdog (021); seudonimización por tipo con red de seguridad (026); reserva atómica de cupo de IA (029); aviso de IP nueva y ajuste de MFA para gerente (023, 024); logs sin datos personales y validación de correo y texto (027, 028). Detalle en `docs/SEGURIDAD.md` §C.
+- Por qué: auditoría del 26/10/2026 (SEC-010 a SEC-030). Cada SEC tiene su test o, cuando no lo tiene, su entrada lo dice.
+- Verificado: AUD-02: build Release `-warnaserror` 0 avisos y 0 errores; suite completa `AtlasRent.Tests.exe` 918/918. AUD-03: verificado por namespaces en cada rama; suite completa con AUD-03 PENDIENTE. **NO verificado:** CSP en navegador real, SMTP real, Caddy real, HIBP real.
+- Migraciones: sí: 20261026172835_AccionSesionPassword y 20261026203218_MfaGerenteYDesbloqueoManual. Scripts SQL: 01_roles.sql (rol rent_jobs) y 04_base_jobs.sql.
+- Riesgo / pendiente: (1) Despliegue: crear el rol rent_jobs, definir `ConnectionStrings__Jobs`, `Seguridad__ProxiesConfianza`, `Watchdog__ClavePublicaActualizacion` y firmar el release (FP-02 pendiente). (2) SEC-018, SEC-022 y SEC-030 siguen ABIERTOS (AUD-03 en curso). SEC-008 sigue ABIERTO por decisión del responsable. (3) BUG-053 abierto (AUD-06): la suite de Backup falla con `core.autocrlf=true`. (4) SEC-027 verificado solo por lectura de código.
+- Commit/PR: commits de código en las ramas `aud/sec*`; merges en `tarea/AUD-01-auditoria`: cc78852, 9e46749, e90e145, 00b8b1b, 95dd3f2, 14afd07 y 99e572a. Registro de docs en la misma rama.
+
+---
+
 ## [26/10/2026 18:13] DOCS · AUD-01 · Registro de la auditoría completa (orquestador)
 - Qué: se registran los hallazgos de la auditoría del 26/10/2026 sobre V-01.00: 21 problemas de seguridad (SEC-010..SEC-030: 6 Altos, 11 Medios, 4 Bajos) en `docs/SEGURIDAD.md`, 34 bugs (BUG-019..BUG-052) en `docs/BUGS.md` y la nueva fase AUD (AUD-01..AUD-10) en `docs/PLAN.md`, con una nota de auditoría en las tareas HECHAS cuyo alcance real es menor (F1-04, F1-05, F1-06, F1-07, F1-09, F1-10, F1-13, F2-03, F3-10, F6-03). Solo documentación: no se ha tocado código.
 - Por qué: auditoría pedida por el responsable. Cada hallazgo queda con ID, archivo:línea y tarea AUD que lo corrige.

@@ -132,11 +132,11 @@ La auditoría con agentes del 26/10/2026 (base V-01.00) encontró 21 problemas d
 | ID | Tarea | Aceptación | Depende | Estado |
 |---|---|---|---|---|
 | AUD-01 | Registro de hallazgos en BUGS / SEGURIDAD / PLAN | Todos los hallazgos registrados | — | HECHA (26/10/2026) |
-| AUD-02 | Seguridad Alta: SEC-010..SEC-015 | Cada SEC con test que reproduce el fallo y pasa tras corregir | AUD-01 | PENDIENTE |
-| AUD-03 | Seguridad Media/Baja: SEC-016..SEC-030 | Ídem | AUD-01 | PENDIENTE |
+| AUD-02 | Seguridad Alta: SEC-010..SEC-015 | Cada SEC con test que reproduce el fallo y pasa tras corregir | AUD-01 | HECHA (26/10/2026) |
+| AUD-03 | Seguridad Media/Baja: SEC-016..SEC-030 | Ídem | AUD-01 | EN CURSO (orquestador) — falta SEC-018, SEC-022, SEC-030 |
 | AUD-04 | Bugs de dinero (cobros, facturas, fianzas, periódica, prorrateo, cotización): BUG-019..022, 029..036 | Test que reproduce cada bug; property test ampliado con anulaciones, otra moneda y concurrencia | AUD-01 | PENDIENTE |
 | AUD-05 | Bugs de contratos, reservas y avisos: BUG-023..028, 041..043, 048..050 | Ídem | AUD-01 | PENDIENTE |
-| AUD-06 | Bugs de mensajería, sesión, backup, CI y varios: BUG-037..040, 044..047, 052 | Ídem; la CI ejecuta las pruebas de verdad | AUD-01 | PENDIENTE |
+| AUD-06 | Bugs de mensajería, sesión, backup, CI y varios: BUG-037..040, 044..047, 052, 053 | Ídem; la CI ejecuta las pruebas de verdad | AUD-01 | PENDIENTE |
 | AUD-07 | Tests que no prueban lo prometido: BUG-051 | Cada punto (a)-(f) corregido | AUD-01 | PENDIENTE |
 | AUD-08 | Pantallas de acceso y administración que faltan: segundo factor TOTP en el login, alta de MFA y códigos de recuperación, break-glass, refresco de sesión en el cliente, cambio de contraseña, desbloqueo de cuentas/IP, usuarios y permisos, configuración, clientes, inmuebles/unidades/documentos | El admin entra por la UI; revisión en claro/oscuro | AUD-02 | PENDIENTE |
 | AUD-09 | Pantallas de operación que faltan: reservas, cotizaciones, contratos, calendario, inventario, bandeja de aprobaciones, cuentas/cobros/facturas/fianzas, propuestas de IA | Ídem | AUD-04, AUD-05, AUD-08 | PENDIENTE |
