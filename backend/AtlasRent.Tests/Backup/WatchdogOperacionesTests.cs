@@ -15,11 +15,10 @@ namespace AtlasRent.Tests.Backup;
 /// </summary>
 public sealed class WatchdogOperacionesTests : IDisposable
 {
-    private const string DumpConDatos = """
-        COPY public.cliente (id, nombre) FROM stdin;
-        8f0e0000-0000-0000-0000-000000000001	Puerta del Este
-        \.
-        """;
+    // Con \n explícito: un literal multilínea sale aquí con CRLF y TieneFilas no lo tolera
+    // (fallo previo de este entorno, ver informe de SEC-021).
+    private static readonly string DumpConDatos =
+        "COPY public.cliente (id, nombre) FROM stdin;\n8f0e0000-0000-0000-0000-000000000001\tPuerta del Este\n\\.\n";
 
     private readonly string _raiz =
         Path.Combine(Path.GetTempPath(), $"atlas-rent-watchdog-{Guid.NewGuid():N}");
@@ -56,6 +55,7 @@ public sealed class WatchdogOperacionesTests : IDisposable
             Directory.Delete(_raiz, recursive: true);
         }
 
+        _firmante.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -72,9 +72,20 @@ public sealed class WatchdogOperacionesTests : IDisposable
         new ServicioCifradoCopia(_opciones),
         TimeProvider.System);
 
-    private OperacionesWatchdog Watchdog() => new(
+    private readonly System.Security.Cryptography.ECDsa _firmante =
+        System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+
+    private OperacionesWatchdog Watchdog(Action<string>? alCopiar = null) => new(
         Copias(),
-        NullLogger<OperacionesWatchdog>.Instance);
+        NullLogger<OperacionesWatchdog>.Instance,
+        _firmante.ExportSubjectPublicKeyInfo(),
+        alCopiar);
+
+    private void Firmar(string paquete, System.Security.Cryptography.ECDsa? con = null) =>
+        File.WriteAllText(
+            paquete + OperacionesWatchdog.ExtensionFirma,
+            Convert.ToBase64String((con ?? _firmante).SignData(
+                File.ReadAllBytes(paquete), System.Security.Cryptography.HashAlgorithmName.SHA256)));
 
     /// <summary>Sin copia de seguridad que verifique, la actualización se para y no toca la instalación.</summary>
     [Fact]
@@ -83,6 +94,7 @@ public sealed class WatchdogOperacionesTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var instalacion = Path.Combine(_raiz, "instalacion");
         var paquete = EscribirPaquete("paquete.zip", "version.txt", "contenido nuevo");
+        Firmar(paquete);
 
         var accion = () => Watchdog().ActualizarAsync(paquete, instalacion, ct);
 
@@ -105,6 +117,7 @@ public sealed class WatchdogOperacionesTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(instalacion, "AtlasRent.Api.exe"), "versión antigua", ct);
 
         var paquete = EscribirPaquete("paquete.zip", "version.txt", "contenido nuevo");
+        Firmar(paquete);
 
         var resultado = await Watchdog().ActualizarAsync(paquete, instalacion, ct);
 
@@ -150,6 +163,99 @@ public sealed class WatchdogOperacionesTests : IDisposable
         resultado.Documentos.Should().Be(1);
         File.Exists(Path.Combine(destino, "documentos", "titulo.pdf")).Should().BeTrue();
         (await File.ReadAllTextAsync(resultado.RutaDump, ct)).Should().Contain("Puerta del Este");
+    }
+
+    /// <summary>SEC-021: sin firma, con firma de otra clave o con el ZIP alterado, la instalación no se toca.</summary>
+    [Theory]
+    [InlineData("ausente")]
+    [InlineData("otra-clave")]
+    [InlineData("zip-alterado")]
+    public async Task UnPaqueteSinFirmaValidaNoTocaLaInstalacion(string caso)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Copias().EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        var instalacion = Path.Combine(_raiz, "instalacion");
+        Directory.CreateDirectory(instalacion);
+        await File.WriteAllTextAsync(Path.Combine(instalacion, "a.txt"), "antigua", ct);
+
+        var paquete = EscribirPaquete("paquete.zip", "a.txt", "nueva");
+        switch (caso)
+        {
+            case "otra-clave":
+                using (var otra = System.Security.Cryptography.ECDsa.Create(
+                    System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+                {
+                    Firmar(paquete, otra);
+                }
+
+                break;
+            case "zip-alterado":
+                Firmar(paquete);
+                await File.AppendAllTextAsync(paquete, "x", ct);
+                break;
+        }
+
+        var accion = () => Watchdog().ActualizarAsync(paquete, instalacion, ct);
+
+        await accion.Should().ThrowAsync<WatchdogFirmaInvalidaException>();
+        (await File.ReadAllTextAsync(Path.Combine(instalacion, "a.txt"), ct)).Should().Be("antigua");
+        Directory.Exists(instalacion + ".prev").Should().BeFalse();
+        Directory.Exists(instalacion + ".nueva").Should().BeFalse();
+    }
+
+    /// <summary>SEC-021: un fallo a mitad de la sustitución deja la versión anterior.</summary>
+    [Fact]
+    public async Task UnFalloAMitadRestauraLaVersionAnterior()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Copias().EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        var instalacion = Path.Combine(_raiz, "instalacion");
+        Directory.CreateDirectory(instalacion);
+        await File.WriteAllTextAsync(Path.Combine(instalacion, "a.txt"), "antigua", ct);
+        await File.WriteAllTextAsync(Path.Combine(instalacion, "b.txt"), "antigua-b", ct);
+
+        var paquete = EscribirPaquete("paquete.zip", "a.txt", "nueva");
+        using (var zip = ZipFile.Open(paquete, ZipArchiveMode.Update))
+        {
+            using var w = new StreamWriter(zip.CreateEntry("c.txt").Open());
+            w.Write("añadido");
+        }
+
+        Firmar(paquete);
+
+        var copiados = 0;
+        var accion = () => Watchdog(_ =>
+        {
+            if (++copiados == 2)
+            {
+                throw new IOException("disco lleno simulado");
+            }
+        }).ActualizarAsync(paquete, instalacion, ct);
+
+        await accion.Should().ThrowAsync<WatchdogActualizacionFallidaException>();
+        (await File.ReadAllTextAsync(Path.Combine(instalacion, "a.txt"), ct)).Should().Be("antigua");
+        (await File.ReadAllTextAsync(Path.Combine(instalacion, "b.txt"), ct)).Should().Be("antigua-b");
+        File.Exists(Path.Combine(instalacion, "c.txt")).Should().BeFalse("lo añadido a medias se retira");
+    }
+
+    /// <summary>SEC-021: con barra final, la copia previa queda al lado de la instalación, no dentro.</summary>
+    [Fact]
+    public async Task ConBarraFinalLaCopiaPreviaQuedaFueraDeLaInstalacion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Copias().EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        var instalacion = Path.Combine(_raiz, "instalacion");
+        Directory.CreateDirectory(instalacion);
+        await File.WriteAllTextAsync(Path.Combine(instalacion, "a.txt"), "antigua", ct);
+        var paquete = EscribirPaquete("paquete.zip", "a.txt", "nueva");
+        Firmar(paquete);
+
+        var resultado = await Watchdog().ActualizarAsync(
+            paquete, instalacion + Path.DirectorySeparatorChar, ct);
+
+        resultado.CarpetaPrevia.Should().Be(instalacion + ".prev");
+        Directory.Exists(Path.Combine(instalacion, ".prev")).Should().BeFalse();
+        File.Exists(Path.Combine(resultado.CarpetaPrevia, "a.txt")).Should().BeTrue();
     }
 
     private string EscribirPaquete(string nombre, string entrada, string contenido)

@@ -3,6 +3,13 @@ using Microsoft.Extensions.Logging;
 
 namespace AtlasRent.Watchdog;
 
+/// <summary>El paquete no trae una firma válida (o no hay clave para comprobarla). No se ha tocado nada.</summary>
+public sealed class WatchdogFirmaInvalidaException(string mensaje) : Exception(mensaje);
+
+/// <summary>El paquete se empezó a aplicar y falló; la instalación anterior se restauró.</summary>
+public sealed class WatchdogActualizacionFallidaException(string mensaje, Exception interna)
+    : Exception(mensaje, interna);
+
 /// <summary>La operación crítica no puede empezar porque no hay una copia anterior válida.</summary>
 public sealed class WatchdogSinCopiaPreviaException(string mensaje) : Exception(mensaje);
 
@@ -15,8 +22,15 @@ public sealed class WatchdogSinCopiaPreviaException(string mensaje) : Exception(
 /// pérdida de datos, que es justo lo contrario de lo que se le pide.
 /// </para>
 /// </summary>
-public sealed class OperacionesWatchdog(ServicioBackup copias, ILogger<OperacionesWatchdog> registro)
+public sealed class OperacionesWatchdog(
+    ServicioBackup copias,
+    ILogger<OperacionesWatchdog> registro,
+    byte[]? clavePublicaActualizacion = null,
+    Action<string>? alCopiarArchivo = null)
 {
+    /// <summary>Extensión de la firma desacoplada: <c>paquete.zip</c> se firma en <c>paquete.zip.sig</c>.</summary>
+    public const string ExtensionFirma = ".sig";
+
     /// <summary>
     /// Restaura una copia en una carpeta: los documentos en su sitio y el volcado de la base en un
     /// archivo aparte.
@@ -93,6 +107,9 @@ public sealed class OperacionesWatchdog(ServicioBackup copias, ILogger<Operacion
             throw new FileNotFoundException($"No existe el paquete '{rutaPaquete}'.", rutaPaquete);
         }
 
+        // Lo primero y antes de abrir nada: un paquete sin firma válida no se mira siquiera.
+        ComprobarFirma(rutaPaquete);
+
         var copiaPrevia = await copias.UltimaCopiaValidaAsync(ct)
             ?? throw new WatchdogSinCopiaPreviaException(
                 "No hay ninguna copia de seguridad que verifique. No se actualiza: sin red de seguridad "
@@ -102,37 +119,116 @@ public sealed class OperacionesWatchdog(ServicioBackup copias, ILogger<Operacion
             "Copia de seguridad previa verificada: {Archivo} del {Fecha}",
             Path.GetFileName(copiaPrevia.RutaArchivo), copiaPrevia.Fecha);
 
-        var carpetaPrevia = carpetaInstalacion + ".prev";
-        CopiaDeArchivos(carpetaInstalacion, carpetaPrevia);
-        ComprobarCopiaDeArchivos(carpetaInstalacion, carpetaPrevia);
+        // Ruta normalizada: con barra final ("C:\AtlasRent\") sumar ".prev" caería DENTRO de la
+        // instalación y la copia previa se copiaría sobre sí misma.
+        var instalacion = Path.TrimEndingDirectorySeparator(Path.GetFullPath(carpetaInstalacion));
+        var carpetaPrevia = instalacion + ".prev";
+        var carpetaNueva = instalacion + ".nueva";
 
-        registro.LogInformation(
-            "Copia previa de la instalación lista en {Carpeta}", carpetaPrevia);
+        CopiaDeArchivos(instalacion, carpetaPrevia, null);
+        ComprobarCopiaDeArchivos(instalacion, carpetaPrevia);
 
-        // TODO(A#): validar la firma y la integridad del paquete antes de descomprimirlo. Llega con
-        // F1-13, que es donde se publican los releases de GitHub con firma. Hasta entonces el
-        // Watchdog solo se lanza desde el procedimiento de instalación, con un paquete de origen
-        // conocido, y no desde ningún sitio que acepte un paquete de fuera.
-        registro.LogWarning(
-            "El paquete {Paquete} se descomprime sin comprobar firma: la validación de firma llega con F1-13",
-            Path.GetFileName(rutaPaquete));
+        registro.LogInformation("Copia previa de la instalación lista en {Carpeta}", carpetaPrevia);
 
-        System.IO.Compression.ZipFile.ExtractToDirectory(rutaPaquete, carpetaInstalacion, overwriteFiles: true);
+        // El paquete se extrae sobre una copia de la instalación, fuera de ella: si el ZIP está roto,
+        // la instalación real no se ha movido.
+        CopiaDeArchivos(instalacion, carpetaNueva, null);
+        try
+        {
+            System.IO.Compression.ZipFile.ExtractToDirectory(rutaPaquete, carpetaNueva, overwriteFiles: true);
+        }
+        catch
+        {
+            BorrarSiExiste(carpetaNueva);
+            throw;
+        }
 
-        registro.LogInformation("Paquete aplicado en {Carpeta}", carpetaInstalacion);
+        try
+        {
+            CopiaDeArchivos(carpetaNueva, instalacion, alCopiarArchivo, vaciarDestino: false);
+        }
+        catch (Exception e)
+        {
+            registro.LogCritical(
+                e, "Fallo aplicando el paquete a mitad: se restaura la instalación anterior desde {Previa}",
+                carpetaPrevia);
+            CopiaDeArchivos(carpetaPrevia, instalacion, null, vaciarDestino: false, eliminarSobrantes: true);
+            BorrarSiExiste(carpetaNueva);
+            throw new WatchdogActualizacionFallidaException(
+                "No se pudo aplicar el paquete; la instalación anterior se ha restaurado.", e);
+        }
+
+        BorrarSiExiste(carpetaNueva);
+        registro.LogInformation("Paquete aplicado en {Carpeta}", instalacion);
 
         return new ActualizacionResultada(copiaPrevia.RutaArchivo, carpetaPrevia);
     }
 
     /// <summary>
-    /// Copia los archivos de la instalación a una carpeta hermana. Se rehace entera en vez de
-    /// incrementarse: una copia anterior parcial es justo la copia que no sirve.
+    /// Verifica la firma ECDSA P-256/SHA-256 del ZIP contra la clave pública configurada. Sin clave,
+    /// sin <c>.sig</c> o con firma que no cuadra, se aborta sin tocar nada.
     /// </summary>
-    private static void CopiaDeArchivos(string origen, string destino)
+    private void ComprobarFirma(string rutaPaquete)
     {
-        if (Directory.Exists(destino))
+        var rutaFirma = rutaPaquete + ExtensionFirma;
+        string? fallo = null;
+
+        if (clavePublicaActualizacion is null || clavePublicaActualizacion.Length == 0)
         {
-            Directory.Delete(destino, recursive: true);
+            fallo = "No hay clave pública de actualizaciones configurada (Watchdog__ClavePublicaActualizacion).";
+        }
+        else if (!File.Exists(rutaFirma))
+        {
+            fallo = $"Falta la firma '{Path.GetFileName(rutaFirma)}'.";
+        }
+        else
+        {
+            try
+            {
+                var firma = Convert.FromBase64String(File.ReadAllText(rutaFirma).Trim());
+                using var ecdsa = System.Security.Cryptography.ECDsa.Create();
+                ecdsa.ImportSubjectPublicKeyInfo(clavePublicaActualizacion, out _);
+                using var flujo = File.OpenRead(rutaPaquete);
+                if (!ecdsa.VerifyData(flujo, firma, System.Security.Cryptography.HashAlgorithmName.SHA256))
+                {
+                    fallo = "La firma del paquete no es válida.";
+                }
+            }
+            catch (Exception e) when (e is FormatException or System.Security.Cryptography.CryptographicException)
+            {
+                fallo = "La firma o la clave pública no se pueden leer.";
+            }
+        }
+
+        if (fallo is not null)
+        {
+            registro.LogCritical("Paquete {Paquete} rechazado: {Motivo}", Path.GetFileName(rutaPaquete), fallo);
+            throw new WatchdogFirmaInvalidaException(fallo);
+        }
+    }
+
+    private static void BorrarSiExiste(string carpeta)
+    {
+        if (Directory.Exists(carpeta))
+        {
+            Directory.Delete(carpeta, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Copia los archivos de una carpeta a otra. Por defecto rehace el destino entero: una copia
+    /// anterior parcial es justo la copia que no sirve.
+    /// </summary>
+    private static void CopiaDeArchivos(
+        string origen,
+        string destino,
+        Action<string>? alCopiar,
+        bool vaciarDestino = true,
+        bool eliminarSobrantes = false)
+    {
+        if (vaciarDestino)
+        {
+            BorrarSiExiste(destino);
         }
 
         Directory.CreateDirectory(destino);
@@ -147,6 +243,18 @@ public sealed class OperacionesWatchdog(ServicioBackup copias, ILogger<Operacion
             var ruta = Path.Combine(destino, Path.GetRelativePath(origen, archivo));
             Directory.CreateDirectory(Path.GetDirectoryName(ruta)!);
             File.Copy(archivo, ruta, overwrite: true);
+            alCopiar?.Invoke(ruta);
+        }
+
+        if (eliminarSobrantes)
+        {
+            foreach (var archivo in Directory.EnumerateFiles(destino, "*", SearchOption.AllDirectories).ToList())
+            {
+                if (!File.Exists(Path.Combine(origen, Path.GetRelativePath(destino, archivo))))
+                {
+                    File.Delete(archivo);
+                }
+            }
         }
     }
 

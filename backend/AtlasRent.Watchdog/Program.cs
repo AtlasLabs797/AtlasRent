@@ -41,7 +41,12 @@ internal static class Program
                 new ServicioCifradoCopia(opcionesBackup),
                 TimeProvider.System);
 
-            var operaciones = new OperacionesWatchdog(copias, registro);
+            // Clave publica (SubjectPublicKeyInfo en base64) para verificar los paquetes de actualizacion.
+            var clavePublica = configuracion["Watchdog:ClavePublicaActualizacion"];
+            var operaciones = new OperacionesWatchdog(
+                copias,
+                registro,
+                string.IsNullOrWhiteSpace(clavePublica) ? null : Convert.FromBase64String(clavePublica));
 
             switch (args.Length > 0 ? args[0] : "comprobar")
             {
@@ -117,6 +122,16 @@ internal static class Program
             // Fallo esperado y peligroso: no había red de seguridad. Queda bien dicho en el registro.
             registro.LogCritical("Operación abortada, no se ha tocado nada: {Motivo}", e.Message);
             return 2;
+        }
+        catch (WatchdogFirmaInvalidaException e)
+        {
+            registro.LogCritical("Actualización rechazada, no se ha tocado nada: {Motivo}", e.Message);
+            return 3;
+        }
+        catch (WatchdogActualizacionFallidaException e)
+        {
+            registro.LogCritical("Actualización fallida, instalación anterior restaurada: {Motivo}", e.InnerException?.Message);
+            return 4;
         }
         catch (Exception e)
         {
