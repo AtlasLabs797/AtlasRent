@@ -405,6 +405,14 @@ builder.Services.AddScoped<IColaEnvios>(servicios => servicios.GetService<IBackg
 builder.Services.AddScoped<ServicioEnviosMasivos>();
 builder.Services.AddScoped<TrabajoEnvio>();
 
+// SEC-023: aviso de IP nueva al administrador (alerta + correo por la cola). Misma fábrica que
+// IColaEnvios, pero sin servidor de jobs no hay cola y no se falla: el login no puede depender de ella.
+builder.Services.AddScoped<IColaAvisosAcceso>(servicios => servicios.GetService<IBackgroundJobClient>() is { } cliente
+    ? new ColaAvisosAccesoHangfire(cliente)
+    : new ColaAvisosAccesoSinServidor());
+builder.Services.AddScoped<ServicioAvisosAcceso>();
+builder.Services.AddScoped<TrabajoAvisoIpNueva>();
+
 // F4-05: los avisos de pago (§3.14, D12). El trabajo va detrás del servicio por el mismo motivo que
 // los demás: para que las pruebas puedan ejercitar el barrido sin pasar por el planificador.
 builder.Services.AddScoped<ServicioRecordatorios>();

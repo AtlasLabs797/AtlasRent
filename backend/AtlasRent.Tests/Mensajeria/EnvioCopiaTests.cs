@@ -47,7 +47,7 @@ public sealed class EnvioCopiaTests(ContenedorBdFixture bd, ApiTestFactoryCorreo
         var envioId = envio.GetProperty("id").GetGuid();
 
         var adjunto = api.Doble.Ultimo!.Adjunto;
-        adjunto.Take(5).Should().Equal("%PDF-"u8.ToArray(), "lo que salió es el PDF de F4-01, no otra cosa");
+        adjunto!.Take(5).Should().Equal("%PDF-"u8.ToArray(), "lo que salió es el PDF de F4-01, no otra cosa");
 
         // La fila guardada tiene exactamente los mismos bytes que se mandaron.
         var fila = await AyudaEnvios.FilaAsync(bd, envioId, ct);

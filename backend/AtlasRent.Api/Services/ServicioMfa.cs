@@ -92,11 +92,17 @@ public sealed class ServicioMfa(
     /// </summary>
     public async Task<bool> NecesitaMfaAsync(Usuario usuario, CancellationToken ct) =>
         usuario.MfaActivado
-        || await politica.PuedeAsync(Acciones.MfaObligatorio, usuario.Id, ct);
+        || await politica.PuedeAsync(Acciones.MfaObligatorio, usuario.Id, ct)
+        || await GerenteConInterruptorAsync(usuario, ct);
 
-    // TODO(A#) F1-09: el interruptor de configuración "MFA para gerente" que pide D4. Con la
-    // matriz como datos, activarlo es insertar el permiso en permiso_rol para el rol gerente; falta
-    // decidir si ese interruptor debe poder activarlo sin migración, que es lo que sugiere D4.
+    /// <summary>
+    /// SEC-024: el interruptor "MFA para gerente" (D4) de <c>ajuste_general</c>. Es un ajuste y no
+    /// una fila de <c>permiso_rol</c> para que el administrador lo active sin migración y sin tocar
+    /// la matriz: <c>mfa.obligatorio</c> sigue siendo solo del administrador.
+    /// </summary>
+    private async Task<bool> GerenteConInterruptorAsync(Usuario usuario, CancellationToken ct) =>
+        await politica.RolDeAsync(usuario.Id, ct) == Roles.Gerente
+        && await contexto.AjusteGeneral.AsNoTracking().AnyAsync(a => a.MfaGerente, ct);
 
     /// <summary>
     /// Emite el token provisional de un login con la contraseña correcta. Es opaco, dura

@@ -41,6 +41,13 @@ public sealed class AjusteGeneral : IEntidadConfiguracion
     /// </summary>
     public int? DiasEntreRecordatorios { get; set; } = 15;
 
+    /// <summary>
+    /// Interruptor "MFA para gerente" (docs/ESPECIFICACION.md D4, SEC-024): con él activado el segundo
+    /// factor es obligatorio también para el rol gerente. Nace apagado; solo lo cambia el
+    /// administrador (<c>configuracion.editar</c>) y el cambio queda auditado.
+    /// </summary>
+    public bool MfaGerente { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public Guid? CreatedBy { get; set; }

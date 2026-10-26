@@ -35,12 +35,12 @@ public interface IServicioCorreo
 /// <param name="DestinatarioNombre">Nombre para el encabezado <c>To</c>. Opcional.</param>
 /// <param name="Asunto">Asunto con las variables ya sustituidas.</param>
 /// <param name="Cuerpo">Cuerpo en <b>texto plano</b>. Sin HTML, sin etiquetas y sin entidades.</param>
-/// <param name="NombreAdjunto">Nombre del PDF adjunto.</param>
-/// <param name="Adjunto">Los bytes exactos del PDF.</param>
+/// <param name="NombreAdjunto">Nombre del PDF adjunto. Nulo en un correo sin adjunto.</param>
+/// <param name="Adjunto">Los bytes exactos del PDF. Nulo en un correo sin adjunto (avisos).</param>
 public sealed record MensajeCorreo(
     string DestinatarioEmail,
     string? DestinatarioNombre,
     string Asunto,
     string Cuerpo,
-    string NombreAdjunto,
-    byte[] Adjunto);
+    string? NombreAdjunto,
+    byte[]? Adjunto);
