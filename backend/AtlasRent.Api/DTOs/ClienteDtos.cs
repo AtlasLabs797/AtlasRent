@@ -10,6 +10,7 @@ public sealed class ClientePeticion
 {
     /// <summary>Nombre de la persona física o razón social de la empresa.</summary>
     [Required]
+    [UnaLinea]
     [StringLength(200, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -30,6 +31,7 @@ public sealed class ClientePeticion
     [Range(1, int.MaxValue)]
     public int? Numero { get; init; }
 
+    [EmailSeguro]
     [StringLength(200)]
     public string? Email { get; init; }
 
@@ -96,12 +98,14 @@ public sealed record ClienteRespuesta(
 public sealed class ContactoPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(200, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
     [StringLength(120)]
     public string? Relacion { get; init; }
 
+    [EmailSeguro]
     [StringLength(200)]
     public string? Email { get; init; }
 
@@ -126,6 +130,7 @@ public sealed record ContactoRespuesta(
 public sealed class ProspectoPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(200, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -136,6 +141,7 @@ public sealed class ProspectoPeticion
     [StringLength(64)]
     public string? Documento { get; init; }
 
+    [EmailSeguro]
     [StringLength(200)]
     public string? Email { get; init; }
 

@@ -9,6 +9,7 @@ namespace AtlasRent.Api.DTOs;
 public sealed class InmueblePeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(200, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -74,6 +75,7 @@ public sealed record InmuebleRespuesta(
 public sealed class UnidadPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(120, MinimumLength = 1)]
     public required string Nombre { get; init; }
 

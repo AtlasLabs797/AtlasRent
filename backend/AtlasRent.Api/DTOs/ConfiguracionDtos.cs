@@ -141,6 +141,7 @@ public sealed record SerieRespuesta(
 public sealed class TipoItbisPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(120, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -158,6 +159,7 @@ public sealed record TipoItbisRespuesta(Guid Id, string Nombre, decimal Porcenta
 public sealed class TipoRetencionPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(120, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -188,6 +190,7 @@ public sealed record TipoRetencionRespuesta(
 public sealed class FormaPagoPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(120, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -201,6 +204,7 @@ public sealed record FormaPagoRespuesta(Guid Id, string Nombre, bool Activa);
 public sealed class CuentaReceptoraPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(120, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -226,6 +230,7 @@ public sealed record CuentaReceptoraRespuesta(
 public sealed class SubempresaPeticion
 {
     [Required]
+    [UnaLinea]
     [StringLength(120, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
@@ -243,6 +248,7 @@ public sealed class SubempresaPeticion
     [StringLength(40)]
     public string? Telefono { get; init; }
 
+    [EmailSeguro]
     [StringLength(200)]
     public string? Email { get; init; }
 

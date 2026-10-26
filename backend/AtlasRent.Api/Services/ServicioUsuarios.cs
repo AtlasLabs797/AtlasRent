@@ -200,7 +200,7 @@ public sealed class ServicioUsuarios(
             UsuarioId = usuarioAdmin,
             Entidad = "usuario",
             EntidadId = usuarioId.ToString("D"),
-            DatosJson = $$"""{"accion":"{{peticion.Accion}}","permitido":{{(peticion.Permitido ? "true" : "false")}}}""",
+            DatosJson = System.Text.Json.JsonSerializer.Serialize(new { accion = peticion.Accion, permitido = peticion.Permitido }),
             Resultado = "permitido",
             Origen = "api",
         }, ct);
@@ -260,7 +260,7 @@ public sealed class ServicioUsuarios(
             UsuarioId = usuarioAdmin,
             Entidad = "usuario",
             EntidadId = usuarioId.ToString("D"),
-            DatosJson = $$"""{"rol":"{{rol}}"}""",
+            DatosJson = System.Text.Json.JsonSerializer.Serialize(new { rol }),
             Resultado = "permitido",
             Origen = "api",
         }, ct);
