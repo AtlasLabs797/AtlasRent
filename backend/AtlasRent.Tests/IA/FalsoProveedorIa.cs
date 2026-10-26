@@ -289,6 +289,53 @@ internal static class AyudaIa
             .Where(nombre => !string.IsNullOrWhiteSpace(nombre))];
     }
 
+    /// <summary>Nombres, correos y teléfonos de los clientes, por la API.</summary>
+    public static async Task<List<string>> DatosPersonalesDeClientesAsync(SesionCliente sesion, CancellationToken ct)
+    {
+        var respuesta = await sesion.GetAsync("/api/v1/clientes?page=1&pageSize=200", ct);
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var pagina = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        return [.. pagina.GetProperty("data").EnumerateArray()
+            .SelectMany(fila => new[] { "nombre", "email", "telefono" }
+                .Select(campo => fila.TryGetProperty(campo, out var v) && v.ValueKind == JsonValueKind.String
+                    ? v.GetString()!
+                    : string.Empty))
+            .Where(valor => !string.IsNullOrWhiteSpace(valor))];
+    }
+
+    /// <summary>Todos los textos de un cuerpo JSON, ya des-escapados.</summary>
+    public static string TextoDesescapado(string cuerpo)
+    {
+        var textos = new List<string>();
+        void Recorrer(JsonElement e)
+        {
+            switch (e.ValueKind)
+            {
+                case JsonValueKind.String:
+                    textos.Add(e.GetString()!);
+                    break;
+                case JsonValueKind.Object:
+                    foreach (var p in e.EnumerateObject())
+                    {
+                        Recorrer(p.Value);
+                    }
+
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var h in e.EnumerateArray())
+                    {
+                        Recorrer(h);
+                    }
+
+                    break;
+            }
+        }
+
+        Recorrer(JsonDocument.Parse(cuerpo).RootElement);
+        return string.Join("\n", textos);
+    }
+
     /// <summary>
     /// Token escrito directamente en la base de datos, como en <c>Agentes/TokenAgenteTests</c>: así
     /// se puede dar un límite de consultas concreto o quitar una acción de la lista, cosas que el

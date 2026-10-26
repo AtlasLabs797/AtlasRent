@@ -148,33 +148,56 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
         var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
         using var sesion = await AyudaPermisos.SesionAsync(api, admin, Contrasena, ct);
 
-        var nombres = await AyudaIa.NombresDeClientesAsync(sesion, ct);
-        nombres.Should().NotBeEmpty();
-
-        var respuesta = await sesion.PostAsync(
-            AyudaIa.RutaSesion,
-            new { pregunta = "¿Quiénes son los clientes activos?", alcance = "clientes" },
+        // Un cliente con tilde, teléfono y correo propios: con los datos de otras pruebas (sin tilde)
+        // un nombre filtrado pasaba desapercibido porque el JSON del proveedor escapa los no ASCII.
+        var sufijo = Guid.NewGuid().ToString("N")[..6];
+        var nombreConTilde = $"José Peña {sufijo}";
+        var correo = $"jose.{sufijo}@example.test";
+        var telefono = $"809-555-{Random.Shared.Next(1000, 9999)}";
+        var alta = await sesion.PostAsync(
+            "/api/v1/clientes",
+            new { nombre = nombreConTilde, tipo = "PersonaFisica", email = correo, telefono },
             ct);
+        alta.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
+        var nombres = await AyudaIa.NombresDeClientesAsync(sesion, ct);
+        nombres.Should().Contain(nombreConTilde);
 
-        var enviado = api.Proveedor.Cuerpos[0];
+        var personales = await AyudaIa.DatosPersonalesDeClientesAsync(sesion, ct);
+        personales.Should().Contain([nombreConTilde, correo, telefono]);
 
-        // Teléfono y correo tampoco: son contacto, y contacto identifica igual que un nombre.
-        enviado.Should().NotContain("cliente@example.test");
-        foreach (var nombre in nombres.Where(n => n.Length > 4))
+        string? respuestaClientes = null;
+        foreach (var alcance in ServicioConsultaIa.Alcances)
         {
-            enviado.Should().NotContain(nombre, because: "un nombre real no puede salir del proceso");
+            api.Proveedor.Limpiar();
+            var respuesta = await sesion.PostAsync(
+                AyudaIa.RutaSesion,
+                new { pregunta = "¿Quiénes son los clientes activos?", alcance },
+                ct);
+
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK, because: alcance);
+
+            // Texto des-escapado del cuerpo que salió hacia el proveedor.
+            var enviado = AyudaIa.TextoDesescapado(api.Proveedor.Cuerpos[0]);
+            foreach (var valor in personales.Where(v => v.Length > 4))
+            {
+                enviado.Should().NotContain(valor, because: $"un dato personal no puede salir ({alcance})");
+            }
+
+            // El documento no sale porque el DTO de resumen no lo lleva: no es que esté seudonimizado,
+            // es que nunca se carga. La comprobación está para que, si algún día el resumen lo incluye,
+            // alguien tenga que mirar aquí.
+            enviado.Should().NotContain("\"documento\"");
+
+            if (alcance == "clientes")
+            {
+                enviado.Should().Contain("[[cliente_");
+                respuestaClientes = await respuesta.Content.ReadAsStringAsync(ct);
+            }
         }
 
-        // El documento no sale porque el DTO de resumen no lo lleva: no es que esté seudonimizado,
-        // es que nunca se carga. La comprobación está para que, si algún día el resumen lo incluye,
-        // alguien tenga que mirar aquí.
-        enviado.Should().NotContain("\"documento\"");
-        enviado.Should().Contain("[[cliente_");
-
         // Y lo que vuelve al usuario sí trae nombres de verdad.
-        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var cuerpo = JsonDocument.Parse(respuestaClientes!).RootElement;
         var texto = cuerpo.GetProperty("respuesta").GetString()!;
         texto.Should().NotContain("[[cliente_");
         nombres.Should().Contain(nombre => texto.Contains(nombre, StringComparison.Ordinal));

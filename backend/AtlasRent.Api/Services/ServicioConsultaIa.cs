@@ -125,7 +125,17 @@ public sealed class ServicioConsultaIa(
         //    lo que ve el asistente cuadra con la vista única: son las mismas cifras, no un cálculo
         //    paralelo que se pueda desincronizar.
         var mapa = new MapaSeudonimos();
-        var datos = await CargarAsync(alcance.Trim().ToLowerInvariant(), mapa, ct);
+        string datos;
+        try
+        {
+            datos = await CargarAsync(alcance.Trim().ToLowerInvariant(), mapa, ct);
+        }
+        catch (ProveedorIaException)
+        {
+            // SEC-026: la red de seguridad de la seudonimización saltó. No se llama al proveedor.
+            await AuditarAsync(alcance, ip, "denegado", "fuga_datos_personales", null, null, null, ct);
+            throw;
+        }
 
         // 4) Pregunta seudonimizada: el usuario puede haber escrito un nombre a mano.
         var preguntaAnonima = mapa.AnonimizarTexto(pregunta);
