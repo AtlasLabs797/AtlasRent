@@ -43,7 +43,7 @@ public sealed record EnvioPeticion
     /// Correo escrito a mano. Entra en minúsculas, que es como se compara para no mandar dos veces al
     /// mismo por escribirlo con distinta capitalización.
     /// </summary>
-    [EmailAddress]
+    [EmailSeguro]
     public string? Email { get; init; }
 
     /// <summary>

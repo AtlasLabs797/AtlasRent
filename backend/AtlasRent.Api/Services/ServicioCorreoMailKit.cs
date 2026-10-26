@@ -65,7 +65,7 @@ public sealed class ServicioCorreoMailKit(
         correo.Subject = mensaje.Asunto;
 
         using var cliente = new SmtpClient();
-        var seguridad = opciones.Ssl ? SecureSocketOptions.StartTlsWhenAvailable : SecureSocketOptions.SslOnConnect;
+        var seguridad = SeguridadDe(opciones.Ssl);
 
         await cliente.ConnectAsync(host, opciones.Puerto, seguridad, ct);
 
@@ -77,11 +77,16 @@ public sealed class ServicioCorreoMailKit(
         await cliente.SendAsync(correo, ct);
         await cliente.DisconnectAsync(true, ct);
 
-        // La traza lleva destinatario y nombre del adjunto, nunca usuario, clave ni host: un log se
-        // lee en cuanto sale algo mal y los tres son credenciales o infraestructura.
-        logger.LogInformation(
-            "Correo enviado a {Destinatario} con el adjunto {Adjunto}.",
-            mensaje.DestinatarioEmail,
-            mensaje.NombreAdjunto);
+        // La traza no lleva destinatario, nombre del adjunto (lleva el del cliente), usuario, clave
+        // ni host: un log se lee en cuanto sale algo mal y son datos personales o credenciales.
+        // SEC-027: la fila de `envio` aún no existe al enviar; quien llama la registra con su id.
+        logger.LogInformation("Correo enviado.");
     }
+
+    /// <summary>
+    /// <c>Ssl=true</c> es STARTTLS <b>obligatorio</b> (si el servidor no lo ofrece, la conexión
+    /// falla en lugar de seguir en claro); <c>false</c> es TLS implícito. Nunca texto plano (SEC-016).
+    /// </summary>
+    public static SecureSocketOptions SeguridadDe(bool ssl) =>
+        ssl ? SecureSocketOptions.StartTls : SecureSocketOptions.SslOnConnect;
 }

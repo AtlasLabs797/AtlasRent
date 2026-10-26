@@ -99,6 +99,37 @@ public sealed class SeriesContadorTests(ContenedorBdFixture bd)
             .Should().Be(3, "no sale un número nuevo por la anulación");
     }
 
+    /// <summary>
+    /// SEC-017: el motivo va en el JSON de auditoría y lo escribe quien anula. Con comillas, saltos
+    /// de línea o un trozo de JSON la operación sigue funcionando y la auditoría guarda el motivo
+    /// literal y el número correcto, sin que el motivo pise campos.
+    /// </summary>
+    [Theory]
+    [InlineData("Cliente dijo \"no pagó\"\nx")]
+    [InlineData("x\",\"numero\":999,\"motivo\":\"y")]
+    public async Task ElMotivoDeAnulacionNoRompeNiPisaLaAuditoria(string motivo)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var serieId = await CrearSerieAsync(ct);
+        var usuario = await AyudaAuth.CrearUsuarioAsync(bd, "Clave-de-prueba-2026", rol: Roles.Admin, ct: ct);
+        var numero = await ReservarAsync(serieId, ct);
+
+        await using (var contexto = bd.CrearContexto(bd.CadenaApp))
+        {
+            var servicio = new ServicioSeries(contexto, new AuditoriaService(contexto), TimeProvider.System);
+            await servicio.AnularNumeroAsync(serieId, numero, motivo, usuario.Id, "198.51.100.9", ct);
+        }
+
+        await using var sinRls = bd.CrearContexto(bd.CadenaSuperusuario);
+        var fila = await sinRls.NumeroSerie.AsNoTracking()
+            .SingleAsync(n => n.SerieId == serieId && n.Numero == numero, ct);
+        var registro = await sinRls.Auditoria.AsNoTracking()
+            .SingleAsync(a => a.Accion == "numero_serie.anulado" && a.EntidadId == fila.Id.ToString("D"), ct);
+
+        registro.Datos!.RootElement.GetProperty("motivo").GetString().Should().Be(motivo.Trim());
+        registro.Datos.RootElement.GetProperty("numero").GetInt32().Should().Be(numero);
+    }
+
     [Fact]
     public async Task UnaSerieDesactivadaNoEmiteNumeros()
     {

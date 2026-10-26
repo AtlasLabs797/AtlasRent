@@ -28,6 +28,7 @@ public sealed record PlantillaMensajePeticion
     [Required]
     [MaxLength(300)]
     [MinLength(1)]
+    [UnaLinea]
     public string Asunto { get; init; } = string.Empty;
 
     [Required]

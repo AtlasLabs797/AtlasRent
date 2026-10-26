@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -133,7 +134,7 @@ public sealed class ServicioSeries(
             UsuarioId = usuarioAdmin,
             Entidad = "numero_serie",
             EntidadId = fila.Id.ToString("D"),
-            DatosJson = $$"""{"serie":"{{serieId:D}}","numero":{{numero}},"motivo":"{{motivo.Trim()}}"}""",
+            DatosJson = JsonSerializer.Serialize(new { serie = serieId.ToString("D"), numero, motivo = motivo.Trim() }),
             Resultado = "permitido",
             Origen = "api",
         }, ct);

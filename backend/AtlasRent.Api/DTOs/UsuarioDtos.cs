@@ -20,10 +20,11 @@ public sealed class UsuarioCrearPeticion
     public required string NombreAcceso { get; init; }
 
     [Required]
+    [UnaLinea]
     [StringLength(200, MinimumLength = 1)]
     public required string Nombre { get; init; }
 
-    [EmailAddress]
+    [EmailSeguro]
     [StringLength(200)]
     public string? Email { get; init; }
 

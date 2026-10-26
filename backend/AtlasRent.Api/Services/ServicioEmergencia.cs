@@ -89,7 +89,7 @@ public sealed class ServicioEmergencia(
             UsuarioId = solicitante.Id,
             Entidad = "acceso_emergencia",
             EntidadId = id.ToString("D"),
-            DatosJson = $$"""{"usuario_objetivo":"{{usuarioObjetivoId:D}}","motivo":"{{Escapar(motivo)}}"}""",
+            DatosJson = System.Text.Json.JsonSerializer.Serialize(new { usuario_objetivo = usuarioObjetivoId.ToString("D"), motivo }),
             Resultado = "permitido",
             Origen = "api",
         }, ct);
@@ -279,7 +279,7 @@ public sealed class ServicioEmergencia(
             UsuarioId = usuarioId,
             Entidad = "acceso_emergencia",
             EntidadId = referencia.ToString("D"),
-            DatosJson = detalle.Length > 0 ? $$"""{"motivo":"{{Escapar(detalle)}}"}""" : null,
+            DatosJson = detalle.Length > 0 ? System.Text.Json.JsonSerializer.Serialize(new { motivo = detalle }) : null,
             Resultado = "denegado",
             Origen = "api",
         }, ct);
@@ -291,20 +291,5 @@ public sealed class ServicioEmergencia(
     {
         var mitad = CaracteresPorCodigo / 2;
         return $"{ServicioMfa.Texto(mitad)}-{ServicioMfa.Texto(CaracteresPorCodigo - mitad)}";
-    }
-
-    /// <summary>
-    /// Los motivos van dentro del JSON de auditoría y los escribe quien llama, así que se escapan
-    /// antes de meterlos: unas comillas o un salto de línea romperían el JSON, y con él la firma
-    /// de la cadena.
-    /// </summary>
-    private static string Escapar(string texto)
-    {
-        var escapado = texto.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal);
-
-        // Caracteres de control (un salto de línea entre otros): dentro de una cadena JSON solo
-        // valen escapados, y aquí no merece la pena escribir la secuencia.
-        return new string(escapado.Select(c => char.IsControl(c) ? ' ' : c).ToArray());
     }
 }
