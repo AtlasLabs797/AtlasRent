@@ -47,8 +47,12 @@ public sealed class ManejadorFalso : HttpMessageHandler
     /// <summary>Código de estado con el que contesta, para probar el 503 de proveedor caído.</summary>
     public HttpStatusCode Estado { get; set; } = HttpStatusCode.OK;
 
+    /// <summary>Si no es nulo, el transporte lanza esta excepción (para probar el 500).</summary>
+    public Exception? Fallo { get; set; }
+
     public void Limpiar()
     {
+        Fallo = null;
         Cuerpos.Clear();
         Urls.Clear();
         Cabeceras.Clear();
@@ -58,7 +62,15 @@ public sealed class ManejadorFalso : HttpMessageHandler
         HttpRequestMessage peticion,
         CancellationToken ct)
     {
-        Urls.Add(peticion.RequestUri!.AbsoluteUri);
+        if (Fallo is not null)
+        {
+            throw Fallo;
+        }
+
+        lock (Urls)
+        {
+            Urls.Add(peticion.RequestUri!.AbsoluteUri);
+        }
         Cuerpos.Add(await peticion.Content!.ReadAsStringAsync(ct));
         Cabeceras.Add(peticion.Headers
             .Concat(peticion.Content!.Headers)
@@ -222,7 +234,7 @@ public sealed class ApiTestFactoryIaTopeMes(ContenedorBdFixture bd) : ApiTestFac
         using var comando = new NpgsqlCommand(
             """
             SELECT count(*) FROM auditoria
-            WHERE accion = 'ia.consulta' AND resultado = 'permitido'
+            WHERE accion = 'ia.consulta' AND resultado = 'reservado'
               AND created_at >= (date_trunc('month', now() AT TIME ZONE 'America/Santo_Domingo')
                                  AT TIME ZONE 'America/Santo_Domingo')
             """,

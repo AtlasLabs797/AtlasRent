@@ -399,6 +399,82 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
         (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain(Problemas.LimiteConsultasIa);
     }
 
+    /// <summary>
+    /// SEC-029: con peticiones en paralelo, el límite diario no se supera. Antes todas contaban «0
+    /// usadas» a la vez y todas llegaban al proveedor.
+    /// </summary>
+    [Fact]
+    public async Task PeticionesEnParaleloNoSuperanElLimiteDiarioDelToken()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fabrica = new ApiTestFactoryIaAnthropic(bd);
+        var gerente = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Gerente, ct: ct);
+        var (secreto, tokenId) = await AyudaIa.TokenEnBaseAsync(
+            bd, gerente.Id, [Acciones.IaConsultar, Acciones.ClienteVer], ct, limiteConsultasDia: 2);
+        using var cliente = ClienteConToken(fabrica, secreto);
+
+        const int Peticiones = 8;
+        using var barrera = new Barrier(Peticiones);
+        var tareas = Enumerable.Range(0, Peticiones).Select(_ => Task.Run(async () =>
+        {
+            barrera.SignalAndWait(ct);
+            return (await cliente.PostAsJsonAsync(
+                AyudaIa.RutaAgente, new { pregunta = "¿Cuántos clientes hay?", alcance = "clientes" }, ct)).StatusCode;
+        }, ct)).ToArray();
+
+        var estados = await Task.WhenAll(tareas);
+
+        estados.Count(e => e == HttpStatusCode.OK).Should().Be(2);
+        estados.Count(e => e == HttpStatusCode.TooManyRequests).Should().Be(Peticiones - 2);
+        ((ApiTestFactoryIaBase)fabrica).Proveedor.Cuerpos.Should().HaveCount(2);
+
+        var reservas = await FilasDeAuditoriaAsync(
+            bd,
+            $"accion = '{ServicioConsultaIa.ConsultaAccion}' AND entidad_id = '{tokenId:D}' AND resultado = 'reservado'",
+            ct);
+        reservas.Should().HaveCount(2);
+    }
+
+    /// <summary>SEC-029: si algo lanza después del middleware de agente, la llamada queda auditada igualmente.</summary>
+    [Fact]
+    public async Task UnErrorPosteriorAlMiddlewareDeAgenteDejaFilaDeAuditoria()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fabrica = new ApiTestFactoryIaAnthropic(bd);
+        var gerente = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Gerente, ct: ct);
+        var (secreto, tokenId) = await AyudaIa.TokenEnBaseAsync(
+            bd, gerente.Id, [Acciones.IaConsultar, Acciones.ClienteVer], ct);
+        using var cliente = ClienteConToken(fabrica, secreto);
+
+        ((ApiTestFactoryIaBase)fabrica).Proveedor.Fallo = new InvalidOperationException("fallo inesperado de prueba");
+
+        var respuesta = await cliente.PostAsJsonAsync(
+            AyudaIa.RutaAgente, new { pregunta = "¿Cuántos clientes hay?", alcance = "clientes" }, ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+
+        var filas = await FilasDeAuditoriaAsync(
+            bd, $"accion = 'agente.peticion' AND entidad_id = '{tokenId:D}'", ct);
+        filas.Should().ContainSingle().Which.Resultado.Should().Be("denegado");
+    }
+
+    /// <summary>SEC-029: los 401 por token inválido cuentan para el bloqueo de IP, como los fallos de login.</summary>
+    [Fact]
+    public async Task LosTokensInvalidosBloqueanLaIpComoLosFallosDeLogin()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fabrica = new ApiTestFactoryIaAnthropic(bd);
+        using var cliente = ClienteConToken(fabrica, "token-que-no-existe");
+
+        HttpStatusCode ultimo = default;
+        for (var i = 0; i < 12; i++)
+        {
+            ultimo = (await cliente.GetAsync("/api/v1/agente/clientes", ct)).StatusCode;
+        }
+
+        ultimo.Should().Be(HttpStatusCode.Forbidden, "tras el décimo fallo la IP queda bloqueada");
+    }
+
     // ------------------------------------------------------------------ 6. Sin clave o desactivada
 
     /// <summary>

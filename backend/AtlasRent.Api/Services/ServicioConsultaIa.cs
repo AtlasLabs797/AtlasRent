@@ -52,6 +52,12 @@ public sealed class ServicioConsultaIa(
     /// <summary>Entidad que se registra en la auditoría. No lleva fila propia: es una lectura.</summary>
     private const string Entidad = "ia";
 
+    /// <summary>Resultado de la fila que reserva un cupo antes de llamar al proveedor (SEC-029).</summary>
+    private const string ResultadoReserva = "reservado";
+
+    /// <summary>Clave del <c>pg_advisory_xact_lock</c> que serializa el conteo y la reserva de cupo.</summary>
+    private const long CerrojoLimites = 7_412_029;
+
     /// <summary>
     /// Filas que se cargan por consulta. Es una página corta a propósito: el modelo solo razona
     /// sobre lo que ve, y 25 filas caben en su contexto sin recortarse, mientras que «tráeme el
@@ -207,8 +213,8 @@ public sealed class ServicioConsultaIa(
     /// los precios por millón de tokens cambian sin avisar y ponerlos en el código es una deuda que
     /// caduca mal.
     /// <para>
-    /// Se cuentan las filas <c>ia.consulta</c> permitidas, no todas las auditadas: una consulta
-    /// rechazada por el límite no debe sumar al contador que la rechazó, o un cliente en bucle dejaría
+    /// Se cuentan las filas <c>ia.consulta</c> <c>reservado</c> (una por consulta que llega al
+    /// proveedor), no las denegadas: una consulta rechazada por el límite no debe sumar al contador que la rechazó, o un cliente en bucle dejaría
     /// el mes entero bloqueado para todos. La fila de auditoría es a la vez el registro y el
     /// contador, así que <b>esta tarea no necesita migración</b>.
     /// </para>
@@ -230,6 +236,12 @@ public sealed class ServicioConsultaIa(
         // un límite que no limita nada.
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
+        // SEC-029: contar y reservar tienen que ser un solo paso. Con el cerrojo de transacción, dos
+        // peticiones en paralelo se turnan: la segunda cuenta ya la reserva de la primera. El
+        // cerrojo se suelta al terminar la transacción, antes de llamar al proveedor.
+        await contexto.Database.ExecuteSqlAsync(
+            $"SELECT pg_advisory_xact_lock({CerrojoLimites})", ct);
+
         if (sesion.AgenteTokenId is { } tokenId)
         {
             var limiteDia = await LimiteDiarioDelTokenAsync(tokenId, ct);
@@ -237,7 +249,7 @@ public sealed class ServicioConsultaIa(
                 .CountAsync(a => a.Accion == ConsultaAccion
                     && a.EntidadId == tokenId.ToString("D")
                     && a.CreatedAt >= inicioDia
-                    && a.Resultado == "permitido",
+                    && a.Resultado == ResultadoReserva,
                     ct);
 
             if (usadasHoy >= limiteDia)
@@ -252,17 +264,22 @@ public sealed class ServicioConsultaIa(
         var usadasMes = await contexto.Auditoria
             .CountAsync(a => a.Accion == ConsultaAccion
                 && a.CreatedAt >= inicioMes
-                && a.Resultado == "permitido",
+                && a.Resultado == ResultadoReserva,
                 ct);
-
-        await transaccion.CommitAsync(ct);
 
         if (usadasMes >= opciones.TopeConsultasMes)
         {
+            await transaccion.RollbackAsync(ct);
             await AuditarAsync(alcance, ip, "denegado", "tope_mensual", null, null, null, ct);
             throw new LimiteIaExcedidoException(
                 "Se alcanzó el tope de consultas al asistente de este mes.");
         }
+
+        // La reserva es la fila que cuentan los dos límites; la fila "permitido" de después es solo
+        // el registro de lo que costó. Auditoría es append-only, así que no se puede completar una
+        // sola fila a posteriori.
+        await AuditarAsync(alcance, ip, ResultadoReserva, "reserva", null, null, null, ct);
+        await transaccion.CommitAsync(ct);
     }
 
     private async Task<int> LimiteDiarioDelTokenAsync(Guid tokenId, CancellationToken ct)
