@@ -96,7 +96,7 @@ public sealed class EnvioMasivoColaTests(ContenedorBdFixture bd, ApiTestFactoryM
         enviado.DestinatarioEmail.Should().Be(salida.DestinatarioEmail);
         enviado.Asunto.Should().StartWith("Factura ");
         enviado.NombreAdjunto.Should().EndWith(".pdf");
-        AyudaEnviosMasivo.EsPdf(enviado.Adjunto).Should().BeTrue("lo adjunto es el PDF del documento");
+        AyudaEnviosMasivo.EsPdf(enviado.Adjunto!).Should().BeTrue("lo adjunto es el PDF del documento");
 
         salida.Estado.Should().Be(EstadoEnvio.Enviado);
         salida.Intentos.Should().Be(1, "un intento, el que acaba de hacer el trabajo");

@@ -17,7 +17,8 @@ public sealed class ServicioBloqueos(
     OpcionesSeguridad seguridad,
     OpcionesLimites limites,
     TimeProvider reloj,
-    AuditoriaService auditoria)
+    AuditoriaService auditoria,
+    ServicioAvisosAcceso avisosAcceso)
 {
     /// <summary>Primer escalón: una hora.</summary>
     public static readonly TimeSpan PrimerNivel = TimeSpan.FromHours(1);
@@ -104,9 +105,8 @@ public sealed class ServicioBloqueos(
             Origen = "api",
         }, ct);
 
-        // TODO(A#) F1-12: avisar al administrador de la entrada desde IP nueva (dentro de la app y
-        // por correo). Aquí solo queda el evento de auditoría; el transporte de correo es de fases
-        // posteriores y no se implementa.
+        // SEC-023: alerta en la bandeja del administrador y correo encolado si hay SMTP.
+        await avisosAcceso.AvisarIpNuevaAsync(usuarioId, nombreAcceso, ip, ct);
     }
 
     /// <summary>
@@ -158,6 +158,7 @@ public sealed class ServicioBloqueos(
         }
 
         usuario.BloqueadaHasta = null;
+        usuario.DesbloqueadaAt = reloj.GetUtcNow();
         usuario.UpdatedAt = reloj.GetUtcNow();
         usuario.UpdatedBy = usuarioAdmin;
         await contexto.SaveChangesAsync(ct);
@@ -212,12 +213,12 @@ public sealed class ServicioBloqueos(
             return;
         }
 
-        // El contador arranca en lo más reciente entre el último acierto y el fin del último
-        // bloqueo: tras expirar hacen falta otros N fallos, no basta uno.
+        // El contador arranca en lo más reciente entre el último acierto, el fin del último bloqueo
+        // y el desbloqueo manual: tras expirar o desbloquear hacen falta otros N fallos, no basta uno.
         var ultimoExito = await contexto.IntentoLogin
             .Where(i => i.UsuarioId == id && i.Exito)
             .MaxAsync(i => (DateTimeOffset?)i.OcurridoAt, ct);
-        var desde = new[] { ultimoExito, usuario.BloqueadaHasta }.Max() ?? DateTimeOffset.MinValue;
+        var desde = new[] { ultimoExito, usuario.BloqueadaHasta, usuario.DesbloqueadaAt }.Max() ?? DateTimeOffset.MinValue;
 
         var fallos = await contexto.IntentoLogin.CountAsync(
             i => i.UsuarioId == id && !i.Exito && i.OcurridoAt > desde,

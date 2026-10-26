@@ -289,6 +289,12 @@ public sealed class AjusteGeneralPeticion
     /// <summary>Días entre un aviso y el siguiente mientras siga habiendo saldo.</summary>
     [Range(typeof(int), "1", "365")]
     public int? DiasEntreRecordatorios { get; init; }
+
+    /// <summary>
+    /// Hace el MFA obligatorio también para gerentes (SEC-024). Si no viene, no se toca: los clientes
+    /// que no conocen el interruptor no pueden apagarlo sin querer.
+    /// </summary>
+    public bool? MfaGerente { get; init; }
 }
 
 public sealed record AjusteGeneralRespuesta(
@@ -297,4 +303,5 @@ public sealed record AjusteGeneralRespuesta(
     decimal? ToleranciaCambioDop,
     [property: JsonConverter(typeof(JsonStringEnumConverter<ModoRecordatorios>))] ModoRecordatorios ModoRecordatorios,
     int? DiasPrimerRecordatorio,
-    int? DiasEntreRecordatorios);
+    int? DiasEntreRecordatorios,
+    bool MfaGerente);

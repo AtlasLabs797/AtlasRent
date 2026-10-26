@@ -50,7 +50,10 @@ public sealed class ServicioCorreoMailKit(
         };
 
         // Los bytes del adjunto, tal cual: los mismos que se guardan en <c>envio.pdf_copia</c>.
-        cuerpo.Attachments.Add(mensaje.NombreAdjunto, mensaje.Adjunto);
+        if (mensaje.Adjunto is not null && mensaje.NombreAdjunto is not null)
+        {
+            cuerpo.Attachments.Add(mensaje.NombreAdjunto, mensaje.Adjunto);
+        }
 
         var correo = new MimeMessage
         {

@@ -268,6 +268,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("dias_primer_recordatorio");
 
+                    b.Property<bool>("MfaGerente")
+                        .HasColumnType("boolean")
+                        .HasColumnName("mfa_gerente");
+
                     b.Property<int>("ModoRecordatorios")
                         .HasColumnType("integer")
                         .HasColumnName("modo_recordatorios");
@@ -4855,6 +4859,10 @@ namespace AtlasRent.Api.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("deleted_by");
+
+                    b.Property<DateTimeOffset?>("DesbloqueadaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("desbloqueada_at");
 
                     b.Property<string>("Email")
                         .HasColumnType("text")

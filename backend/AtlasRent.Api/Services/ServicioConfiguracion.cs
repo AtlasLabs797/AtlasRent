@@ -760,6 +760,7 @@ public sealed class ServicioConfiguracion(
         // una alerta de que falta configurarlos, no el guardado (criterio de BUG-007).
         ajustes.DiasPrimerRecordatorio = peticion.DiasPrimerRecordatorio;
         ajustes.DiasEntreRecordatorios = peticion.DiasEntreRecordatorios;
+        ajustes.MfaGerente = peticion.MfaGerente ?? ajustes.MfaGerente;
 
         return await GuardarAsync(
             contexto.AjusteGeneral,
@@ -872,7 +873,8 @@ public sealed class ServicioConfiguracion(
             a.ToleranciaCambioDop,
             a.ModoRecordatorios,
             a.DiasPrimerRecordatorio,
-            a.DiasEntreRecordatorios);
+            a.DiasEntreRecordatorios,
+            a.MfaGerente);
 
     private static void Aplicar(Serie serie, SeriePeticion peticion)
     {

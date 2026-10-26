@@ -61,6 +61,13 @@ public sealed class Usuario
     /// </summary>
     public DateTimeOffset? BloqueadaHasta { get; set; }
 
+    /// <summary>
+    /// Cuándo levantó un administrador el último bloqueo a mano. El contador de fallos de la cuenta
+    /// arranca aquí como muy pronto: sin esto, al quedar <see cref="BloqueadaHasta"/> a nulo los
+    /// fallos anteriores volverían a contar y uno solo bastaría para bloquear de nuevo (SEC-012).
+    /// </summary>
+    public DateTimeOffset? DesbloqueadaAt { get; set; }
+
     public DateTimeOffset? UltimoAcceso { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
