@@ -155,10 +155,10 @@ internal static class AyudaEnviosMasivo
     {
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
 
-        return await contexto.Envio.AsNoTracking()
+        return CopiaEnvio.EnClaro(await contexto.Envio.AsNoTracking()
             .Where(e => e.LoteId == loteId)
             .OrderBy(e => e.DocumentoId)
-            .ToListAsync(ct);
+            .ToListAsync(ct));
     }
 
     /// <summary>Las filas de <c>envio</c> de un documento, leídas de la base.</summary>
@@ -169,9 +169,9 @@ internal static class AyudaEnviosMasivo
     {
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
 
-        return await contexto.Envio.AsNoTracking()
+        return CopiaEnvio.EnClaro(await contexto.Envio.AsNoTracking()
             .Where(e => e.DocumentoId == documentoId)
-            .ToListAsync(ct);
+            .ToListAsync(ct));
     }
 
     /// <summary>Cuántas filas de <c>envio</c> hay en toda la base.</summary>

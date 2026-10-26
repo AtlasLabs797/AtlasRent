@@ -91,6 +91,35 @@ public sealed class ClienteNumeroTests(ContenedorBdFixture bd, ApiTestFactory ap
         segundo.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
+    /// <summary>
+    /// SEC-022: fijar el número es cosa de la importación (acción de administración), no del
+    /// empleado: se rechaza con 403 en vez de ignorarlo en silencio, para que no crea que lo fijó.
+    /// </summary>
+    [Fact]
+    public async Task UnEmpleadoNoPuedeFijarElNumeroDeCliente()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var empleado = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Empleado, ct: ct);
+        using var sesion = await AyudaPermisos.SesionAsync(api, empleado, Contrasena, ct);
+
+        var con = await sesion.PostAsync(Ruta, Cliente(numero: 6_001), ct);
+        con.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var sin = await sesion.PostAsync(Ruta, Cliente(), ct);
+        sin.StatusCode.Should().Be(HttpStatusCode.OK, "el empleado sigue pudiendo dar de alta sin número");
+    }
+
+    /// <summary>SEC-022: un número cerca de int.MaxValue haría desbordar el siguiente nextval.</summary>
+    [Fact]
+    public async Task ElNumeroTieneUnTopeQueEvitaDesbordarLaSecuencia()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var sesion = await SesionDeAdminAsync(ct);
+
+        var respuesta = await sesion.PostAsync(Ruta, Cliente(numero: int.MaxValue - 1), ct);
+        respuesta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     // ---------------------------------------------------------------- apoyo
 
     private static object Cliente(string? nombre = null, int? numero = null) => new

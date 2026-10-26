@@ -141,6 +141,41 @@ public sealed class ServicioCifrado
             Convert.ToBase64String(salida));
     }
 
+    /// <summary>Inicio de un PDF en claro: así se reconocen las filas anteriores a SEC-018.</summary>
+    private static ReadOnlySpan<byte> CabeceraPdf => "%PDF-"u8;
+
+    /// <summary>
+    /// Cifra un archivo (SEC-018) para una columna <c>bytea</c>. Lo guardado es el mismo texto
+    /// <c>v{version}:{nonce}:{cifrado}</c> de <see cref="Cifrar"/> en UTF-8, con el archivo en
+    /// base64 como texto claro. Vacío sigue vacío (un envío pendiente no tiene copia todavía).
+    /// </summary>
+    public byte[] CifrarBytes(byte[] claro)
+    {
+        ArgumentNullException.ThrowIfNull(claro);
+
+        return claro.Length == 0
+            ? []
+            : Encoding.UTF8.GetBytes(Cifrar(Convert.ToBase64String(claro)));
+    }
+
+    /// <summary>
+    /// Inversa de <see cref="CifrarBytes"/>. <b>Compatibilidad:</b> un valor que empieza por
+    /// <c>%PDF-</c> es una fila guardada en claro antes de SEC-018; la migración no puede cifrarla
+    /// porque la clave vive fuera de la base de datos, así que se devuelve tal cual y se cifrará
+    /// la próxima vez que se escriba. Un cifrado nunca empieza por <c>%</c> (empieza por <c>v</c>).
+    /// </summary>
+    public byte[] DescifrarBytes(byte[] guardado)
+    {
+        ArgumentNullException.ThrowIfNull(guardado);
+
+        if (guardado.Length == 0 || guardado.AsSpan().StartsWith(CabeceraPdf))
+        {
+            return guardado;
+        }
+
+        return Convert.FromBase64String(Descifrar(Encoding.UTF8.GetString(guardado)));
+    }
+
     /// <summary>
     /// Descifra un valor guardado. Si alguien cambió un byte, la etiqueta de autenticación no
     /// cuadra y <see cref="CryptographicException"/> salta: es preferible a devolver basura.

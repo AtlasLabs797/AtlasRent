@@ -28,7 +28,8 @@ namespace AtlasRent.Api.Jobs;
 public sealed class TrabajoIntegridadAuditoria(
     ContextoSesion sesion,
     AtlasRentDbContext contexto,
-    IntegridadAuditoria integridad)
+    IntegridadAuditoria integridad,
+    OpcionesLimites limites)
 {
     /// <summary>Rol con el que tiene que correr. Ver el comentario de la clase antes de tocarlo.</summary>
     public const string RolRequisito = Roles.Admin;
@@ -45,6 +46,8 @@ public sealed class TrabajoIntegridadAuditoria(
         var resultado = await integridad.VerificarAsync(ct, transaccion.GetDbTransaction());
         await transaccion.CommitAsync(ct);
 
+        await PurgarIntentosLoginAsync(ct);
+
         if (resultado.Integra)
         {
             Log.Information("Cadena de auditoría íntegra: {Registros} registros recorridos", resultado.TotalRegistros);
@@ -59,5 +62,26 @@ public sealed class TrabajoIntegridadAuditoria(
             resultado.TotalRegistros);
 
         return resultado;
+    }
+
+    /// <summary>
+    /// SEC-030: borra los intentos de login más viejos que la retención configurada, con la función
+    /// <c>purgar_intentos_login</c> (la API solo puede leer e insertar en la tabla). Un fallo aquí se
+    /// registra pero no tumba la comprobación de integridad, que es lo que este trabajo existe para hacer.
+    /// </summary>
+    private async Task PurgarIntentosLoginAsync(CancellationToken ct)
+    {
+        try
+        {
+            var dias = limites.RetencionIntentosLoginDias;
+            var borrados = await contexto.Database
+                .SqlQuery<long>($"SELECT purgar_intentos_login({dias}) AS \"Value\"")
+                .SingleAsync(ct);
+            Log.Information("Purga de intentos de login: {Borrados} filas de más de {Dias} días", borrados, dias);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Log.Error(e, "No se pudo purgar intento_login");
+        }
     }
 }

@@ -244,4 +244,26 @@ public sealed class InmuebleUnidadTests(ContenedorBdFixture bd, ApiTestFactory a
         var usuario = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: rol, ct: ct);
         return await AyudaPermisos.SesionAsync(api, usuario, Contrasena, ct);
     }
+
+    /// <summary>SEC-030: un importe que no cabe en numeric(18,2) es un 400, no un 500 al guardar.</summary>
+    [Fact]
+    public async Task UnaTarifaQueNoCabeEnLaColumnaSeRechazaConUn400()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var gerente = await SesionAsync(Roles.Gerente, ct);
+        var inmueble = await DocumentoInmueblePermisosTests.CrearInmuebleAsync(gerente, ct);
+
+        var respuesta = await gerente.PostAsync(
+            $"/api/v1/inmuebles/{inmueble:D}/unidades",
+            new
+            {
+                nombre = "Oficina 2",
+                tipo = "Oficina",
+                modalidades = new[] { "Mensual" },
+                tarifas = new object[] { new { modalidad = "Mensual", moneda = "USD", importe = 1e17m } },
+            },
+            ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }

@@ -107,8 +107,8 @@ internal static class AyudaRecordatorios
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
 
-        return await contexto.Envio.AsNoTracking()
-            .FirstAsync(e => e.Id == recordatorio.EnvioId!.Value, ct);
+        return CopiaEnvio.EnClaro(await contexto.Envio.AsNoTracking()
+            .FirstAsync(e => e.Id == recordatorio.EnvioId!.Value, ct));
     }
 
     /// <summary>Las alertas vivas de un tipo, leídas de la base.</summary>

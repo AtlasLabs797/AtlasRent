@@ -47,6 +47,16 @@ public sealed class OpcionesLimites
     /// <summary>Duración del bloqueo de cuenta, en minutos.</summary>
     public int MinutosBloqueoCuenta { get; init; } = 30;
 
+    /// <summary>Mínimo de la retención: no se purga lo que aún cuenta para bloqueos y avisos de IP nueva.</summary>
+    public const int RetencionIntentosLoginMinimaDias = 30;
+
+    /// <summary>
+    /// Días que se conservan los intentos de login (SEC-030). Pasados, el trabajo diario los purga:
+    /// guardan IP y nombres de acceso (incluidos los inventados por quien ataca) y no hay motivo
+    /// para tenerlos para siempre.
+    /// </summary>
+    public int RetencionIntentosLoginDias { get; init; } = 90;
+
     public static OpcionesLimites Desde(IConfiguration configuracion) => new()
     {
         GlobalPorMinuto = Leer(configuracion, nameof(GlobalPorMinuto), 300),
@@ -55,6 +65,9 @@ public sealed class OpcionesLimites
         VentanaIpMinutos = Leer(configuracion, nameof(VentanaIpMinutos), 15),
         IntentosParaBloquearCuenta = Leer(configuracion, nameof(IntentosParaBloquearCuenta), 5),
         MinutosBloqueoCuenta = Leer(configuracion, nameof(MinutosBloqueoCuenta), 30),
+        RetencionIntentosLoginDias = Math.Max(
+            RetencionIntentosLoginMinimaDias,
+            configuracion.GetValue($"{Seccion}:{nameof(RetencionIntentosLoginDias)}", 90)),
     };
 
     private static int Leer(IConfiguration configuracion, string nombre, int porDefecto) =>

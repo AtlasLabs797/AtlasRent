@@ -115,8 +115,8 @@ internal static class AyudaEnvios
     {
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
 
-        return await contexto.Envio.AsNoTracking()
-            .SingleAsync(e => e.Id == envioId, ct);
+        return CopiaEnvio.EnClaro(await contexto.Envio.AsNoTracking()
+            .SingleAsync(e => e.Id == envioId, ct));
     }
 
     /// <summary>El envío más reciente de un documento, leído de la base.</summary>
@@ -127,10 +127,10 @@ internal static class AyudaEnvios
     {
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
 
-        return await contexto.Envio.AsNoTracking()
+        return CopiaEnvio.EnClaro(await contexto.Envio.AsNoTracking()
             .Where(e => e.DocumentoId == documentoId)
             .OrderByDescending(e => e.CreatedAt)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefaultAsync(ct));
     }
 
     /// <summary>Los bytes de <c>GET /api/v1/facturas/{id}/pdf</c>, que es el papel de referencia.</summary>

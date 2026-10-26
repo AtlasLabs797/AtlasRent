@@ -107,7 +107,7 @@ public sealed class EnviosController(
         [FromQuery] Guid? documentoId,
         CancellationToken ct) =>
         await EnvoltorioAsync(envios.ListarAsync(
-            Paginacion(page, pageSize, sortBy, sortDir), tipo, estado, documentoId, ct));
+            Paginacion(page, pageSize, sortBy, sortDir), tipo, estado, documentoId, UsuarioDeLaPeticion(), ct));
 
     /// <summary>
     /// La copia exacta del PDF que salió por el correo, no una regeneración. Si se regenerara, el

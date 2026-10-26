@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Net;
 using AtlasRent.Api.Authorization;
 using AtlasRent.Tests.Cuentas;
@@ -189,5 +190,30 @@ public sealed class EnvioCopiaPermisosTests(ContenedorBdFixture bd, ApiTestFacto
             ct);
 
         return envio.GetProperty("id").GetGuid();
+    }
+
+    /// <summary>
+    /// SEC-030: el asunto de un estado de cuenta puede llevar el saldo pendiente del cliente entero
+    /// (un total agregado). Sin <c>informe.ver</c> la fila sale en la lista, pero sin asunto.
+    /// </summary>
+    [Fact]
+    public async Task ElEmpleadoNoVeElAsuntoDeUnEstadoDeCuentaEnLaLista()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var admin = await AyudaEnvios.SesionAsync(bd, api, Roles.Admin, ct);
+        using var empleado = await AyudaEnvios.SesionAsync(bd, api, Roles.Empleado, ct);
+
+        var escenario = await EscenarioConFacturaAsync(admin, ct);
+        var envio = await EnviarEstadoCuentaAsync(admin, escenario, ct);
+
+        string AsuntoDe(System.Text.Json.JsonElement lista) => lista.GetProperty("data").EnumerateArray()
+            .Single(f => f.GetProperty("id").GetGuid() == envio).GetProperty("asunto").GetString()!;
+
+        var url = $"/api/v1/envios?documentoId={escenario.ClienteId:D}";
+        var comoAdmin = await (await admin.GetAsync(url, ct)).Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+        var comoEmpleado = await (await empleado.GetAsync(url, ct)).Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+
+        AsuntoDe(comoAdmin).Should().NotBeNullOrWhiteSpace("quien tiene informe.ver ve el asunto");
+        AsuntoDe(comoEmpleado).Should().BeEmpty("el empleado no recibe lo que puede llevar totales agregados");
     }
 }

@@ -52,10 +52,23 @@ public sealed class ServicioMfa(
     IPolicyService politica,
     AuditoriaService auditoria,
     ServicioCifrado cifrado,
+    OpcionesSeguridad opciones,
     TimeProvider reloj)
 {
     /// <summary>Issuer de la URI <c>otpauth://</c>: el nombre que ve el usuario en su aplicación.</summary>
     public const string Emisor = "Atlas Rent";
+
+    /// <summary>Marcador de los hashes de recuperación con HMAC. Los anteriores (SHA-256 sin sal) no lo llevan.</summary>
+    public const string PrefijoHashCodigo = "h1:";
+
+    /// <summary>
+    /// Lo que se guarda de un código de recuperación (SEC-030): HMAC-SHA256 con la clave del servidor
+    /// (<c>Seguridad__HmacDocumentoClave</c>), separado por dominio. Con SHA-256 a secas, quien se
+    /// llevara la tabla podía probar candidatos sin límite; con la clave fuera de la base, no.
+    /// </summary>
+    public static string HashCodigoRecuperacion(byte[] clave, string codigoNormalizado) =>
+        PrefijoHashCodigo + Convert.ToHexStringLower(HMACSHA256.HashData(
+            clave, System.Text.Encoding.UTF8.GetBytes("codigo-recuperacion:" + codigoNormalizado)));
 
     /// <summary>Longitud del código TOTP.</summary>
     public const int Digitos = 6;
@@ -236,7 +249,7 @@ await contexto.CodigoRecuperacion
             .Where(c => c.UsuarioId == usuario.Id && c.UsadoAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.UsadoAt, ahora), ct);
 
-        foreach (var hash in codigos.Select(c => EmisorTokens.HashToken(Normalizar(c))))
+        foreach (var hash in codigos.Select(c => HashCodigoRecuperacion(opciones.ClaveHmacDocumento, Normalizar(c))))
         {
             contexto.CodigoRecuperacion.Add(new CodigoRecuperacion
             {
@@ -354,10 +367,16 @@ await contexto.CodigoRecuperacion
             return null;
         }
 
-        var hash = EmisorTokens.HashToken(Normalizar(codigo));
+        // Los códigos emitidos antes de SEC-030 siguen guardados como SHA-256 sin marcador y valen
+        // hasta que se gasten o se regeneren; los nuevos llevan el marcador de versión.
+        var normalizado = Normalizar(codigo);
+        var hash = HashCodigoRecuperacion(opciones.ClaveHmacDocumento, normalizado);
+        var hashAnterior = EmisorTokens.HashToken(normalizado);
 
         var fila = await contexto.CodigoRecuperacion.SingleOrDefaultAsync(
-            c => c.UsuarioId == usuario.Id && c.CodigoHash == hash && c.UsadoAt == null, ct);
+            c => c.UsuarioId == usuario.Id
+                && (c.CodigoHash == hash || c.CodigoHash == hashAnterior)
+                && c.UsadoAt == null, ct);
 
         if (fila is null)
         {
