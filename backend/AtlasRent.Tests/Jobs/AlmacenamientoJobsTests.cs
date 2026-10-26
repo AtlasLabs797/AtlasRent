@@ -25,65 +25,10 @@ namespace AtlasRent.Tests.Jobs;
 [Collection(nameof(ColeccionBd))]
 public sealed class AlmacenamientoJobsTests(ContenedorBdFixture bd)
 {
-    /// <summary>
-    /// El paso de superusuario. Sobre el contenedor de pruebas; en el servidor es el bloque de SQL
-    /// de docs/DOC_TECNICA.md §8. Se rehace en cada test porque la base es del contenedor compartido
-    /// y PostgreSQL no tiene <c>CREATE DATABASE IF NOT EXISTS</c>.
-    /// </summary>
-    private async Task PrepararBaseAsync(CancellationToken ct)
-    {
-        var mantenimiento = new NpgsqlConnectionStringBuilder(bd.CadenaSuperusuario)
-        {
-            Database = "postgres",
-        }.ConnectionString;
-
-        await using var conexion = new NpgsqlConnection(mantenimiento);
-        await conexion.OpenAsync(ct);
-
-        // PostgreSQL no tiene CREATE DATABASE IF NOT EXISTS, y el paso es idempotente porque el
-        // contenedor de pruebas es el mismo para toda la ejecución.
-        bool existe;
-        await using (var consulta = new NpgsqlCommand(
-            "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = @nombre)", conexion))
-        {
-            consulta.Parameters.AddWithValue("@nombre", ProgramacionJobs.BaseDeDatos);
-            existe = (bool)(await consulta.ExecuteScalarAsync(ct))!;
-        }
-
-        if (!existe)
-        {
-            await using var crear = new NpgsqlCommand(
-                $"""
-                CREATE DATABASE {ProgramacionJobs.BaseDeDatos}
-                  OWNER rent_owner ENCODING 'UTF8' TEMPLATE template0
-                """,
-                conexion);
-            await crear.ExecuteNonQueryAsync(ct);
-        }
-
-        // El resto, dentro de la base nueva y como superusuario, que es lo que hace 02_basedatos.sql
-        // con atlas_rent.
-        var enJobs = new NpgsqlConnectionStringBuilder(bd.CadenaSuperusuario)
-        {
-            Database = ProgramacionJobs.BaseDeDatos,
-        }.ConnectionString;
-
-        await using var conexionJobs = new NpgsqlConnection(enJobs);
-        await conexionJobs.OpenAsync(ct);
-        await using var ajuste = new NpgsqlCommand(
-            $"""
-            REVOKE ALL ON DATABASE {ProgramacionJobs.BaseDeDatos} FROM PUBLIC;
-            GRANT CONNECT ON DATABASE {ProgramacionJobs.BaseDeDatos} TO rent_migrador;
-            """,
-            conexionJobs);
-        await ajuste.ExecuteNonQueryAsync(ct);
-    }
-
     [Fact]
-    public async Task LaBaseLaCreaElSuperusuarioYLasTablasElPlanificadorConElRolDeMigraciones()
+    public async Task LaBaseLaCreaElSuperusuarioYLasTablasElPlanificadorConSuPropioRol()
     {
         var ct = TestContext.Current.CancellationToken;
-        await PrepararBaseAsync(ct);
 
         var opciones = new PostgreSqlStorageOptions { PrepareSchemaIfNecessary = true };
 
@@ -104,7 +49,6 @@ public sealed class AlmacenamientoJobsTests(ContenedorBdFixture bd)
     public async Task ElBackupDeAtlasRentNoSeVeAfectadoPorLasTablasDelPlanificador()
     {
         var ct = TestContext.Current.CancellationToken;
-        await PrepararBaseAsync(ct);
 
         // El motivo de que el planificador tenga su propia base: pg_dump recorre atlas_rent entera
         // y hace LOCK TABLE sobre todo lo que encuentra. Con las tablas de Hangfire dentro, el
@@ -116,10 +60,49 @@ public sealed class AlmacenamientoJobsTests(ContenedorBdFixture bd)
     }
 
     [Fact]
+    public async Task ElRolDelPlanificadorNoPuedeConectarseAlaBaseDeLaAplicacion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // SEC-020: es la credencial que lleva el proceso de la API. Si conectara a atlas_rent con
+        // privilegios de propietario podría desactivar el trigger append-only de auditoria.
+        var cadena = new NpgsqlConnectionStringBuilder(bd.CadenaJobs) { Database = "atlas_rent" }.ConnectionString;
+        await using var conexion = new NpgsqlConnection(cadena);
+        var accion = async () => await conexion.OpenAsync(ct);
+
+        (await accion.Should().ThrowAsync<PostgresException>())
+            .Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
+    }
+
+    [Fact]
+    public async Task ElRolDelPlanificadorNoPerteneceAlPropietarioDelEsquema()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var conexion = new NpgsqlConnection(bd.CadenaSuperusuario);
+        await conexion.OpenAsync(ct);
+        await using var comando = new NpgsqlCommand(
+            "SELECT pg_has_role('rent_jobs', 'rent_owner', 'USAGE') OR (SELECT rolsuper FROM pg_roles WHERE rolname = 'rent_jobs')",
+            conexion);
+
+        ((bool)(await comando.ExecuteScalarAsync(ct))!).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ElMigradorNoPuedeConectarseALaBaseDelPlanificador()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var cadena = new NpgsqlConnectionStringBuilder(bd.CadenaMigrador) { Database = ProgramacionJobs.BaseDeDatos }.ConnectionString;
+        await using var conexion = new NpgsqlConnection(cadena);
+        var accion = async () => await conexion.OpenAsync(ct);
+
+        (await accion.Should().ThrowAsync<PostgresException>())
+            .Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
+    }
+
+    [Fact]
     public async Task ElRolDeLaAplicacionNoPuedeNiConectarseALaBaseDelPlanificador()
     {
         var ct = TestContext.Current.CancellationToken;
-        await PrepararBaseAsync(ct);
 
         var cadenaApp = new NpgsqlConnectionStringBuilder(bd.CadenaApp)
         {
@@ -138,8 +121,8 @@ public sealed class AlmacenamientoJobsTests(ContenedorBdFixture bd)
             .Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
     }
 
-    /// <summary>Cadena del planificador: la del migrador con la base de los jobs.</summary>
-    private string CadenaDeJobs() => ProgramacionJobs.ConexionDeJobs(bd.CadenaMigrador);
+    /// <summary>Cadena del planificador: la del rol rent_jobs (SEC-020), sobre su base.</summary>
+    private string CadenaDeJobs() => ProgramacionJobs.ConexionDeJobs(bd.CadenaJobs);
 
     /// <summary>Nombres de las tablas que esa conexión puede ver, de todos los esquemas.</summary>
     private static async Task<List<string>> TablasDe(string cadena, CancellationToken ct)

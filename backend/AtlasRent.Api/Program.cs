@@ -6,6 +6,7 @@ using AtlasRent.Api.Services;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -239,9 +240,9 @@ builder.Services.AddControllers(opciones =>
 // a partir de la hora de Santo Domingo en lugar de escribir un número fijo.
 // El almacenamiento va en su propia base de datos (atlas_rent_jobs) porque un pg_dump con
 // rent_backup hace LOCK TABLE sobre todo lo que hay en atlas_rent y el planificador le rompería el
-// volcado. La credencial sí es la de migraciones (ConnectionStrings__Migraciones), no la de la
-// aplicación: rent_app no debe poder escribir en las tablas del planificador. Su panel no se monta
-// (docs/SEGURIDAD.md A.1).
+// volcado. La credencial es la del rol rent_jobs (ConnectionStrings__Jobs): dueño solo de esa base,
+// sin acceso a atlas_rent. Antes era rent_migrador, que pertenece a rent_owner y con él la API podía
+// desactivar el trigger append-only de auditoria (SEC-020). Su panel no se monta (docs/SEGURIDAD.md A.1).
 builder.Services.AddScoped<TrabajoCopiaSeguridad>();
 builder.Services.AddScoped<TrabajoIntegridadAuditoria>();
 
@@ -250,13 +251,13 @@ builder.Services.AddSingleton(opcionesJobs);
 
 if (opcionesJobs.ServidorActivo)
 {
-    var cadenaMigraciones = builder.Configuration.GetConnectionString("Migraciones")
+    var cadenaBaseJobs = builder.Configuration.GetConnectionString("Jobs")
         ?? throw new InvalidOperationException(
-            "Falta la cadena de conexión 'Migraciones' para el servidor de jobs. Definir "
-            + "ConnectionStrings__Migraciones (user-secrets en desarrollo): es el rol rent_migrador, "
-            + "el único con permisos sobre las tablas de Hangfire.");
+            "Falta la cadena de conexión 'Jobs' para el servidor de jobs. Definir "
+            + "ConnectionStrings__Jobs (user-secrets en desarrollo): es el rol rent_jobs, dueño de "
+            + "la base atlas_rent_jobs y sin acceso a atlas_rent.");
 
-    var cadenaJobs = ProgramacionJobs.ConexionDeJobs(cadenaMigraciones);
+    var cadenaJobs = ProgramacionJobs.ConexionDeJobs(cadenaBaseJobs);
 
     builder.Services.AddHangfire(configuracion => configuracion
         .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
@@ -429,6 +430,93 @@ builder.Services.AddHealthChecks()
     .AddCheck<ConexionBdCheck>("bd");
 
 var app = builder.Build();
+
+// SEC-014. Primero de todo, para que cada cabecera de seguridad salga también en los errores y en
+// las redirecciones: se fijan al empezar a escribir la respuesta.
+// CSP: sin 'unsafe-inline' en script-src (el script del tema es public/tema-inicial.js). Los estilos
+// en línea de React son atributos style="..." y no elementos <style>, por eso solo style-src-attr los
+// permite. data: en img-src y font-src porque Vite incrusta como data: los recursos pequeños.
+const string PoliticaContenido =
+    "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; "
+    + "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; "
+    + "base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+app.Use((http, siguiente) =>
+{
+    http.Response.OnStarting(() =>
+    {
+        var cabeceras = http.Response.Headers;
+        cabeceras["X-Content-Type-Options"] = "nosniff";
+        cabeceras["Referrer-Policy"] = "no-referrer";
+        cabeceras["X-Frame-Options"] = "DENY";
+        cabeceras["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()";
+        cabeceras["Content-Security-Policy"] = PoliticaContenido;
+        return Task.CompletedTask;
+    });
+
+    return siguiente(http);
+});
+
+// SEC-014: la IP y el esquema reales del cliente solo se leen de X-Forwarded-* si la conexión viene
+// de un proxy de Seguridad__ProxiesConfianza. Sin ninguno configurado no se registra el middleware y
+// esas cabeceras se ignoran, porque las puede mandar cualquiera. Va antes de todo lo que usa la IP
+// (bloqueos, limitador, auditoría): ResolutorIpPeticion lee ya la RemoteIpAddress resuelta.
+// ForwardLimit = 1: se toma la última entrada, la que añadió el proxy de confianza; lo que el cliente
+// escribió antes en la cadena no cuenta.
+if (opcionesSeguridad.ProxiesConfianza.Count > 0 || opcionesSeguridad.RedesProxiesConfianza.Count > 0)
+{
+    var reenvio = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        ForwardLimit = 1,
+    };
+    // Por defecto confía en loopback; hay que vaciarlo para que mande solo lo configurado.
+    reenvio.KnownProxies.Clear();
+    reenvio.KnownIPNetworks.Clear();
+    foreach (var proxy in opcionesSeguridad.ProxiesConfianza)
+    {
+        reenvio.KnownProxies.Add(proxy);
+    }
+
+    foreach (var red in opcionesSeguridad.RedesProxiesConfianza)
+    {
+        reenvio.KnownIPNetworks.Add(red);
+    }
+
+    app.UseForwardedHeaders(reenvio);
+}
+
+// SEC-014: manejador global de excepciones, en todos los entornos. Va dentro de la página de
+// excepciones de desarrollo que añade WebApplication, así que esa nunca llega a ver la excepción y
+// la respuesta es la misma sin traza en cualquier entorno. El detalle queda en el log.
+app.UseExceptionHandler(manejador => manejador.Run(async http =>
+{
+    var excepcion = http.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+    if (excepcion is not null)
+    {
+        Log.Error(excepcion, "Excepción no controlada en {Metodo} {Ruta}", http.Request.Method, http.Request.Path);
+    }
+
+    http.Response.Clear();
+    var problema = new ProblemDetails
+    {
+        Status = StatusCodes.Status500InternalServerError,
+        Title = "Error interno",
+        Detail = "Se produjo un error inesperado. Si se repite, indica el código de referencia al soporte.",
+    };
+    problema.Extensions["codigoReferencia"] = Problemas.ErrorInterno;
+    http.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    http.Response.ContentType = "application/problem+json";
+    await http.Response.WriteAsJsonAsync(problema, (System.Text.Json.JsonSerializerOptions?)null, "application/problem+json");
+}));
+
+// SEC-014: HSTS y redirección a HTTPS fuera de desarrollo. En desarrollo y en los tests de
+// integración (HTTP) no se aplican. Detrás de un proxy la redirección depende de X-Forwarded-Proto,
+// que solo se lee de los proxies de confianza (arriba).
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
 
 // Los trabajos recurrentes se registran con el almacenamiento ya montado. AddOrUpdate escribe en
 // él, así que solo tiene sentido si el servidor está encendido: apagado (tests de integración) no

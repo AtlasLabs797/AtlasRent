@@ -22,12 +22,15 @@ test('una preferencia corrupta o ausente cae en sistema', () => {
   assert.equal(leerPreferencia({ getItem: () => 'oscuro' }), 'oscuro');
 });
 
-test('el script en línea de index.html comparte clave y valores con el store', () => {
-  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('el script inicial del tema comparte clave y valores con el store y no va en línea', () => {
+  const pagina = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(pagina.includes('src="/tema-inicial.js"'), 'index.html carga el script desde un archivo (CSP sin unsafe-inline)');
+  assert.ok(!/<script(?![^>]* src=)[^>]*>/.test(pagina), 'index.html no debe llevar scripts en línea');
+  const html = readFileSync(new URL('../public/tema-inicial.js', import.meta.url), 'utf8');
   assert.ok(html.includes(CLAVE_TEMA), 'el script en línea debe leer la misma clave que resolver.ts');
   assert.ok(html.includes("'oscuro'"), 'debe reconocer la preferencia oscura');
   assert.ok(html.includes("'sistema'"), 'debe reconocer la preferencia sistema');
   assert.ok(html.includes("matchMedia('(prefers-color-scheme: dark)')"), 'debe resolver sistema con matchMedia');
   assert.ok(html.includes('data-theme'), 'debe fijar data-theme antes del primer pintado');
-  assert.ok(html.indexOf('data-theme') < html.indexOf('/src/main.tsx'), 'el tema se fija antes de cargar la app');
+  assert.ok(pagina.indexOf('tema-inicial.js') < pagina.indexOf('/src/main.tsx'), 'el tema se fija antes de cargar la app');
 });

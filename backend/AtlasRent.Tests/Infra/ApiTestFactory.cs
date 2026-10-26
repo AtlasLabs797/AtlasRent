@@ -105,6 +105,12 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
     /// <see cref="ConfigureWebHost"/>: esa llamada no encadena, así que una subclase que sobrescriba
     /// este método y no llame a la base no los pisa, simplemente no los ve.
     /// </summary>
+    /// <summary>
+    /// Si las peticiones llevan la IP fija de <see cref="Resolutor"/>. Las fábricas que prueban el
+    /// resolutor real (X-Forwarded-For, SEC-014) lo apagan.
+    /// </summary>
+    protected virtual bool UsaResolutorFijo => true;
+
     protected virtual void ConfigurarAjustes(IDictionary<string, string?> ajustes)
     {
     }
@@ -172,8 +178,11 @@ public class ApiTestFactory(ContenedorBdFixture bd) : WebApplicationFactory<Prog
             // máquina serían la misma IP y los bloqueos de uno romperían los de otro. Se sustituye el
             // resolutor en lugar de añadir middleware: con hosting mínimo, un IStartupFilter
             // (builder.Configure) deja el pipeline sin endpoints y todo responde 404.
-            servicios.RemoveAll<IResolutorIpPeticion>();
-            servicios.AddSingleton<IResolutorIpPeticion>(Resolutor);
+            if (UsaResolutorFijo)
+            {
+                servicios.RemoveAll<IResolutorIpPeticion>();
+                servicios.AddSingleton<IResolutorIpPeticion>(Resolutor);
+            }
         });
     }
 

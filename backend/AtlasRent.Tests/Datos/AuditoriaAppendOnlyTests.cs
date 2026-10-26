@@ -68,6 +68,20 @@ public sealed class AuditoriaAppendOnlyTests(ContenedorBdFixture bd)
     }
 
     [Fact]
+    public async Task RentAppNoPuedeDesactivarElTriggerDeAuditoria()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // SEC-020: el rol con el que corre la API (y no solo el de la fábrica) no puede quitar el
+        // append-only. Hace falta ser dueño de la tabla.
+        await using var conexion = await AbrirAsync(bd.CadenaApp);
+        await using var comando = new NpgsqlCommand("ALTER TABLE auditoria DISABLE TRIGGER ALL", conexion);
+
+        var excepcion = await ObtenerPostgresErrorAsync(() => comando.ExecuteNonQueryAsync(ct));
+        excepcion.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
+    }
+
+    [Fact]
     public async Task RentAppNoPuedeBorrarAuditoria()
     {
         var ct = TestContext.Current.CancellationToken;
