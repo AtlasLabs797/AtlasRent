@@ -129,6 +129,237 @@
 - ¿Hubo exposición real? Sí/No. Si sí: qué datos y a quién se notificó.
 ```
 
+### SEC-030 · Endurecimiento varios
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Baja · Estado: **ABIERTO** · Componente: API / cifrado
+- Detectado por: auditoría (agentes)
+- Descripción: (a) DTOs sin `JsonUnmappedMemberHandling.Disallow` (`IpDesbloquearPeticion`, `CuentaDesbloquearPeticion`, `TarifaPeticion`…). (b) `TarifaPeticion.Importe` sin tope: 500 al desbordar `numeric(18,2)`. (c) `GET /clientes?documento=<cédula>` pone un dato personal en la URL. (d) Códigos de recuperación con SHA-256 sin sal. (e) AES-GCM sin datos asociados. (f) `intento_login` no se purga. (g) La descarga de documentos de propiedad no se audita. (h) `GET /api/v1/envios` con solo `factura.ver` devuelve asuntos (plausible fuga si la plantilla lleva `{pendiente}`).
+- Evidencia: Varios archivos de `Controllers/`, `DTOs/` y `Services/`.
+- Solución: pendiente. Propuesta: corregir cada punto con su test.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-029 · Límites de IA con TOCTOU y auditoría de agente incompleta
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Baja · Estado: **ABIERTO** · Componente: IA / agente
+- Detectado por: auditoría (agentes)
+- Descripción: Peticiones paralelas superan el límite; un 500 no deja fila de auditoría; el 401 de un token no cuenta para el bloqueo de IP.
+- Evidencia: `ServicioConsultaIa.ExigirLimitesAsync` cuenta filas y escribe después; `AutenticacionAgenteMiddleware.cs:80-93` sin try/finally.
+- Solución: pendiente. Propuesta: reservar el uso de forma atómica, try/finally en la auditoría, contar el 401.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-028 · Validación débil de email y caracteres de control en el borde
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Baja · Estado: **ABIERTO** · Componente: clientes / correo
+- Detectado por: auditoría (agentes)
+- Descripción: (Plausible, sin comprobar con prueba.) Un email o nombre con CRLF llegaría a `MailboxAddress`/`Subject`.
+- Evidencia: `ClientePeticion.Email` sin `[EmailAddress]`; `Nombre` sin filtrar caracteres de control.
+- Solución: pendiente. Propuesta: validar email y rechazar caracteres de control.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-027 · Email de cliente en logs
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Baja · Estado: **ABIERTO** · Componente: logs
+- Detectado por: auditoría (agentes)
+- Descripción: El destinatario queda en el log de nivel Information. Contra SEGURIDAD A.4.
+- Evidencia: `Services/ServicioCorreoMailKit.cs:79`.
+- Solución: pendiente. Propuesta: no registrar el destinatario.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-026 · Seudonimización frágil y test con falso verde
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: IA
+- Detectado por: auditoría (agentes)
+- Descripción: La lista cerrada por nombre de propiedad puede dejar pasar datos y `GetValue<string>` lanza si llega un número. El test no detectaría un nombre con tilde filtrado.
+- Evidencia: `Services/MapaSeudonimos.cs:38-55` y `:131`. `Tests/IA/ConsultaIaTests.cs:161-167` busca nombres con NotContain sobre JSON que escapa los caracteres no ASCII; solo prueba el alcance clientes, no el teléfono.
+- Solución: pendiente. Propuesta: seudonimizar por tipo de dato, no por nombre; test sobre JSON deserializado y con teléfono.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-025 · Brechas en MFA y break-glass
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: autenticación / MFA
+- Detectado por: auditoría (agentes)
+- Descripción: (1) `VerificarSegundoFactorAsync` y `ServicioEmergencia.EntrarAsync` no miran `CuentaBloqueada`. (2) Los fallos de `EntrarAsync`/`ConfirmarAsync` no cuentan como intentos. (3) `AprobarAsync` concurrente reescribe `CodigoHash` sin recomprobar `AprobadoPorId`. (4) Un admin puede quitar `mfa.obligatorio`/`seguridad.acceso_emergencia` a otro. (5) No hay protección de «último admin» al cambiar el rol.
+- Evidencia: `ServicioMfa.cs:263`, `ServicioEmergencia.EntrarAsync`, `AprobarAsync`.
+- Solución: pendiente. Propuesta: cerrar cada punto con su test.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-024 · No existe el interruptor de MFA para gerente
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: autenticación / MFA
+- Detectado por: auditoría (agentes)
+- Descripción: La opción prometida en SEC-R01 no existe: F1-06 la aplazó a F1-07 y nunca se hizo.
+- Evidencia: `ServicioMfa.NecesitaMfaAsync` con `TODO(A#)`.
+- Solución: pendiente. Propuesta: implementar el interruptor (desactivado por defecto).
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-023 · No existe el aviso de IP nueva al admin
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: autenticación / bloqueos
+- Detectado por: auditoría (agentes)
+- Descripción: Falta la mitigación de SEC-R01/R02: la spec (línea ~367) y SEGURIDAD A.2 piden aviso en app y por correo.
+- Evidencia: `Services/ServicioBloqueos.cs:98` solo audita; hay un `TODO(A#)`.
+- Solución: pendiente. Propuesta: implementar el aviso en app y correo.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-022 · Un empleado puede fijar el número de cliente
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: clientes
+- Detectado por: auditoría (agentes)
+- Descripción: Con `numero=2147483646` el siguiente `nextval` desborda el int; `setval(GREATEST(...))` puede retroceder la secuencia bajo concurrencia.
+- Evidencia: `Services/ServicioClientes.cs:185-206`; `ClienteDtos.cs:30` `Range(1,int.MaxValue)`; endpoint con `cliente.editar`.
+- Solución: pendiente. Propuesta: limitar el rango, restringir a quien corresponda y no retroceder la secuencia.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-021 · Watchdog aplica actualizaciones sin validar firma ni rollback
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: Watchdog
+- Detectado por: auditoría (agentes)
+- Descripción: Un ZIP manipulado se extrae con overwrite sobre la instalación. Contra SEGURIDAD A.1.
+- Evidencia: `backend/AtlasRent.Watchdog/OperacionesWatchdog.cs:112-120`; el TODO apunta a F1-13 (equivocado).
+- Solución: pendiente. Propuesta: validar firma/hash antes de extraer y poder volver atrás.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-020 · La API usa la credencial del propietario del esquema para Hangfire
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: base de datos / jobs
+- Detectado por: auditoría (agentes)
+- Descripción: `rent_migrador` pertenece a `rent_owner`, así que puede hacer `DISABLE TRIGGER` en `auditoria` y anula SEC-002.
+- Evidencia: `Program.cs:253` usa `ConnectionStrings__Migraciones` para Hangfire.
+- Solución: pendiente. Propuesta: dar a Hangfire una credencial sin privilegios de propietario.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-019 · Desactivar usuario no revoca sesiones al instante
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: sesiones
+- Detectado por: auditoría (agentes)
+- Descripción: Un usuario desactivado conserva su sesión hasta 30 s por la caché; además no existe endpoint de desactivar ni de cambiar contraseña.
+- Evidencia: `Services/ServicioSesiones.cs:99` (caché 30 s). `AuthEndpointsTests.cs:66` desactiva antes de calentar la caché, así que no prueba el caso real.
+- Solución: pendiente. Propuesta: invalidar la caché al desactivar/revocar y probar el caso con la caché caliente.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-018 · Cédula/RNC en claro en envio.pdf_copia
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: envíos
+- Detectado por: auditoría (agentes)
+- Descripción: El PDF (con el documento del cliente) se guarda en bytea sin cifrar. Choca con AGENTS §6.
+- Evidencia: `Services/ServicioEnvios.cs:208`.
+- Solución: pendiente. Propuesta: cifrar la copia con `ServicioCifrado` (recomendado).
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-017 · JSON de auditoría montado a mano con el motivo sin escapar
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: auditoría / series
+- Detectado por: auditoría (agentes)
+- Descripción: Un motivo con comilla hace fallar el cast `::jsonb` y la anulación se revierte; un motivo manipulado falsea campos (p. ej. `numero`) en la auditoría firmada.
+- Evidencia: `Services/ServicioSeries.cs:136`. Verificado leyendo el código. Hay que buscar otros `DatosJson` interpolados.
+- Solución: pendiente. Propuesta: serializar con `JsonSerializer.Serialize` y revisar el resto de `DatosJson`.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-016 · SMTP con StartTlsWhenAvailable
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: correo
+- Detectado por: auditoría (agentes)
+- Descripción: Si el servidor no ofrece STARTTLS o un MITM lo quita, el envío cae a texto plano y expone la clave SMTP y PDFs con cédula.
+- Evidencia: `Services/ServicioCorreoMailKit.cs:65`. Verificado leyendo el código.
+- Solución: pendiente. Propuesta: usar `SecureSocketOptions.StartTls`.
+- Corrección prevista: AUD-03
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-015 · HaveIBeenPwned nunca se invoca, sin longitud mínima y sin cambio de contraseña
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Alta · Estado: **ABIERTO** · Componente: autenticación
+- Detectado por: auditoría (agentes)
+- Descripción: Se aceptan contraseñas de 1 carácter o filtradas, y el usuario no puede cambiar la suya. Incumple la mitigación obligatoria de SEC-R02.
+- Evidencia: `ServicioComplicidad` solo se registra en `Program.cs:74`; `DTOs/UsuarioDtos.cs:31` tiene `MinimumLength=1` (la spec pide 12); no existe endpoint de cambiar contraseña (`DebeCambiarPassword` solo se devuelve). Verificado leyendo el código.
+- Solución: pendiente. Propuesta: mínimo 12, comprobación HIBP en alta y cambio, endpoint de cambio de contraseña (y su pantalla, AUD-08).
+- Corrección prevista: AUD-02
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-014 · Sin ForwardedHeaders, HSTS, cabeceras de seguridad ni manejador global de errores
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Alta · Estado: **ABIERTO** · Componente: API / despliegue
+- Detectado por: auditoría (agentes)
+- Descripción: Detrás de Caddy todas las peticiones llegan como 127.0.0.1, así que 10 fallos bloquean a todo el mundo; sin HSTS, CSP, nosniff, Referrer-Policy ni frame-ancestors; los errores pueden filtrar trazas. DOC_TECNICA §7 y SEGURIDAD A.5 lo dan por hecho.
+- Evidencia: `Program.cs` no tiene `UseForwardedHeaders`, `UseHsts`, `UseHttpsRedirection`, `UseExceptionHandler` ni CSP/nosniff/Referrer-Policy/frame-ancestors; `Seguridad__ProxiesConfianza` no se lee y `ResolutorIpPeticion` usa `RemoteIpAddress`. Verificado leyendo el código.
+- Solución: pendiente. Propuesta: añadir los middlewares y las cabeceras; el script inline del tema en `frontend/index.html` chocaría con una CSP estricta (usar hash).
+- Corrección prevista: AUD-02
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-013 · MFA activar/confirmar aceptan JWT de sesión revocada
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Alta · Estado: **ABIERTO** · Componente: autenticación / MFA
+- Detectado por: auditoría (agentes)
+- Descripción: Con un JWT robado, hasta 15 minutos después del logout, el atacante activa su propio TOTP y bloquea al titular.
+- Evidencia: `Controllers/MfaController.cs:148` y `UsuarioQueEstaActivandoAsync`: el fallback `UsuarioDeLaSesion()` toma `sub` de un JWT validado solo por firma; `ValidacionSesionMiddleware.cs:33` salta `[AllowAnonymous]`; además `[SaltarCsrf]` e ignora `DeletedAt`.
+- Solución: pendiente. Propuesta: exigir sesión viva en la BD (y usuario no borrado) en activar/confirmar MFA.
+- Corrección prevista: AUD-02
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-012 · Bloqueo de cuenta prolongable indefinidamente
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Alta · Estado: **ABIERTO** · Componente: autenticación / bloqueos
+- Detectado por: auditoría (agentes)
+- Descripción: Un atacante con un intento cada menos de 30 minutos deja al admin fuera para siempre: cada fallo durante el bloqueo lo alarga y, tras expirar, un solo fallo vuelve a bloquear.
+- Evidencia: `Services/ServicioBloqueos.cs:216-225`: `hasta = ahora + 30 min` y solo evita sobrescribir si `actual > hasta` (nunca ocurre); los fallos se cuentan desde el último éxito. `BloqueoCuentaTests.cs:26` no avanza el reloj. Verificado leyendo el código.
+- Solución: pendiente. Propuesta: no prorrogar un bloqueo vigente; contar fallos desde max(último éxito, fin del último bloqueo).
+- Corrección prevista: AUD-02
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-011 · El agente puede aprobar su propia propuesta
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Alta · Estado: **ABIERTO** · Componente: agente / IA
+- Detectado por: auditoría (agentes)
+- Descripción: Un agente que proponga una acción puede aprobarla él mismo, anulando la aprobación humana.
+- Evidencia: `Controllers/IaController.cs:163`: Aprobar/Rechazar exigen solo `mensajeria.masivo`; nada rechaza `EsAgente`. Verificado leyendo el código.
+- Solución: pendiente. Propuesta: Aprobar/Rechazar (y toda aprobación: contratos, solicitudes) rechazan sesión de agente con 403 auditado.
+- Corrección prevista: AUD-02
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-010 · Token de agente con acciones de escritura salta la aprobación humana
+- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Alta · Estado: **ABIERTO** · Componente: agente / IA
+- Detectado por: auditoría (agentes)
+- Descripción: Un token de agente con `cobro.registrar`, `factura.anular` o `mensajeria.masivo` llama a `POST /api/v1/cobros` o `/facturas/{id}/anular` sin propuesta ni aprobación humana. Contradice ESPECIFICACION §3.18 y el Supuesto I3. Un token con `agente.token` puede además acuñar más tokens.
+- Evidencia: `Services/ServicioAgentes.cs:66` solo valida que la acción exista en `Acciones.Todas`. `Middleware/AutenticacionAgenteMiddleware.cs:44` aplica el token a todo `[ApiController]` y `CsrfMiddleware` se salta con `EsAgente`. Verificado leyendo el código.
+- Solución: pendiente. Propuesta: lista blanca de acciones permitidas a tokens (lectura + `ia.consultar` + `ia.proponer`) validada al emitir y en cada petición; `agente.token` nunca en un token.
+- Corrección prevista: AUD-02
+- Verificación: pendiente (ningún test cubría este hallazgo).
+- Commit/PR: pendiente.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
 ### SEC-005 · Inyección de fórmulas en exportaciones
 - Fecha detectado: 13/10/2026 · Fecha resuelto: 18/10/2026 · Gravedad: Media · Estado: **CERRADO en F5-02** · Componente: exportación
 - Detectado por: revisión

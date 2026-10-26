@@ -22,6 +22,416 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-052 · Varios menores
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Baja** · Estado: ABIERTO · Módulo: varios
+- Detectado por: auditoría (agentes)
+- Síntoma: Lista: `CalendarioController.cs:33-37` desde/hasta sin `[Required]` (año 0001 con 200); los documentos de inmueble guardan el archivo antes de comprobar el inmueble y dejan huérfanos al abortar; `FijarVersionAsync` MAX+1 da 409 en concurrencia; `ServicioConfiguracion.CalcularAsync` (~786-815) es código muerto con ITBIS sobre subtotal (diverge de D27); `PeriodoFacturacion.Vencimiento` puede nacer vencida al facturar con retraso; `ServicioFacturas` `ConstruirLinea` (~1815) y `ServicioContratos` (`CambiarEstado:1265`, `FinalizarAsync:694`, `LiquidarAsync:838`) usan el reloj del sistema en vez de `TimeProvider`; `TipoCambioAplicado` sin control de sensatez (`ServicioCobros.cs:772`, decisión de producto); `modificadaTrasEnvio` trata Pendiente como salido (`ServicioCuentas.cs:426`); sustitución en cadena de variables de plantilla (`VariablesMensaje.cs:76`); propuestas duplicadas sin idempotencia; justificación de propuesta sin reidentificar; `config/variables-entorno.example` sin `Jobs__ServidorActivo`; `rent_app` con UPDATE sobre tablas que deben ser inmutables (`contrato_plantilla_congelada`, `contrato_inventario_item`, `contrato_version`); contrato Aprobado sin salida; `AplicarCambios` permite cambiar la moneda de un contrato activo; TODOs de F3 obsoletos en `ServicioAvisosOperacion.cs:230-249`; `FiltroAccionGlobal.cs:31` con `FirstOrDefault` elegiría el `[Accion]` de clase sobre el de método.
+- Cómo reproducir: Ver cada punto en el archivo citado.
+- Causa raíz: Cada punto tiene su causa en el archivo:línea indicado en el síntoma.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-051 · Tests que no prueban lo prometido
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: pruebas
+- Detectado por: auditoría (agentes)
+- Síntoma: Hay verdes que no cubren su criterio: (a) `CobroSaldosPropertyTests` sin anulaciones, otras monedas, retenciones ni concurrencia, con invariantes calculadas con `CalculoCobro` del propio código; (b) `FacturaPdfTests.cs:230` afirma sobre el modelo, no sobre el PDF, y recibo/estado/cotización/contrato solo tienen lint; (c) `MatrizPermisosTests` prueba lo sembrado en BD, no endpoints (el criterio de F1-07 pide API) y no hay test por reflexión de los controladores reales; (d) `RenovacionContratosTests` calcula lo esperado con la misma fórmula; (e) `ReservaAnticipoYAlertaTests` (F2-03) no se actualizó tras F3; (f) `CifradoCopiaTests.cs:193` tiene el nombre o el comentario al revés.
+- Cómo reproducir: Leer cada test citado frente al criterio de aceptación de su tarea.
+- Causa raíz: Tests escritos con la misma fórmula que el código o sin ejercitar la capa que dicen probar.
+- Solución: Pendiente — tarea AUD-07.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-050 · Liquidar no cierra fianza ni saldos
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: contratos
+- Detectado por: auditoría (agentes)
+- Síntoma: §3.5 dice que la liquidación cierra inventario, fianza y saldos; hoy no lo hace.
+- Cómo reproducir: Liquidar un contrato con fianza y saldos abiertos.
+- Causa raíz: `ServicioContratos.cs:803-829`, con un `TODO(A#)` de F3-01 obsoleto.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-049 · Disponibilidad ignora el estado manual de la unidad
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: reservas / contratos
+- Detectado por: auditoría (agentes)
+- Síntoma: Se reservan o activan unidades que el calendario marca como no disponibles.
+- Cómo reproducir: Poner una unidad en estado manual no disponible, o inactiva, o sin la modalidad, y reservarla/activar un contrato.
+- Causa raíz: `ServicioReservas.cs:481-499` y `ServicioContratos.ActivarAsync` no miran `EstadoManual`, `Unidad.Activo` ni `Unidad.Modalidades`.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-048 · Reserva con factura se puede seguir editando/cancelando y dos POST concurrentes crean dos facturas
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: reservas / facturas
+- Detectado por: auditoría (agentes)
+- Síntoma: Se edita o cancela una reserva ya facturada; dos peticiones concurrentes facturan dos veces.
+- Cómo reproducir: Facturar una reserva y editarla; lanzar dos `FacturarReserva` a la vez.
+- Causa raíz: `ServicioReservas.cs` no mira `Factura`; `FacturarReservaAsync` (`ServicioFacturacionPeriodica.cs:~228-240`) comprueba y luego crea por texto de concepto, sin índice único.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-047 · La CI ejecuta `dotnet test`, que en este repo no ejecuta ninguna prueba
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Alta** · Estado: ABIERTO · Módulo: CI
+- Detectado por: auditoría (agentes)
+- Síntoma: «CI verde» no prueba nada (AGENTS §8). Debe ejecutar `AtlasRent.Tests.exe` (o `dotnet run --project` del proyecto de tests) en Linux.
+- Cómo reproducir: Mirar `.github/workflows/ci.yml:49` y el número de pruebas ejecutadas por la CI.
+- Causa raíz: `.github/workflows/ci.yml:49` usa `dotnet test` con xUnit v3 de runner en proceso.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-046 · Se puede cambiar Moneda/Prefijo/Tipo de una serie con números emitidos
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: configuración / series
+- Detectado por: auditoría (agentes)
+- Síntoma: (Plausible.) Cambia el significado de números ya emitidos.
+- Cómo reproducir: Editar una serie con facturas emitidas.
+- Causa raíz: `ServicioConfiguracion.ActualizarSerieAsync` (~131-170) no comprueba si hay números emitidos.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-045 · Integridad y backup: cadena rota sin alerta, subida no reintentada y backup en memoria
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: backup / auditoría
+- Detectado por: auditoría (agentes)
+- Síntoma: Una cadena de auditoría rota solo deja un log; si la copia del día ya existe no se reintenta la subida; el backup entero va en memoria (límite 2 GB); la rotación cuenta copias inválidas entre las 4.
+- Cómo reproducir: Romper un hash de `auditoria`; o fallar la subida y relanzar el backup del día.
+- Causa raíz: `Jobs/TrabajoIntegridadAuditoria.cs:54` (solo `Log.Error`); `ServicioBackup.cs:235` vuelve antes de `SubirAsync`; uso de `byte[]`/`MemoryStream`.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-044 · Carreras en sesión: 500 en lugar de 401 y comprobación de inactividad inalcanzable
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: sesiones
+- Detectado por: auditoría (agentes)
+- Síntoma: (Plausible, alta.) Varias peticiones simultáneas dan 500 por `DbUpdateConcurrencyException`; el perdedor de un refresco concurrente recibe 500 en vez de 401.
+- Cómo reproducir: Lanzar peticiones concurrentes con la misma sesión o dos refrescos a la vez.
+- Causa raíz: `ServicioSesiones.cs:99,234`: `GetOrCreateAsync` no serializa y se guarda `UltimaActividad` con `xmin`. La comprobación de inactividad en `ValidarAsync:127` es inalcanzable porque `LeerAsync` ya pone `UltimaActividad=ahora`.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-043 · Renovación encadena AddMonths y deriva a fin de mes
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: contratos / renovaciones
+- Detectado por: auditoría (agentes)
+- Síntoma: 31/01 pasa a 28/02 y luego a 28/03.
+- Cómo reproducir: Renovar dos veces un contrato que empieza el 31 de enero.
+- Causa raíz: `ServicioRenovaciones.cs:204-205`. Los tests usan la misma fórmula.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-042 · Bandeja: POST /contratos/solicitudes/{id}/aprobacion recibe un ContratoId
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: contratos / bandeja
+- Detectado por: auditoría (agentes)
+- Síntoma: Se aprueba la solicitud viva, no la mostrada.
+- Cómo reproducir: Aprobar desde la bandeja una solicitud cuando el contrato tiene otra más reciente.
+- Causa raíz: `ContratosController.cs:293-310` recibe en realidad `ContratoId`; `ServicioContratos.cs:352`.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-041 · Cambiar una reserva de mensual a corta (o al revés) deja un candado huérfano
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: reservas
+- Detectado por: auditoría (agentes)
+- Síntoma: La unidad queda bloqueada por un candado que ya no corresponde a ninguna reserva.
+- Cómo reproducir: Editar una reserva cambiando su tipo.
+- Causa raíz: `ServicioReservas.cs:531` y `Origen()` en `:633`.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-040 · Recordatorio manual sale con importe y PDF desfasados
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: recordatorios
+- Detectado por: auditoría (agentes)
+- Síntoma: El importe citado puede no ser el actual y solo cubre las facturas «en plazo».
+- Cómo reproducir: Preparar un recordatorio, cambiar el estado de las facturas y enviarlo.
+- Causa raíz: `PrepararAsync` congela los datos y `EnviarAsync` solo comprueba si queda algo pendiente.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-039 · Aprobar una propuesta cuyo envío falló u omitió la deja Aprobada
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: IA / propuestas
+- Detectado por: auditoría (agentes)
+- Síntoma: La propuesta figura como aprobada aunque el recordatorio no se enviara.
+- Cómo reproducir: Aprobar una propuesta de recordatorio cuyo envío falla o se omite.
+- Causa raíz: `ServicioPropuestasAgente.cs:235` descarta el resultado de `recordatorios.EnviarAsync`; `:237` marca Aprobada.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-038 · Correo duplicado por reintento automático de Hangfire
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: mensajería
+- Detectado por: auditoría (agentes)
+- Síntoma: El mismo correo puede salir varias veces; `PermisoDenegadoException` reintenta 10 veces.
+- Cómo reproducir: Hacer fallar el guardado tras el envío SMTP, o lanzar dos jobs simultáneos para la misma fila.
+- Causa raíz: `ServicioEnvios.EnviarPendienteAsync` envía por SMTP y después guarda; si el guardado falla, el reintento (10 por defecto) reenvía.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-037 · Envío masivo sin outbox: filas Pendiente huérfanas
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: mensajería
+- Detectado por: auditoría (agentes)
+- Síntoma: Si el proceso cae entre el Commit y el encolado, quedan filas Pendiente irrecuperables.
+- Cómo reproducir: Matar el proceso tras el Commit de un envío masivo.
+- Causa raíz: `ServicioEnviosMasivos.cs:203` y `:325` encolan en Hangfire después del Commit; la idempotencia devuelve la respuesta guardada y Reintentar solo coge Fallido.
+- Solución: Pendiente — tarea AUD-06.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-036 · comprobante_retencion queda obsoleto al modificar la factura
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: retenciones / facturas
+- Detectado por: auditoría (agentes)
+- Síntoma: El comprobante de retención conserva los importes anteriores a la modificación.
+- Cómo reproducir: Emitir una factura con retención y modificarla.
+- Causa raíz: `ServicioRetenciones.ReservarEnEmisionAsync` copia los importes y `ServicioFacturas.ModificarAsync` no los actualiza.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-035 · Ajuste por diferencia de cambio sin bloqueo y sin exigir cobro previo en otra moneda
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: cobros
+- Detectado por: auditoría (agentes)
+- Síntoma: Dos ajustes concurrentes se duplican y cualquier factura con pendiente ≤ tolerancia se cierra sin pago.
+- Cómo reproducir: Dos ajustes simultáneos sobre la misma factura; o un ajuste sobre una factura sin cobros.
+- Causa raíz: `ServicioCobros.cs:~500-590` y `:547`.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-034 · Fianza: anular el cobro de una fianza devuelta deja devuelto > cobrado y la liquidación se clasifica mal
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: fianzas
+- Detectado por: auditoría (agentes)
+- Síntoma: Devuelto mayor que cobrado sin aviso; una devolución con total == saldo e `ImporteDescontado > 0` queda «Devuelta» en vez de «Retenida parcial».
+- Cómo reproducir: Cobrar una fianza, devolverla y anular su cobro.
+- Causa raíz: `CalculoFianza.Saldo` hace clamp; `ServicioCobros.AnularAsync` no mira las asignaciones a fianza; `ServicioFianzas.cs` (rama completa) no distingue el descuento.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-033 · «Rehacer en otra moneda» no hereda periodo_inicio
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: facturas / facturación periódica
+- Detectado por: auditoría (agentes)
+- Síntoma: La periódica vuelve a facturar el mismo mes.
+- Cómo reproducir: Rehacer en otra moneda una factura periódica y volver a lanzar la periódica.
+- Causa raíz: `ServicioFacturas.cs:1225` no copia `periodo_inicio`.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-032 · Anular un cobro cuyo crédito ya se gastó lo oculta con clamp a 0
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: cobros / facturas
+- Detectado por: auditoría (agentes)
+- Síntoma: Se anula el cobro y el crédito gastado desaparece sin rastro. Debe bloquearse la anulación (o exigir anular antes el cobro que gastó el crédito).
+- Cómo reproducir: Cobro con exceso que genera crédito; gastar el crédito en otro cobro; anular el primero.
+- Causa raíz: `ServicioCobros.cs:455` y `ServicioFacturas.cs:1402` usan `Math.Max(0, …)`.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-031 · Cobro con FacturasSeleccionadas en otra moneda mezcla importes
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: cobros
+- Detectado por: auditoría (agentes)
+- Síntoma: Excedente negativo y 409 en Registrar.
+- Cómo reproducir: Factura seleccionada USD 1000 y cobro DOP 30000 a 60: excedente −30000.
+- Causa raíz: `ServicioCobros.cs:1038`: `Math.Min(pendiente, restante)` compara la moneda de la factura con la moneda recibida.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-030 · Total de la cotización distinto de la suma de líneas redondeadas
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: cotizaciones
+- Detectado por: auditoría (agentes)
+- Síntoma: El total de la cotización no coincide con la suma de sus líneas.
+- Cómo reproducir: 2 × (1,5 × 0,07): las líneas suman 0,22 y el total sale 0,21.
+- Causa raíz: `ServicioCotizaciones.cs:406` suma sin redondear por línea; `:421-431` redondea cada línea.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-029 · Prorrateo pierde un céntimo en empates exactos
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: dominio / prorrateo
+- Detectado por: auditoría (agentes)
+- Síntoma: El prorrateo da un céntimo menos cuando el resultado cae justo en el medio.
+- Cómo reproducir: 12345.67 / 30 × 15 da 6172.83; lo correcto es 6172.84.
+- Causa raíz: `Dominio/Prorrateo.cs:22`: `renta/dias*facturables` divide antes de multiplicar. Hay que multiplicar primero.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-028 · Avisos de baja, liberación y reserva viven un solo día
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Media** · Estado: ABIERTO · Módulo: avisos de operación
+- Detectado por: auditoría (agentes)
+- Síntoma: Una baja con menos de 7 días nunca avisa; el aviso de «liberación en 30 días» mira contratos Activo que se renuevan solos; el aviso de reserva no sigue la spec.
+- Cómo reproducir: Programar una baja a menos de 7 días; el aviso no sale.
+- Causa raíz: `ServicioAvisosOperacion.cs:88-92,108-112` usan igualdad exacta (`== hoy+7`, `== hoy+30`) y `:170-181` los cierra al día siguiente. `TrabajoAlertaReserva.cs:53-69` avisa de entrada == hoy+7, cuando §3.4 pide «mensual lleva 7 días sin convertirse (una vez, persistente)».
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-027 · La reserva corta exige horas rígidas
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Alta** · Estado: ABIERTO · Módulo: reservas
+- Detectado por: auditoría (agentes)
+- Síntoma: Solo se aceptan 4 h exactas u 08:00-16:00; la spec dice D11 «sin franjas fijas» y §3.4 «hora orientativa en texto libre opcional».
+- Cómo reproducir: Crear una reserva corta con otra franja horaria.
+- Causa raíz: `ServicioReservas.cs:454-479` y `ReservaDtos.cs:73-76` (campos obligatorios). Está marcado «DECISIÓN DEL ORQUESTADOR» sin TODO.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-026 · La reserva nunca pasa a Convertida/Completada y queda en conflicto con su propio contrato
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Alta** · Estado: ABIERTO · Módulo: reservas / contratos
+- Detectado por: auditoría (agentes)
+- Síntoma: Al activar el contrato del mismo cliente, su reserva queda `EnConflicto`. El conflicto por fecha de §3.4 (llega la entrada y el contrato sigue en borrador) no existe.
+- Cómo reproducir: Reserva de un cliente y contrato del mismo cliente en la misma unidad; activar el contrato.
+- Causa raíz: `ServicioContratos.cs:892-936`: el contrato no tiene `ReservaId`; `ContratoOcupacionTests.cs:169-216` lo prueba con el mismo cliente. `EstadoReserva.cs:30-34` contradice a `ServicioContratos.cs:884-890`.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-025 · Finalizar a mano libera la unidad antes de la fecha efectiva y borra el pasado del calendario
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Alta** · Estado: ABIERTO · Módulo: contratos / calendario
+- Detectado por: auditoría (agentes)
+- Síntoma: La unidad queda libre antes de la fecha efectiva y el rango pasado desaparece del calendario.
+- Cómo reproducir: Finalizar a mano un contrato con baja futura.
+- Causa raíz: `ServicioContratos.cs:692-709` no exige `FechaBajaProgramada <= hoy`; `LiberarRangoAsync` pone `bloquea=false` en todo el rango en vez de recortar `fecha_fin`. `CalendarioDisponibilidadTests.cs:278-293` consagra el defecto.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-024 · La facturación periódica ignora la baja y la baja no puede ser anterior al fin del bloque
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Alta** · Estado: ABIERTO · Módulo: contratos / facturación periódica
+- Detectado por: auditoría (agentes)
+- Síntoma: El tramo entre el fin del bloque y la baja nunca se factura, y se factura un día de más.
+- Cómo reproducir: Contrato con baja programada: la periódica sigue hasta `FechaFinVigente`; la renovación no renueva `BajaProgramada`.
+- Causa raíz: `ServicioContratos.cs:616` (regla que no está en la spec, sin TODO); `ServicioRenovaciones.cs:68`; `ServicioFacturacionPeriodica.cs:322,350` factura hasta `FechaFinVigente` e ignora `FechaBajaProgramada`/`FechaFinReal`. Además `Dominio/PeriodoFacturacion.cs:45-50` (`DiasFacturables`) trata el fin como inclusivo cuando `FechaFinVigente` es exclusivo `[)`.
+- Decisión del responsable pendiente: si la baja puede ser anterior al fin del bloque.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-023 · Al editar un borrador de contrato FechaFinVigente solo crece
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Crítica** · Estado: ABIERTO · Módulo: contratos
+- Detectado por: auditoría (agentes)
+- Síntoma: Se facturan meses de más y la renovación, la baja y la alerta usan una fecha falsa.
+- Cómo reproducir: Borrador de 12 meses, editar a 6: el fin vigente sigue a 12 meses. La huella no lo incluye.
+- Causa raíz: `ServicioContratos.cs:1198-1201`.
+- Solución: Pendiente — tarea AUD-05.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-022 · Facturación periódica no atómica: un borrador huérfano bloquea el contrato
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Alta** · Estado: ABIERTO · Módulo: facturación periódica
+- Detectado por: auditoría (agentes)
+- Síntoma: Un fallo a mitad de lote deja un borrador huérfano que bloquea ese contrato para siempre y aborta el resto del lote. Una doble ejecución concurrente da un 409 parcial con los mismos efectos.
+- Cómo reproducir: Provocar un fallo en `AgregarLinea` o `Emitir` de un contrato en medio de un lote.
+- Causa raíz: `ServicioFacturacionPeriodica.cs:134` (bucle sin try) y `:337-341` (las existentes cuentan Borrador). Crear/AgregarLinea/Emitir van en transacciones separadas y `CerrarEjecucionAsync` no se ejecuta. El comentario del servicio es falso.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-021 · Modificar una factura emitida con cobros no revisa lo cobrado
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Crítica** · Estado: ABIERTO · Módulo: facturas
+- Detectado por: auditoría (agentes)
+- Síntoma: La factura baja de importe por debajo de lo cobrado y el exceso no se refleja en ningún sitio.
+- Cómo reproducir: Factura en serie sin comprobante, cobrado 1000; modificarla a 600: 400 de sobrecobro sin reflejo.
+- Causa raíz: `ServicioFacturas.ModificarAsync` (652-720) no compara el nuevo total con lo cobrado.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-020 · Anular una factura de un cobro multi-factura hace desaparecer el dinero de esa parte
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Crítica** · Estado: ABIERTO · Módulo: facturas / cobros
+- Detectado por: auditoría (agentes)
+- Síntoma: El importe asignado a la factura anulada queda sin destino ni rastro.
+- Cómo reproducir: Cobro de 1000 = factura A 500 + factura B 500; anular A: 500 quedan sin rastro.
+- Causa raíz: `ServicioFacturas.AnularCobrosDeFacturaAsync` (~1342-1415): la asignación pasa a `Vigente=false` y, si el cobro conserva otras asignaciones, no cambia nada más.
+- Decisión del responsable pendiente: destino del importe liberado (p. ej. saldo a favor del cliente u otra opción).
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
+### BUG-019 · Dos cobros simultáneos sobre la misma factura se aceptan
+- Fecha detectado: 26/10/2026 · Fecha corregido: —
+- Gravedad: **Crítica** · Estado: ABIERTO · Módulo: cobros
+- Detectado por: auditoría (agentes)
+- Síntoma: Doble cobro invisible: la factura queda «Pagada» con el doble cobrado y el sobrecobro no se ve por el clamp a 0.
+- Cómo reproducir: Factura USD 1000 y dos cobros de 1000 concurrentes: cobrado 2000.
+- Causa raíz: `ServicioCobros.cs:320-390` (`RegistrarAsync`) y `:704-870` (`PlanificarAsync`) leen el pendiente sin bloqueo; no hay `FOR UPDATE` ni advisory lock fuera de auditoría y `xmin` solo existe en `saldo_a_favor`. Mismo problema en el ajuste por diferencia de cambio (`ServicioCobros.cs:~500-590`). Arreglo propuesto: lock por contrato (`pg_advisory_xact_lock`) o `SELECT … FOR UPDATE` de las facturas al planificar.
+- Solución: Pendiente — tarea AUD-04.
+- Test que lo cubre: Pendiente (no hay test que lo detecte).
+- Commit/PR: pendiente.
+- Datos afectados: Ninguno: no hay datos de producción.
+
 ### BUG-018 · La CI terminaba en rojo sin ejecutar ningún job, por un `hashFiles` en un `if` de nivel de job
 - Fecha detectado: 15/10/2026 · Fecha corregido: 19/10/2026 (orquestador)
 - Gravedad: **Media** · Estado: CORREGIDO · Módulo: CI (`.github/workflows/ci.yml`)

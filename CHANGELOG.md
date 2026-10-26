@@ -16,6 +16,14 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [26/10/2026 18:13] DOCS · AUD-01 · Registro de la auditoría completa (orquestador)
+- Qué: se registran los hallazgos de la auditoría del 26/10/2026 sobre V-01.00: 21 problemas de seguridad (SEC-010..SEC-030: 6 Altos, 11 Medios, 4 Bajos) en `docs/SEGURIDAD.md`, 34 bugs (BUG-019..BUG-052) en `docs/BUGS.md` y la nueva fase AUD (AUD-01..AUD-10) en `docs/PLAN.md`, con una nota de auditoría en las tareas HECHAS cuyo alcance real es menor (F1-04, F1-05, F1-06, F1-07, F1-09, F1-10, F1-13, F2-03, F3-10, F6-03). Solo documentación: no se ha tocado código.
+- Por qué: auditoría pedida por el responsable. Cada hallazgo queda con ID, archivo:línea y tarea AUD que lo corrige.
+- Verificado: antes de la auditoría, build Release `-warnaserror` 0 avisos / 0 errores, `AtlasRent.Tests.exe` 862/862, frontend lint, typecheck, test (35/35) y build OK, sin paquetes vulnerables. Comprobado con grep que SEC-010..030 y BUG-019..052 aparecen sin huecos ni duplicados. **NO verificado:** revisión visual. Ningún hallazgo tenía test que lo cubriera: que la suite esté en verde no implica que no existan.
+- Migraciones: no.
+- Riesgo / pendiente: 6 SEC Altas abiertas (SEC-010..SEC-015); en particular SEC-010/SEC-011 (el agente salta la aprobación humana) y SEC-012 (bloqueo de admin indefinido) antes de abrir el puerto. Decisiones del responsable pendientes: BUG-020 (destino del importe de un cobro multi-factura al anular una factura) y BUG-024 (si la baja puede ser anterior al fin del bloque). SEC-008 sigue abierto. La CI no ejecuta ninguna prueba (BUG-047).
+- Commit/PR: rama `tarea/AUD-01-auditoria`.
+
 ## [19/10/2026 05:30] CONFIG · V-01.00 · Se unifican todas las ramas en V-01.00 (orquestador)
 
 - **Qué:** `V-01.00` se rehace desde `tarea/F6-ia` (no desde `main`), de modo que la rama contiene F0 y los bloques F1 a F6. Se incorpora lo que estaba huérfano: los 8 documentos de `docs/F0/` que vivían solo en `tarea/F0-preparacion` y no existían en ninguna otra rama, y el arreglo de la CI de BUG-001 de esa rama, registrado aquí como **BUG-018**. Se añade `V-01.00` a `docs/DOC_TECNICA.md` §2 y a la tabla de documentos de `AGENTS.md`. No se ha tocado ningún fichero de `backend/` ni de `frontend/`.
