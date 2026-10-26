@@ -3238,6 +3238,11 @@ namespace AtlasRent.Api.Migrations
                         new
                         {
                             RolClave = "admin",
+                            Accion = "sesion.password"
+                        },
+                        new
+                        {
+                            RolClave = "admin",
                             Accion = "mfa.obligatorio"
                         },
                         new
@@ -3353,6 +3358,11 @@ namespace AtlasRent.Api.Migrations
                         new
                         {
                             RolClave = "gerente",
+                            Accion = "sesion.password"
+                        },
+                        new
+                        {
+                            RolClave = "gerente",
                             Accion = "ia.consultar"
                         },
                         new
@@ -3399,6 +3409,11 @@ namespace AtlasRent.Api.Migrations
                         {
                             RolClave = "empleado",
                             Accion = "sesion.cerrar"
+                        },
+                        new
+                        {
+                            RolClave = "empleado",
+                            Accion = "sesion.password"
                         });
                 });
 

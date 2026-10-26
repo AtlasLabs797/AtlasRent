@@ -11,10 +11,16 @@ public sealed record EstadoSesion(
     bool Activo,
     DateTimeOffset UltimaActividad,
     DateTimeOffset CaducaAbsoluta,
-    DateTimeOffset? RevocadaAt);
+    DateTimeOffset? RevocadaAt,
+    bool DebeCambiarPassword);
 
 /// <summary>Resultado de validar una sesión: si vale y, si no, el código de error con el que responde.</summary>
-public sealed record ResultadoValidacionSesion(bool Valida, string? CodigoReferencia = null, string? Detalle = null)
+/// <param name="DebeCambiarPassword">Sesión válida, pero con el cambio de contraseña pendiente (SEC-015).</param>
+public sealed record ResultadoValidacionSesion(
+    bool Valida,
+    string? CodigoReferencia = null,
+    string? Detalle = null,
+    bool DebeCambiarPassword = false)
 {
     public static ResultadoValidacionSesion Correcta => new(true);
 
@@ -131,7 +137,7 @@ public sealed class ServicioSesiones(
                 Problemas.SesionExpirada, "La sesión superó los 30 minutos de inactividad.");
         }
 
-        return ResultadoValidacionSesion.Correcta;
+        return new ResultadoValidacionSesion(true, DebeCambiarPassword: estado.DebeCambiarPassword);
     }
 
     /// <summary>Busca la fila de sesión de un token de refresco (por el hash SHA-256 del token).</summary>
@@ -142,6 +148,43 @@ public sealed class ServicioSesiones(
         contexto.Sesion.Include(s => s.Usuario).SingleOrDefaultAsync(s => s.Id == sesionId, ct);
 
     public void InvalidarCache(Guid sesionId) => cache.Remove(ClaveCache(sesionId));
+
+    /// <summary>
+    /// Marca como revocadas todas las sesiones vivas del usuario (SEC-019) dentro de la transacción
+    /// del llamante, que es quien audita. Devuelve sus identificadores: el llamante debe pasarlos a
+    /// <see cref="InvalidarCache(IEnumerable{Guid})"/> <b>después</b> del commit, porque invalidar
+    /// antes dejaría que una petición concurrente volviera a cachear el estado sin revocar.
+    /// </summary>
+    /// <param name="excepto">Sesión que se conserva (la desde la que el usuario cambia su contraseña).</param>
+    public async Task<IReadOnlyList<Guid>> RevocarTodasDelUsuarioAsync(
+        Guid usuarioId,
+        string motivo,
+        Guid? excepto,
+        CancellationToken ct)
+    {
+        var ahora = reloj.GetUtcNow();
+        var vivas = await contexto.Sesion
+            .Where(s => s.UsuarioId == usuarioId && s.RevocadaAt == null && s.Id != excepto)
+            .ToListAsync(ct);
+
+        foreach (var sesion in vivas)
+        {
+            sesion.RevocadaAt = ahora;
+            sesion.MotivoRevocacion = motivo;
+        }
+
+        await contexto.SaveChangesAsync(ct);
+
+        return [.. vivas.Select(s => s.Id)];
+    }
+
+    public void InvalidarCache(IEnumerable<Guid> sesionIds)
+    {
+        foreach (var id in sesionIds)
+        {
+            InvalidarCache(id);
+        }
+    }
 
     /// <summary>Revoca la familia entera: el token robado y todos los que salieron de él.</summary>
     public async Task RevocarFamiliaAsync(Guid familiaId, string motivo, Guid usuarioId, string ip, CancellationToken ct)
@@ -241,6 +284,7 @@ public sealed class ServicioSesiones(
             activo,
             sesion.UltimaActividad,
             sesion.CaducaAbsoluta,
-            sesion.RevocadaAt);
+            sesion.RevocadaAt,
+            usuario?.DebeCambiarPassword ?? false);
     }
 }

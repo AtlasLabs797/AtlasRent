@@ -267,4 +267,10 @@ public static class MotivosRevocacion
 
     /// <summary>Se detectó reutilización de un token ya rotado y se cayó la familia completa.</summary>
     public const string ReutilizacionDetectada = "reutilizacion_detectada";
+
+    /// <summary>El administrador desactivó al usuario.</summary>
+    public const string UsuarioDesactivado = "usuario_desactivado";
+
+    /// <summary>La contraseña cambió (la cambió el usuario o la restableció un administrador).</summary>
+    public const string PasswordCambiada = "password_cambiada";
 }

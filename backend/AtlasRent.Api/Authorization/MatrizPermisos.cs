@@ -28,6 +28,7 @@ public static class MatrizPermisos
                 .. Acciones.Matriz,
                 Acciones.SesionVer,
                 Acciones.SesionCerrar,
+                Acciones.SesionPassword,
                 Acciones.MfaObligatorio,
                 Acciones.SeguridadAccesoEmergencia,
                 Acciones.AgenteToken,
@@ -54,6 +55,7 @@ public static class MatrizPermisos
                 Acciones.AuditoriaVer,
                 Acciones.SesionVer,
                 Acciones.SesionCerrar,
+                Acciones.SesionPassword,
                 // F6-01: el asistente es de lectura y responde con datos agregados de clientes y
                 // cuentas, así que el gerente sí y el empleado no — igual que con informe.ver.
                 Acciones.IaConsultar,
@@ -72,6 +74,7 @@ public static class MatrizPermisos
                 Acciones.CotizacionEnviar,
                 Acciones.SesionVer,
                 Acciones.SesionCerrar,
+                Acciones.SesionPassword,
             ],
         };
 

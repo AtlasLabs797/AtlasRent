@@ -63,6 +63,18 @@ public static class Problemas
     /// <summary>El usuario, el rol o el recurso al que se refiere la operación no existe.</summary>
     public const string RecursoNoEncontrado = "SEG-009";
 
+    /// <summary>
+    /// El usuario tiene el cambio de contraseña pendiente (<c>DebeCambiarPassword</c>) y solo puede
+    /// ver su identidad, cerrar sesión o cambiarla (SEC-015).
+    /// </summary>
+    public const string CambioPasswordRequerido = "SEG-010";
+
+    /// <summary>
+    /// La contraseña nueva no se acepta: aparece en filtraciones conocidas, no cumple la longitud o
+    /// la contraseña actual no es correcta (SEC-015).
+    /// </summary>
+    public const string ContrasenaRechazada = "SEG-011";
+
     /// <summary>Error de validación de los datos de entrada.</summary>
     public const string Validacion = "API-001";
 

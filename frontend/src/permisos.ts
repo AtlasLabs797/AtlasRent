@@ -28,6 +28,7 @@ export const ACCIONES = {
   cuentaDesbloquear: 'cuenta.desbloquear',
   sesionVer: 'sesion.ver',
   sesionCerrar: 'sesion.cerrar',
+  sesionPassword: 'sesion.password',
 } as const;
 
 export type Accion = (typeof ACCIONES)[keyof typeof ACCIONES];

@@ -73,6 +73,7 @@ builder.Services.AddScoped<EmisorTokens>();
 builder.Services.AddSingleton<IResolutorIpPeticion, ResolutorIpPeticion>();
 // HaveIBeenPwned por k-anonimato: HttpClient sin paquete adicional (docs/DOC_TECNICA.md §7).
 builder.Services.AddHttpClient<ServicioComplicidad>();
+builder.Services.AddScoped<ValidadorContrasena>();
 
 // F1-05: límite de peticiones. El global va por usuario si la petición está autenticada y por IP si
 // no; el login lleva además su política, más estrecha (docs/DOC_TECNICA.md §7).

@@ -96,6 +96,9 @@ public static class Acciones
     /// <summary>Cerrar la propia sesión (<c>POST /api/v1/auth/logout</c>). Todos los roles.</summary>
     public const string SesionCerrar = "sesion.cerrar";
 
+    /// <summary>Cambiar la contraseña propia (<c>POST /api/v1/auth/password</c>). Todos los roles (SEC-015).</summary>
+    public const string SesionPassword = "sesion.password";
+
     /// <summary>
     /// El segundo factor es obligatorio para quien lo tiene (D4). Se comprueba como permiso para
     /// que "obligatorio" sea un dato y no una columna: hoy solo el administrador lo tiene.
@@ -161,7 +164,7 @@ public static class Acciones
 
     /// <summary>Todas las acciones conocidas, las de la matriz y las técnicas.</summary>
     public static readonly IReadOnlySet<string> Todas = new HashSet<string>(
-        [.. Matriz, SesionVer, SesionCerrar, MfaObligatorio, SeguridadAccesoEmergencia,
+        [.. Matriz, SesionVer, SesionCerrar, SesionPassword, MfaObligatorio, SeguridadAccesoEmergencia,
             AgenteToken, IaConsultar, IaProponer],
         StringComparer.Ordinal);
 }

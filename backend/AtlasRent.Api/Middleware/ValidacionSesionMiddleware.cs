@@ -75,6 +75,17 @@ public sealed class ValidacionSesionMiddleware(RequestDelegate siguiente)
             return;
         }
 
+        // SEC-015: con el cambio de contraseña pendiente solo se permite lo necesario para hacerlo.
+        if (resultado.DebeCambiarPassword && !AccionesDeCuenta.Son(endpoint))
+        {
+            await Problemas.EscribirAsync(http, Problemas.Construir(
+                StatusCodes.Status403Forbidden,
+                Problemas.CambioPasswordRequerido,
+                "Cambio de contraseña pendiente",
+                "Debes cambiar tu contraseña antes de seguir usando la aplicación."));
+            return;
+        }
+
         // El rol sale de la tabla del usuario, no del claim: si el rol cambia, el cambio vale desde la
         // siguiente petición, sin esperar a que caduque el token. Es lo que lee RLS en app.rol.
         contextoSesion.Rol = principalUserId is { } idConRol
@@ -82,6 +93,22 @@ public sealed class ValidacionSesionMiddleware(RequestDelegate siguiente)
             : string.Empty;
 
         await siguiente(http);
+    }
+}
+
+/// <summary>
+/// Endpoints permitidos con el cambio de contraseña pendiente: identidad, cierre de sesión y el
+/// propio cambio. Un endpoint sin <c>[Accion]</c> no cuenta (lo rechaza el filtro global).
+/// </summary>
+internal static class AccionesDeCuenta
+{
+    private static readonly HashSet<string> Permitidas =
+        [Acciones.SesionVer, Acciones.SesionCerrar, Acciones.SesionPassword];
+
+    public static bool Son(Endpoint endpoint)
+    {
+        var acciones = endpoint.Metadata.GetMetadata<AccionAttribute>()?.Acciones ?? [];
+        return acciones.Length > 0 && acciones.All(Permitidas.Contains);
     }
 }
 
