@@ -24,6 +24,7 @@ public sealed class ClientesController(
     ServicioContactos contactos,
     ServicioCuentas cuentas,
     ServicioIdempotencia idempotencia,
+    IPolicyService politica,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
     : ControladorApiBase(idempotencia, contextoSesion, resolutorIp)
@@ -36,12 +37,37 @@ public sealed class ClientesController(
         [FromQuery] string? sortBy,
         [FromQuery] string? sortDir,
         [FromQuery] string? q,
-        [FromQuery] string? documento,
         [FromQuery] TipoCliente? tipo,
         [FromQuery] bool incluirInactivos,
-        CancellationToken ct) =>
+        CancellationToken ct)
+    {
+        // SEC-030: el documento es un dato personal y en la URL acaba en logs y proxies. Se busca
+        // por POST /clientes/busqueda; rechazar el parámetro (y no ignorarlo) evita que un cliente
+        // viejo crea que filtró y reciba la cartera entera.
+        if (Request.Query.ContainsKey("documento"))
+        {
+            return Problemas.Construir(
+                StatusCodes.Status400BadRequest,
+                Problemas.Validacion,
+                "Datos no válidos",
+                "El documento no va en la URL: usa POST /api/v1/clientes/busqueda con el documento en el cuerpo.");
+        }
+
+        return await EnvoltorioAsync(clientes.ListarAsync(
+            Paginacion(page, pageSize, sortBy, sortDir), q, null, tipo, incluirInactivos, ct));
+    }
+
+    /// <summary>Búsqueda por documento de identidad, con el documento en el cuerpo y no en la URL.</summary>
+    [HttpPost("busqueda")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> BuscarPorDocumento(BusquedaClientePeticion peticion, CancellationToken ct) =>
         await EnvoltorioAsync(clientes.ListarAsync(
-            Paginacion(page, pageSize, sortBy, sortDir), q, documento, tipo, incluirInactivos, ct));
+            Paginacion(peticion.Page, peticion.PageSize, null, null),
+            null,
+            peticion.Documento,
+            peticion.Tipo,
+            peticion.IncluirInactivos,
+            ct));
 
     [HttpGet("{id:guid}")]
     [Accion(Acciones.ClienteVer)]
@@ -53,6 +79,20 @@ public sealed class ClientesController(
     public async Task<IActionResult> Crear(ClientePeticion peticion, CancellationToken ct)
     {
         const string ruta = "/api/v1/clientes";
+
+        // SEC-022: fijar el número es de la importación, que corre con un administrador. Se
+        // comprueba con la política y no a mano por rol; se rechaza (no se ignora) para que nadie
+        // crea que fijó un número que no se aplicó.
+        if (peticion.Numero is not null && !politica.Puede(Acciones.ConfiguracionEditar))
+        {
+            await politica.AuditarDenegadoAsync(Acciones.ConfiguracionEditar, ruta, ct);
+            return Problemas.Construir(
+                StatusCodes.Status403Forbidden,
+                Problemas.PermisoDenegado,
+                "Permiso denegado",
+                "Solo la administración puede fijar el número de cliente.");
+        }
+
         var mutacion = Mutar(peticion, ruta);
         var repetida = await RepetidaAsync(mutacion, ct);
         if (repetida is not null)

@@ -206,7 +206,7 @@ public sealed class InmueblesController(
     {
         try
         {
-            var archivo = await documentos.ArchivoAsync(id, documentoId, ct);
+            var archivo = await documentos.ArchivoAsync(id, documentoId, UsuarioDeLaPeticion(), Ip(), ct);
             if (!System.IO.File.Exists(archivo.Ruta))
             {
                 return NoEncontrado("El archivo del documento no está en la carpeta de almacenamiento.");

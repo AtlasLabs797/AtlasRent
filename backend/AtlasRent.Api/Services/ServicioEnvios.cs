@@ -367,15 +367,28 @@ public sealed class ServicioEnvios(
         TipoDocumentoEnvio? tipo,
         EstadoEnvio? estado,
         Guid? documentoId,
+        Guid usuario,
         CancellationToken ct)
     {
+        // SEC-030: el asunto ya lleva las variables sustituidas, y el de un estado de cuenta o un
+        // recordatorio puede citar el saldo pendiente del cliente entero, que es un total agregado.
+        // Quien no tiene el permiso del contenido (informe.ver) ve la fila, pero sin asunto.
+        var ocultarAsuntoDeInforme = !await politica.PuedeAsync(Acciones.InformeVer, usuario, ct);
+
         var consulta = contexto.Envio.AsNoTracking()
             .Where(e => !tipo.HasValue || e.TipoDocumento == tipo)
             .Where(e => !estado.HasValue || e.Estado == estado)
             .Where(e => !documentoId.HasValue || e.DocumentoId == documentoId);
 
         return await ConsultaPaginada.PaginarAsync(
-            consulta, Ordenes, "enviadoAt", paginacion, ARespuesta, ct);
+            consulta,
+            Ordenes,
+            "enviadoAt",
+            paginacion,
+            e => ocultarAsuntoDeInforme && AccionesDeContenido(e.TipoDocumento).Contains(Acciones.InformeVer)
+                ? ARespuesta(e) with { Asunto = string.Empty }
+                : ARespuesta(e),
+            ct);
     }
 
     private static readonly IReadOnlyDictionary<string, Func<IQueryable<Envio>, bool, IOrderedQueryable<Envio>>> Ordenes =

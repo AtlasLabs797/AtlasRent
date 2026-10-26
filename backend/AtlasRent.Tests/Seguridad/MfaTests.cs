@@ -136,7 +136,7 @@ public sealed class MfaTests(ContenedorBdFixture bd, ApiTestFactory api)
             hashes.Should().HaveCount(ServicioMfa.CodigosPorUsuario);
             foreach (var codigo in codigos)
             {
-                hashes.Should().Contain(EmisorTokens.HashToken(ServicioMfa.Normalizar(codigo)));
+                hashes.Should().Contain(ServicioMfa.HashCodigoRecuperacion(api.ClaveHmacDocumento, ServicioMfa.Normalizar(codigo)));
                 hashes.Should().NotContain(codigo);
             }
         }

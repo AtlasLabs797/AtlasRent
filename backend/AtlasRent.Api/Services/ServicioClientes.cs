@@ -440,7 +440,12 @@ public sealed class ServicioClientes(
     /// Deja la secuencia por encima del número más alto de la tabla, sin bajarla nunca: un
     /// <c>setval</c> hacia atrás haría que el siguiente alta repitiera un número ya usado.
     /// </summary>
-    private async Task AlinearSecuenciaAsync(CancellationToken ct) =>
+    private async Task AlinearSecuenciaAsync(CancellationToken ct)
+    {
+        // Dos importaciones a la vez no se pisan: el candado dura lo que la transacción del alta.
+        await contexto.Database.ExecuteSqlAsync(
+            $"SELECT pg_advisory_xact_lock(hashtext('cliente_numero_seq'))", ct);
+
         await contexto.Database
             .SqlQuery<long>(
                 $"""
@@ -451,4 +456,5 @@ public sealed class ServicioClientes(
                         (SELECT last_value FROM cliente_numero_seq))) AS "Value"
                 """)
             .SingleAsync(ct);
+    }
 }

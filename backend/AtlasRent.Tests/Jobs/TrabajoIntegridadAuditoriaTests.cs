@@ -33,7 +33,7 @@ public sealed class TrabajoIntegridadAuditoriaTests(ContenedorBdFixture bd)
         var sesion = new ContextoSesion();
         await using var contexto = bd.CrearContexto(bd.CadenaApp, sesion);
 
-        var trabajo = new TrabajoIntegridadAuditoria(sesion, contexto, new IntegridadAuditoria(contexto));
+        var trabajo = new TrabajoIntegridadAuditoria(sesion, contexto, new IntegridadAuditoria(contexto), new OpcionesLimites());
         var resultado = await trabajo.EjecutarAsync(ct);
 
         TrabajoIntegridadAuditoria.RolRequisito.Should().Be(Roles.Admin);

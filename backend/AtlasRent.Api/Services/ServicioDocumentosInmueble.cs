@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.DTOs;
@@ -104,18 +105,37 @@ public sealed class ServicioDocumentosInmueble(
     /// pide. La ruta se construye con el nombre que generó el servidor, nunca con el nombre que
     /// envió el cliente.
     /// </summary>
-    public async Task<ArchivoDocumento> ArchivoAsync(Guid inmuebleId, Guid documentoId, CancellationToken ct)
+    public async Task<ArchivoDocumento> ArchivoAsync(
+        Guid inmuebleId,
+        Guid documentoId,
+        Guid usuario,
+        string ip,
+        CancellationToken ct)
     {
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
         var documento = await contexto.DocumentoInmueble
             .AsNoTracking()
             .SingleOrDefaultAsync(d => d.Id == documentoId && d.InmuebleId == inmuebleId, ct);
-        await transaccion.RollbackAsync(ct);
 
         if (documento is null)
         {
+            await transaccion.RollbackAsync(ct);
             throw new KeyNotFoundException($"No existe el documento '{documentoId:D}'.");
         }
+
+        // SEC-030: bajar un PDF de propiedad es un acceso a datos sensibles y deja rastro.
+        await auditoria.RegistrarAsync(new RegistroAuditoria
+        {
+            Accion = "documento_inmueble.descargado",
+            Ip = ip,
+            UsuarioId = usuario,
+            Entidad = "documento_inmueble",
+            EntidadId = documento.Id.ToString("D"),
+            DatosJson = JsonSerializer.Serialize(new { documento.InmuebleId, documento.NombreOriginal }),
+            Resultado = "permitido",
+            Origen = "api",
+        }, ct);
+        await transaccion.CommitAsync(ct);
 
         return new ArchivoDocumento(
             almacen.RutaDe(documento.NombreArchivo),

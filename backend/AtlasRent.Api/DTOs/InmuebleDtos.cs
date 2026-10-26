@@ -133,6 +133,7 @@ public sealed class TarifaPeticion
     public required Moneda Moneda { get; init; }
 
     /// <summary>Importe de una sola modalidad en una sola moneda. Nunca negativo.</summary>
+    [Range(typeof(decimal), "0", "9999999999999999.99", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public required decimal Importe { get; init; }
 }
 

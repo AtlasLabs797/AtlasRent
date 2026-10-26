@@ -161,4 +161,31 @@ public sealed class DocumentoInmueblePermisosTests(ContenedorBdFixture bd, ApiTe
         var usuario = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: rol, ct: ct);
         return await AyudaPermisos.SesionAsync(api, usuario, Contrasena, ct);
     }
+
+    /// <summary>SEC-030: bajar un PDF de propiedad deja una fila de auditoria con el usuario y la IP.</summary>
+    [Fact]
+    public async Task LaDescargaDeUnDocumentoDePropiedadQuedaAuditada()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var gerente = await SesionAsync(Roles.Gerente, ct);
+        var inmueble = await CrearInmuebleAsync(gerente, ct);
+        var documento = await SubirAsync(gerente, inmueble, "titulo.pdf", SesionCliente.PdfDePrueba(), ct);
+
+        (await gerente.GetAsync($"/api/v1/inmuebles/{inmueble:D}/documentos/{documento:D}/archivo", ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var conexion = new Npgsql.NpgsqlConnection(bd.CadenaSuperusuario);
+        await conexion.OpenAsync(ct);
+        await using var orden = new Npgsql.NpgsqlCommand(
+            "SELECT usuario_id, ip, resultado FROM auditoria "
+            + "WHERE accion = 'documento_inmueble.descargado' AND entidad_id = @id",
+            conexion);
+        orden.Parameters.AddWithValue("id", documento.ToString("D"));
+        await using var lector = await orden.ExecuteReaderAsync(ct);
+
+        (await lector.ReadAsync(ct)).Should().BeTrue("la descarga se audita");
+        lector.GetGuid(0).Should().NotBeEmpty();
+        lector.GetString(1).Should().NotBeNullOrWhiteSpace();
+        lector.GetString(2).Should().Be("permitido");
+    }
 }

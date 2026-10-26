@@ -141,8 +141,9 @@ public sealed class ClienteCifradoYBusquedaTests(ContenedorBdFixture bd, ApiTest
             (await comando.ExecuteScalarAsync(ct)).Should().Be(id);
         }
 
-        var encontrado = await (await sesion.GetAsync(
-            $"/api/v1/clientes?documento={Uri.EscapeDataString(DocumentoIdentidad.Normalizar(documento))}", ct))
+        // SEC-030: el documento va en el cuerpo, no en la URL.
+        var encontrado = await (await sesion.PostAsync(
+            "/api/v1/clientes/busqueda", new { documento = DocumentoIdentidad.Normalizar(documento) }, ct))
             .Content.ReadFromJsonAsync<JsonElement>(ct);
 
         var filas = encontrado.GetProperty("data").EnumerateArray().ToList();
@@ -165,9 +166,21 @@ public sealed class ClienteCifradoYBusquedaTests(ContenedorBdFixture bd, ApiTest
         lista.GetProperty("total").GetInt32().Should().Be(1);
         lista.GetProperty("data")[0].GetProperty("nombre").GetString().Should().StartWith(marca);
 
-        var sinNada = await (await sesion.GetAsync("/api/v1/clientes?documento=%20--", ct))
+        var sinNada = await (await sesion.PostAsync("/api/v1/clientes/busqueda", new { documento = " --" }, ct))
             .Content.ReadFromJsonAsync<JsonElement>(ct);
         sinNada.GetProperty("total").GetInt32().Should().Be(0);
+    }
+
+    /// <summary>SEC-030: el documento no puede viajar en la URL; el parametro viejo se rechaza, no se ignora.</summary>
+    [Fact]
+    public async Task ElDocumentoYaNoSeAceptaEnLaUrl()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var sesion = await SesionDeAdminAsync(ct);
+
+        var respuesta = await sesion.GetAsync("/api/v1/clientes?documento=00112345678", ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     // ---------------------------------------------------------------- apoyo

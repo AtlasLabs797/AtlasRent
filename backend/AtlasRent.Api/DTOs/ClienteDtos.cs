@@ -24,10 +24,16 @@ public sealed class ClientePeticion
     public string? Documento { get; init; }
 
     /// <summary>
+    /// Tope del número importado (SEC-022): muy por encima de ~150 unidades y lejos de
+    /// <c>int.MaxValue</c>, para que el siguiente <c>nextval</c> de la secuencia no desborde.
+    /// </summary>
+    public const int NumeroMaximo = 99_999_999;
+
+    /// <summary>
     /// Número de cliente. Solo lo manda la importación de Factusol, que conserva el número que ya
     /// existía; si no viene, lo asigna la secuencia de la base de datos.
     /// </summary>
-    [Range(1, int.MaxValue)]
+    [Range(1, NumeroMaximo)]
     public int? Numero { get; init; }
 
     [StringLength(200)]
@@ -168,3 +174,24 @@ public sealed record ProspectoRespuesta(
     string? Notas,
     bool Activo,
     DateTimeOffset CreatedAt);
+
+/// <summary>
+/// Búsqueda de clientes por documento de identidad (SEC-030): el documento viaja en el cuerpo y no
+/// en la URL, donde acabaría en logs de acceso y de proxy.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class BusquedaClientePeticion
+{
+    [Required]
+    [StringLength(64)]
+    public required string Documento { get; init; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter<TipoCliente>))]
+    public TipoCliente? Tipo { get; init; }
+
+    public bool IncluirInactivos { get; init; }
+
+    public int? Page { get; init; }
+
+    public int? PageSize { get; init; }
+}

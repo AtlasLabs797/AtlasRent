@@ -227,6 +227,13 @@ builder.Services.AddControllers(opciones =>
 {
     opciones.Filters.Add<FiltroAccionGlobal>();
     opciones.Filters.Add<FiltroAccionAgente>();
+})
+.AddJsonOptions(json =>
+{
+    // SEC-030, docs/SEGURIDAD.md A.5: un campo que el DTO no conoce es un 400, en todos los DTO y
+    // no solo en los que llevan el atributo (que ya no hace falta, pero no estorba).
+    json.JsonSerializerOptions.UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow;
+    json.JsonSerializerOptions.Converters.Add(new AtlasRent.Api.DTOs.ImporteJsonConverter());
 });
 
 // F1-12: copia de seguridad cifrada de la base de datos y de los documentos, con rotación. El
