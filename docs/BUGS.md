@@ -365,7 +365,7 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 - Síntoma: El tramo entre el fin del bloque y la baja nunca se factura, y se factura un día de más.
 - Cómo reproducir: Contrato con baja programada: la periódica sigue hasta `FechaFinVigente`; la renovación no renueva `BajaProgramada`.
 - Causa raíz: `ServicioContratos.cs:616` (regla que no está en la spec, sin TODO); `ServicioRenovaciones.cs:68`; `ServicioFacturacionPeriodica.cs:322,350` factura hasta `FechaFinVigente` e ignora `FechaBajaProgramada`/`FechaFinReal`. Además `Dominio/PeriodoFacturacion.cs:45-50` (`DiasFacturables`) trata el fin como inclusivo cuando `FechaFinVigente` es exclusivo `[)`.
-- Decisión del responsable pendiente: si la baja puede ser anterior al fin del bloque.
+- Decisión del responsable (26/10/2026): la baja se puede programar en **cualquier fecha**, también antes del fin del bloque en curso (spec §3.5: preaviso recomendado, sin penalización). Se factura hasta la fecha efectiva de baja, prorrateando el último mes. Los **incrementos de renta se aplican en su fecha**, no en la renovación: la factura del periodo que contiene la fecha usa la renta nueva, prorrateada si cae a mitad de mes.
 - Solución: Pendiente — tarea AUD-05.
 - Test que lo cubre: Pendiente (no hay test que lo detecte).
 - Commit/PR: pendiente.
@@ -414,7 +414,7 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 - Síntoma: El importe asignado a la factura anulada queda sin destino ni rastro.
 - Cómo reproducir: Cobro de 1000 = factura A 500 + factura B 500; anular A: 500 quedan sin rastro.
 - Causa raíz: `ServicioFacturas.AnularCobrosDeFacturaAsync` (~1342-1415): la asignación pasa a `Vigente=false` y, si el cobro conserva otras asignaciones, no cambia nada más.
-- Decisión del responsable pendiente: destino del importe liberado (p. ej. saldo a favor del cliente u otra opción).
+- Decisión del responsable (26/10/2026): **nada de saldo a favor**, algo simple. Al anular la factura A se anula solo la asignación de A y su importe queda **marcado como devuelto** en el cobro (importe devuelto, con fecha, usuario y motivo = la anulación de A). La invariante pasa a ser: recibido = asignado vigente + excedente + devuelto.
 - Solución: Pendiente — tarea AUD-04.
 - Test que lo cubre: Pendiente (no hay test que lo detecte).
 - Commit/PR: pendiente.

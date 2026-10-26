@@ -267,6 +267,7 @@
 - Descripción: El PDF (con el documento del cliente) se guarda en bytea sin cifrar. Choca con AGENTS §6.
 - Evidencia: `Services/ServicioEnvios.cs:208`.
 - Solución: pendiente. Propuesta: cifrar la copia con `ServicioCifrado` (recomendado).
+- Decisión del responsable (26/10/2026): cifrar `pdf_copia` con AES-256-GCM.
 - Corrección prevista: AUD-03
 - Verificación: pendiente (ningún test cubría este hallazgo).
 - Commit/PR: pendiente.
