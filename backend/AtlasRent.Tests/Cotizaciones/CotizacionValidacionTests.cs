@@ -41,6 +41,36 @@ public sealed class CotizacionValidacionTests(ContenedorBdFixture bd, ApiTestFac
         cotizacion.GetProperty("subtotal").GetDecimal().Should().Be(0.11m, "sin impuestos, el subtotal es el total");
     }
 
+    /// <summary>
+    /// BUG-030: el total es la suma de los importes de línea ya redondeados. 2 x (1,5 x 0,07):
+    /// cada línea 0,105 sube a 0,11, así que el total es 0,22 y no 0,21 (que sale de redondear la
+    /// suma exacta 0,210).
+    /// </summary>
+    [Fact]
+    public async Task ElTotalEsLaSumaDeLasLineasYaRedondeadas()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var gerente = await SesionAsync(ct);
+
+        var id = await AyudaCotizacion.CrearAsync(
+            gerente,
+            await AyudaCotizacion.ClienteAsync(gerente, ct),
+            lineas: new[]
+            {
+                AyudaCotizacion.Linea("Fracción A", 1.5m, 0.07m),
+                AyudaCotizacion.Linea("Fracción B", 1.5m, 0.07m),
+            },
+            ct: ct);
+
+        var cotizacion = await AyudaCotizacion.Json(
+            await gerente.GetAsync($"/api/v1/cotizaciones/{id:D}", ct), ct);
+
+        cotizacion.GetProperty("lineas").EnumerateArray()
+            .Select(l => l.GetProperty("importe").GetDecimal())
+            .Should().Equal([0.11m, 0.11m]);
+        cotizacion.GetProperty("total").GetDecimal().Should().Be(0.22m, "0,11 + 0,11");
+    }
+
     /// <summary>El total de varias líneas es la suma de sus importes, en el orden del documento.</summary>
     [Fact]
     public async Task ElTotalEsLaSumaDeLasLineas()

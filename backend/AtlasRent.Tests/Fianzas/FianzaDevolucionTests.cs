@@ -62,6 +62,31 @@ public sealed class FianzaDevolucionTests(ContenedorBdFixture bd, ApiTestFactory
     }
 
     /// <summary>
+    /// BUG-034 (c): devolver todo el saldo pero con importe descontado es retener a medias, no una
+    /// devolución entera: queda «Retenida parcial» (§3.11).
+    /// </summary>
+    [Fact]
+    public async Task DevolverTodoElSaldoConDescuentoDejaRetenidaParcialYNoDevuelta()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var admin = await AyudaCobros.SesionAsync(bd, api, Roles.Admin, ct);
+
+        var (clienteId, contratoId) = await AyudaFianzas.ContratoAsync(admin, bd, ct);
+        var fianzaId = await AyudaFianzas.AltaAsync(admin, contratoId, 500m, Moneda.USD, 1, ct);
+        await AyudaFianzas.CobradaAsync(admin, clienteId, contratoId, fianzaId, 500m, Moneda.USD, ct);
+
+        var respuesta = await admin.PostAsync(
+            $"/api/v1/fianzas/{fianzaId:D}/devolver",
+            AyudaFianzas.PeticionDevolucion(400m, 100m, "Faltantes del inventario de salida"),
+            ct);
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+        (await AyudaFianzas.EstadoGuardadoAsync(bd, fianzaId, ct)).Should().Be(EstadoFianza.RetenidaParcial);
+        (await AyudaFianzas.LeerAsync(admin, fianzaId, ct)).GetProperty("estado").GetString()
+            .Should().Be(nameof(EstadoFianza.RetenidaParcial));
+    }
+
+    /// <summary>
     /// <b>El criterio de aceptación.</b> Una devolución parcial con importe y motivo baja el saldo por
     /// la suma de los dos y deja la fianza retenida a medias (§3.6).
     /// </summary>
