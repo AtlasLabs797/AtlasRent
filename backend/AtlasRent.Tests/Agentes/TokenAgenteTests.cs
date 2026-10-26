@@ -334,6 +334,83 @@ public sealed class TokenAgenteTests(ContenedorBdFixture bd, ApiTestFactory api)
         respuesta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>SEC-010: el alta rechaza con 400 cualquier acción que mute datos o acuñe tokens.</summary>
+    [Theory]
+    [InlineData(Acciones.CobroRegistrar)]
+    [InlineData(Acciones.FacturaAnular)]
+    [InlineData(Acciones.MensajeriaMasivo)]
+    [InlineData(Acciones.ContratoEstado)]
+    [InlineData(Acciones.AgenteToken)]
+    public async Task ElAltaRechazaLasAccionesFueraDeLaListaBlanca(string accion)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        using var sesion = await AyudaPermisos.SesionAsync(api, admin, Contrasena, ct);
+
+        var respuesta = await sesion.PostAsync(
+            "/api/v1/agente/tokens",
+            new { nombre = "Escritor", usuarioId = admin.Id, acciones = new[] { Acciones.IaConsultar, accion } },
+            ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain(accion);
+    }
+
+    [Fact]
+    public async Task ElAltaAceptaTodaLaListaBlanca()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        using var sesion = await AyudaPermisos.SesionAsync(api, admin, Contrasena, ct);
+
+        var respuesta = await sesion.PostAsync(
+            "/api/v1/agente/tokens",
+            new { nombre = "Lector", usuarioId = admin.Id, acciones = Acciones.PermitidasAAgente.ToArray() },
+            ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>
+    /// SEC-010: un token ya emitido (aquí, escrito en la base) con una acción de escritura no la
+    /// puede usar: 403 y fila de denegación con origen agente.
+    /// </summary>
+    [Fact]
+    public async Task UnTokenExistenteConCobroRegistrarNoPuedeCobrar()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        var token = await TokenEnBaseAsync(admin.Id, [Acciones.CobroRegistrar, Acciones.IaConsultar], ct);
+        using var cliente = ClienteConToken(token);
+
+        var respuesta = await cliente.PostAsync("/api/v1/cobros", JsonContent.Create(new { }), ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain(Problemas.PermisoDenegado);
+        (await LlamadasDeAgenteAsync(ct)).Should().Contain(fila =>
+            fila.Accion == $"permiso.denegado.{Acciones.CobroRegistrar}"
+            && fila.Resultado == "denegado"
+            && fila.UsuarioId == admin.Id);
+    }
+
+    [Fact]
+    public async Task UnTokenExistenteConAgenteTokenNoAcunaOtrosTokens()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        var token = await TokenEnBaseAsync(admin.Id, [Acciones.AgenteToken], ct);
+        using var cliente = ClienteConToken(token);
+
+        var respuesta = await cliente.PostAsync(
+            "/api/v1/agente/tokens",
+            JsonContent.Create(new { nombre = "Clon", usuarioId = admin.Id, acciones = new[] { Acciones.ClienteVer } }),
+            ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await LlamadasDeAgenteAsync(ct)).Should().Contain(fila =>
+            fila.Accion == $"permiso.denegado.{Acciones.AgenteToken}" && fila.UsuarioId == admin.Id);
+    }
+
     // ------------------------------------------------------------------ ayuda
 
     /// <summary>Acción con la que se audita toda llamada hecha con token de agente.</summary>

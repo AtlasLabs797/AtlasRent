@@ -72,6 +72,15 @@ public sealed class ServicioAgentes(
             throw new ArgumentException($"Acción desconocida: {string.Join(", ", desconocidas)}.");
         }
 
+        var prohibidas = permitidas.Where(accion => !Acciones.PermitidasAAgente.Contains(accion)).ToArray();
+        if (prohibidas.Length > 0)
+        {
+            // SEC-010: un token solo lee o propone; escribir pasa por la aprobación de una persona.
+            throw new ArgumentException(
+                $"Un token de agente no puede llevar: {string.Join(", ", prohibidas)}. " +
+                $"Las permitidas son: {string.Join(", ", Acciones.PermitidasAAgente.Order(StringComparer.Ordinal))}.");
+        }
+
         var dias = diasValidez ?? opciones.VidaDiasToken;
         if (dias < 1 || dias > opciones.VidaDiasTokenMaxima)
         {

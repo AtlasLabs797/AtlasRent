@@ -167,4 +167,21 @@ public static class Acciones
         [.. Matriz, SesionVer, SesionCerrar, SesionPassword, MfaObligatorio, SeguridadAccesoEmergencia,
             AgenteToken, IaConsultar, IaProponer],
         StringComparer.Ordinal);
+
+    /// <summary>
+    /// SEC-010: las únicas acciones que puede llevar un token de agente. Lista cerrada, no «todas
+    /// menos las peligrosas»: una acción nueva queda fuera hasta que alguien decida añadirla aquí.
+    /// <para>
+    /// Son las dos técnicas de IA (<see cref="IaConsultar"/>, <see cref="IaProponer"/>) y las de
+    /// lectura que usan las rutas de agente y los alcances de la consulta
+    /// (<see cref="ClienteVer"/>, <see cref="FacturaVer"/>, <see cref="InformeVer"/>). Ninguna muta
+    /// datos: lo más que escribe un agente es una propuesta, que alguien aprueba con su sesión
+    /// (docs/ESPECIFICACION.md §3.18, supuesto I3). <see cref="AgenteToken"/> queda fuera para que un
+    /// token no pueda acuñar otros, y aprobar o rechazar (<see cref="MensajeriaMasivo"/>,
+    /// <see cref="ContratoEstado"/>, <see cref="SeguridadAccesoEmergencia"/>) también.
+    /// </para>
+    /// </summary>
+    public static readonly IReadOnlySet<string> PermitidasAAgente = new HashSet<string>(
+        [IaConsultar, IaProponer, ClienteVer, FacturaVer, InformeVer],
+        StringComparer.Ordinal);
 }

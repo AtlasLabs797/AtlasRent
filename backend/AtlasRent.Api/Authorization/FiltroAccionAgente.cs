@@ -11,7 +11,9 @@ namespace AtlasRent.Api.Authorization;
 /// <para>
 /// <see cref="FiltroAccionGlobal"/> ya exige que el propietario tenga la acción por su rol y dentro
 /// de su techo. Aquí se exige además que la acción esté en la lista del propio token: el token
-/// recorta, nunca amplía. Fuera de una petición de agente este filtro no hace nada, así que la
+/// recorta, nunca amplía. SEC-010: y que esté en <see cref="Acciones.PermitidasAAgente"/>, aunque el
+/// token la lleve (puede haberse emitido antes de la lista blanca). Esto es lo que impide a una
+/// sesión de agente aprobar o rechazar nada (SEC-011): esas acciones nunca están en la lista. Fuera de una petición de agente este filtro no hace nada, así que la
 /// sesión normal sigue dependiendo solo de <see cref="FiltroAccionGlobal"/>.
 /// </para>
 /// </summary>
@@ -31,7 +33,8 @@ public sealed class FiltroAccionAgente(IPolicyService politica, ContextoSesion s
         }
 
         var acciones = metadatos.OfType<AccionAttribute>().FirstOrDefault()?.Acciones ?? [];
-        var denegada = acciones.FirstOrDefault(accion => !sesion.AgenteAcciones.Contains(accion));
+        var denegada = acciones.FirstOrDefault(accion => 
+            !Acciones.PermitidasAAgente.Contains(accion) || !sesion.AgenteAcciones.Contains(accion));
         if (denegada is null)
         {
             return;

@@ -14,6 +14,7 @@ using AtlasRent.Tests.Reservas;
 using AtlasRent.Tests.Recordatorios;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AtlasRent.Tests.IA;
@@ -181,6 +182,91 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
             .Should().BeEmpty("ni con la acción de proponer sale un correo");
     }
 
+    /// <summary>
+    /// SEC-011: ni con la acción de aprobar en la lista del token (emitido antes de la lista blanca)
+    /// ni sin ella puede un agente aprobar o rechazar: 403 auditado, la propuesta sigue pendiente y
+    /// no sale ningún correo.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnAgenteNoApruebaNiRechazaSuPropuesta(bool conAccionDeAprobar)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (_, escenario, _) = await EscenarioAsync(ct);
+
+        string[] acciones = conAccionDeAprobar
+            ? [Acciones.IaProponer, Acciones.MensajeriaMasivo]
+            : [Acciones.IaProponer];
+        using var cliente = ClienteConToken(await TokenEnBaseAsync(acciones, ct));
+
+        var propone = await cliente.PostAsync(
+            "/api/v1/agente/propuesta",
+            JsonContent.Create(new { clienteId = escenario.ClienteId, tipo = ServicioPropuestasAgente.TipoRecordatorioSaldo }),
+            ct);
+        propone.StatusCode.Should().Be(HttpStatusCode.OK, await propone.Cuerpo());
+        var id = (await propone.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
+
+        var aprueba = await cliente.PostAsync($"/api/v1/ia/propuestas/{id:D}/aprobacion", JsonContent.Create(new { }), ct);
+        var rechaza = await cliente.PostAsync(
+            $"/api/v1/ia/propuestas/{id:D}/rechazo",
+            JsonContent.Create(new { comentario = "No." }),
+            ct);
+
+        aprueba.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        rechaza.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await DenegadasAsync(ct)).Should().Contain(fila =>
+            fila.Accion.StartsWith("permiso.denegado.") && fila.Origen == "agente" && fila.Resultado == "denegado");
+        (await PendientesAsync(ct)).Should().Contain(s => s.Id == id, "la propuesta sigue esperando a una persona");
+        (await AyudaRecordatorios.CorreosDe(bd, api, escenario.ClienteId, ct)).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// SEC-011: las aprobaciones de contratos y la bandeja tampoco son de agente, aunque el token
+    /// lleve <c>contrato.estado</c>.
+    /// </summary>
+    [Fact]
+    public async Task UnAgenteNoApruebaContratosNiDesdeLaBandeja()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var cliente = ClienteConToken(await TokenEnBaseAsync([Acciones.IaProponer, Acciones.ContratoEstado], ct));
+        var id = Guid.NewGuid();
+
+        foreach (var ruta in new[]
+        {
+            $"/api/v1/contratos/{id:D}/aprobacion",
+            $"/api/v1/contratos/{id:D}/rechazo",
+            $"/api/v1/contratos/solicitudes/{id:D}/aprobacion",
+            $"/api/v1/contratos/solicitudes/{id:D}/rechazo",
+        })
+        {
+            (await cliente.PostAsync(ruta, JsonContent.Create(new { comentario = "No." }), ct))
+                .StatusCode.Should().Be(HttpStatusCode.Forbidden, ruta);
+        }
+    }
+
+    /// <summary>Ninguna ruta de aprobar o rechazar declara una acción que un token pueda llevar.</summary>
+    [Fact]
+    public void NingunEndpointDeAprobacionDeclaraAccionesDeAgente()
+    {
+        var metodos = typeof(AtlasRent.Api.Controllers.IaController).Assembly.GetTypes()
+            .Where(t => typeof(Microsoft.AspNetCore.Mvc.ControllerBase).IsAssignableFrom(t))
+            .SelectMany(t => t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.DeclaredOnly))
+            .Where(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPostAttribute), true)
+                .Cast<Microsoft.AspNetCore.Mvc.HttpPostAttribute>()
+                .Any(h => h.Template is { } r && (r.Contains("aprobacion") || r.Contains("rechazo"))))
+            .ToList();
+
+        metodos.Should().NotBeEmpty();
+        foreach (var metodo in metodos)
+        {
+            var acciones = metodo.GetCustomAttributes(typeof(AccionAttribute), true).Cast<AccionAttribute>()
+                .SelectMany(a => a.Acciones);
+            acciones.Should().NotContain(a => Acciones.PermitidasAAgente.Contains(a), metodo.DeclaringType!.Name + "." + metodo.Name);
+        }
+    }
+
     [Fact]
     public async Task ElEmpleadoNiProponeNiAprueba()
     {
@@ -324,20 +410,31 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
         var ct = TestContext.Current.CancellationToken;
 
         // Fábrica propia: el salto de día solo puede vivir en una instancia, porque el JWT de sesión
-        // se valida contra el reloj real y uno emitido «mañana» no vale (AUT-002). La aprobación se
-        // hace entonces con un token de agente, que no depende del reloj.
+        // se valida contra el reloj real y uno emitido «mañana» no vale (AUT-002). La aprobación la hace
+        // la sesión de una persona: un token de agente no puede aprobar (SEC-011).
         using var fabrica = new ApiTestFactoryCorreo(bd);
         var (admin, escenario, _) = await EscenarioAsync(ct, fabrica);
 
         var propuesta = await ProponerAsync(admin, escenario.ClienteId, ct);
 
-        using var aprobador = ClienteConToken(fabrica, await TokenEnBaseAsync([Acciones.MensajeriaMasivo], ct));
-
         // Solo pasa el día: ni un cobro, ni una factura nueva, nada que toque el saldo.
         fabrica.Reloj.Avanzar(TimeSpan.FromDays(1));
 
-        var respuesta = await aprobador.PostAsJsonAsync(
-            $"/api/v1/ia/propuestas/{propuesta.Id:D}/aprobacion", new { }, ct);
+        // La sesión del administrador es de hoy y su máximo absoluto es de 12 horas: se corre un día
+        // para que sea la misma persona la que aprueba por la mañana, sin tocar el JWT.
+        await using (var contexto = bd.CrearContexto(bd.CadenaSuperusuario))
+        {
+            await contexto.Database.ExecuteSqlRawAsync(
+                "UPDATE sesion SET emitida_at = emitida_at + interval '1 day', caduca_absoluta = caduca_absoluta + interval '1 day', "
+                + "ultima_actividad = ultima_actividad + interval '1 day'",
+                ct);
+        }
+
+        // La validación guarda el estado de la sesión en caché unos segundos: se vacía para que lea el nuevo.
+        ((Microsoft.Extensions.Caching.Memory.MemoryCache)fabrica.Services
+            .GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()).Compact(1.0);
+
+        var respuesta = await admin.PostAsync($"/api/v1/ia/propuestas/{propuesta.Id:D}/aprobacion", new { }, ct);
 
         respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
 
