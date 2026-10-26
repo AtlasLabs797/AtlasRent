@@ -44,6 +44,7 @@ public sealed class ServicioRecordatorios(
     ServicioEnvios envios,
     IPolicyService politica,
     IRegistroAlertas alertas,
+    ServicioCifrado cifrado,
     TimeProvider reloj)
 {
     /// <summary>Origen de la auditoría del trabajo: no hay ninguna petición detrás (docs/DOC_TECNICA.md §8).</summary>
@@ -308,7 +309,7 @@ public sealed class ServicioRecordatorios(
             Cuerpo = cuerpo,
             Idioma = plantilla.Idioma,
             Estado = EstadoEnvio.Pendiente,
-            PdfCopia = pdf,
+            PdfCopia = cifrado.CifrarBytes(pdf),
             NombreArchivo = $"estado-de-cuenta-{hoy.Year}-{cliente.Id:D}.pdf",
             Intentos = 0,
         };
