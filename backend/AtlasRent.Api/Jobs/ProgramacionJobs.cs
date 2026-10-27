@@ -65,6 +65,10 @@ public static class ProgramacionJobs
     public const string RutaFianzas = "fianzas-sin-devolver";
     public const string RutaRecordatorios = "recordatorios-pago";
 
+    /// <summary>BUG-037: barrido de envíos masivos huérfanos. No está en <see cref="Todos"/> (son diarios y con hora); este va cada 10 minutos.</summary>
+    public const string RutaBarridoEnvios = "barrido-envios";
+    public const string CronBarridoEnvios = "*/10 * * * *";
+
     /// <summary>
     /// Todo lo que hay programado ahora mismo. Los trabajos de §8 que dependen de dominio que aún no
     /// existe (recordatorios, envíos, outbox y limpieza de sesiones) NO se inventan
@@ -252,6 +256,15 @@ public static class ProgramacionJobs
                 trabajo.Cron,
                 null!);
         }
+
+        recurrentes.AddOrUpdate(
+            RutaBarridoEnvios,
+            new Job(
+                typeof(TrabajoBarridoEnvios),
+                typeof(TrabajoBarridoEnvios).GetMethod(nameof(TrabajoBarridoEnvios.EjecutarAsync))!,
+                [CancellationToken.None]),
+            CronBarridoEnvios,
+            null!);
     }
 
     /// <summary>

@@ -262,7 +262,7 @@ public sealed class ServicioRecordatorios(
             return null;
         }
 
-        var pendiente = await PendienteAsync(grupo, hoy, ct);
+        var (pendiente, vencimiento) = await PendienteVencidoAsync(grupo.ClienteId, grupo.UnidadId, hoy, ct);
 
         if (pendiente.Count == 0)
         {
@@ -287,7 +287,7 @@ public sealed class ServicioRecordatorios(
             .DeRecordatorio(
                 cliente.Nombre,
                 TextoDelPendiente(pendiente),
-                FormatoDocumentoPdf.Fecha(grupo.Vencimiento),
+                FormatoDocumentoPdf.Fecha(vencimiento ?? grupo.Vencimiento),
                 unidad?.Nombre)
             .Sustituir(plantilla);
 
@@ -402,6 +402,11 @@ public sealed class ServicioRecordatorios(
         if (recordatorio.EnvioId is not { } envioId)
         {
             throw new InvalidOperationException($"El recordatorio '{id:D}' no tiene envío al que mandar.");
+        }
+
+        if (recordatorio.Envio is { } envioPreparado)
+        {
+            await RefrescarEnvioAsync(recordatorio, envioPreparado, hoy, usuario, ct);
         }
 
         var estado = await envios.EnviarPendienteAsync(envioId, usuario, ip, ct);
@@ -550,21 +555,7 @@ public sealed class ServicioRecordatorios(
         // Las facturas vencidas con saldo del mismo cliente y unidad: el mismo filtro que usa el
         // barrido, y no el subconjunto que tenía el aviso al quitarse, porque lo que hay que detectar
         // es el cambio de saldo de hoy.
-        var vencidas = await contexto.Factura.AsNoTracking()
-            .Where(f => f.ClienteId == recordatorio.ClienteId
-                && (!recordatorio.UnidadId.HasValue || f.UnidadId == recordatorio.UnidadId)
-                && f.Estado == EstadoFactura.Emitida
-                && f.FechaVencimiento < hoy)
-            .Where(PendienteDeFactura.ConPendiente(contexto))
-            .Select(f => new Vencida(f.Id, f.ClienteId, f.UnidadId, f.Moneda, f.FechaVencimiento))
-            .ToListAsync(ct);
-
-        var pendiente = vencidas.Count == 0
-            ? new List<ImporteMoneda>()
-            : await PendienteAsync(
-                new Grupo(recordatorio.ClienteId, recordatorio.UnidadId, hoy, [.. vencidas.Select(f => f.Id)]),
-                hoy,
-                ct);
+        var (pendiente, _) = await PendienteVencidoAsync(recordatorio.ClienteId, recordatorio.UnidadId, hoy, ct);
 
         return new HuellaAviso(
             recordatorio.Id,
@@ -627,6 +618,77 @@ public sealed class ServicioRecordatorios(
             .Include(r => r.Envio)
             .FirstOrDefaultAsync(r => r.Id == id, ct)
         ?? throw new KeyNotFoundException($"No hay ningún recordatorio con identificador '{id:D}'.");
+
+    /// <summary>
+    /// El saldo vencido <b>total</b> del cliente y la unidad hoy (todas las facturas emitidas vencidas con
+    /// algo pendiente), por moneda, y el vencimiento más antiguo. Es lo que se reclama en el texto del
+    /// aviso (BUG-040) y lo que cuenta la huella de las propuestas: una sola cuenta para las dos, para
+    /// que el importe citado y el que se aprobó no puedan divergir. La cadencia (§3.14) decide <i>cuándo</i>
+    /// se avisa, no <i>cuánto</i> se reclama.
+    /// </summary>
+    private async Task<(List<ImporteMoneda> Pendiente, DateOnly? Vencimiento)> PendienteVencidoAsync(
+        Guid clienteId,
+        Guid? unidadId,
+        DateOnly hoy,
+        CancellationToken ct)
+    {
+        var vencidas = await contexto.Factura.AsNoTracking()
+            .Where(f => f.ClienteId == clienteId
+                && (!unidadId.HasValue || f.UnidadId == unidadId)
+                && f.Estado == EstadoFactura.Emitida
+                && f.FechaVencimiento < hoy)
+            .Where(PendienteDeFactura.ConPendiente(contexto))
+            .Select(f => new Vencida(f.Id, f.ClienteId, f.UnidadId, f.Moneda, f.FechaVencimiento))
+            .ToListAsync(ct);
+
+        if (vencidas.Count == 0)
+        {
+            return ([], null);
+        }
+
+        var pendiente = await PendienteAsync(
+            new Grupo(clienteId, unidadId, hoy, [.. vencidas.Select(f => f.Id)]), hoy, ct);
+
+        return (pendiente, vencidas.Min(f => f.Vencimiento));
+    }
+
+    /// <summary>
+    /// BUG-040: al confirmar un aviso preparado antes, recompone asunto, cuerpo y PDF con el saldo de
+    /// ahora. Se regenera en vez de rechazar con 409 porque la fila de <c>envio</c> sigue sin salir y el
+    /// texto es una función del saldo: no hay nada que el aprobador haya editado a mano que se pierda.
+    /// </summary>
+    private async Task RefrescarEnvioAsync(Recordatorio recordatorio, Envio envio, DateOnly hoy, Guid usuario, CancellationToken ct)
+    {
+        if (envio.Estado is not (EstadoEnvio.Pendiente or EstadoEnvio.Fallido))
+        {
+            return;
+        }
+
+        var (pendiente, vencimiento) = await PendienteVencidoAsync(
+            recordatorio.ClienteId, recordatorio.UnidadId, hoy, ct);
+
+        if (pendiente.Count == 0 || vencimiento is not { } masAntiguo)
+        {
+            return;
+        }
+
+        var plantilla = await envios.PlantillaAsync(TipoMensajeEnvio.Recordatorio, envio.Idioma, ct);
+        var (asunto, cuerpo) = VariablesMensaje
+            .DeRecordatorio(
+                recordatorio.Cliente!.Nombre,
+                TextoDelPendiente(pendiente),
+                FormatoDocumentoPdf.Fecha(masAntiguo),
+                recordatorio.Unidad?.Nombre)
+            .Sustituir(plantilla);
+
+        var pdf = await cuentas.PdfAsync(recordatorio.ClienteId, envio.DocumentoAnio ?? hoy.Year, usuario, ct);
+
+        envio.Asunto = asunto;
+        envio.Cuerpo = cuerpo;
+        envio.PdfCopia = cifrado.CifrarBytes(pdf);
+
+        await contexto.SaveChangesAsync(ct);
+    }
 
     // ---------------------------------------------------------------- cifras y candidatos
 

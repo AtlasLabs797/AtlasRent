@@ -475,6 +475,7 @@ public sealed class ProgramacionJobsTests
                 ProgramacionJobs.RutaPeriodosSinFacturar,
                 ProgramacionJobs.RutaFianzas,
                 ProgramacionJobs.RutaRecordatorios,
+                ProgramacionJobs.RutaBarridoEnvios,
             ]);
 
         var backup = recurrentes.Registrados.Single(r => r.Ruta == ProgramacionJobs.RutaCopiaSeguridad);

@@ -85,6 +85,12 @@ public sealed class CorreoDoble : IServicioCorreo
     /// <summary>Si está a null, el envío sale bien y se guarda. Si no, se lanza esta excepción.</summary>
     public Exception? Fallar { get; set; }
 
+    /// <summary>Se ejecuta al entrar en <c>EnviarAsync</c>, antes de nada (pruebas de concurrencia).</summary>
+    public Action? AntesDeEnviar { get; set; }
+
+    /// <summary>Se ejecuta tras dar el mensaje por enviado, antes de volver (pruebas de fallo al guardar).</summary>
+    public Action? DespuesDeEnviar { get; set; }
+
     /// <summary>Lo que el doble ha recibido, en orden.</summary>
     public IReadOnlyList<MensajeCorreo> Enviados => [.. _enviados];
 
@@ -93,6 +99,8 @@ public sealed class CorreoDoble : IServicioCorreo
 
     public Task EnviarAsync(MensajeCorreo mensaje, CancellationToken ct)
     {
+        AntesDeEnviar?.Invoke();
+
         if (Fallar is { } fallo)
         {
             // Se propaga como excepción cualquiera y no como una propia: el criterio de F3-01 dice que
@@ -101,6 +109,7 @@ public sealed class CorreoDoble : IServicioCorreo
         }
 
         _enviados.Enqueue(mensaje);
+        DespuesDeEnviar?.Invoke();
 
         return Task.CompletedTask;
     }
