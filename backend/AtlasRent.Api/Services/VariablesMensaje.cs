@@ -72,11 +72,18 @@ internal sealed record VariablesMensaje(
     public (string Asunto, string Cuerpo) Sustituir(PlantillaMensaje plantilla) =>
         (Sustituir(plantilla.Asunto), Sustituir(plantilla.Cuerpo));
 
-    private string Sustituir(string texto) => texto
-        .Replace("{cliente}", Cliente, StringComparison.Ordinal)
-        .Replace("{numero}", Numero, StringComparison.Ordinal)
-        .Replace("{total}", Total, StringComparison.Ordinal)
-        .Replace("{pendiente}", Pendiente, StringComparison.Ordinal)
-        .Replace("{vencimiento}", Vencimiento, StringComparison.Ordinal)
-        .Replace("{unidad}", Unidad, StringComparison.Ordinal);
+    // Una sola pasada: un valor que contiene el nombre de otra variable ("{total}" en el nombre del
+    // cliente) sale tal cual y no se vuelve a sustituir (BUG-052). Una variable desconocida se deja.
+    private static readonly System.Text.RegularExpressions.Regex Marcador =
+        new(@"\{(cliente|numero|total|pendiente|vencimiento|unidad)\}", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private string Sustituir(string texto) => Marcador.Replace(texto, coincidencia => coincidencia.Groups[1].Value switch
+    {
+        "cliente" => Cliente,
+        "numero" => Numero,
+        "total" => Total,
+        "pendiente" => Pendiente,
+        "vencimiento" => Vencimiento,
+        _ => Unidad,
+    });
 }
