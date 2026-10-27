@@ -48,7 +48,10 @@ internal static class GuardadoAuditado
     {
         var ahora = reloj.GetUtcNow();
 
-        await using var transaccion = enTransaccionDelLlamador
+        // Con una transacción ya abierta se usa esa y no se confirma aquí: es lo que permite a un
+        // proceso por lotes (la facturación periódica) meter alta, líneas y emisión en una sola
+        // transacción por contrato, de modo que un fallo no deje un borrador a medias (BUG-022).
+        await using var transaccion = enTransaccionDelLlamador || contexto.Database.CurrentTransaction is not null
             ? null
             : await contexto.Database.BeginTransactionAsync(ct);
 

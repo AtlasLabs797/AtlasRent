@@ -2,7 +2,7 @@ namespace AtlasRent.Api.Dominio;
 
 /// <summary>
 /// Prorrateo de renta por días facturables (DOC_TECNICA §5, ESPECIFICACION 3.8).
-/// Fórmula fija: <c>renta / díasDelMes × díasFacturables</c>, días inclusivos.
+/// Fórmula fija: <c>renta × díasFacturables / díasDelMes</c> (multiplicar antes de dividir: BUG-029), días inclusivos.
 /// </summary>
 public static class Prorrateo
 {
@@ -19,6 +19,6 @@ public static class Prorrateo
         ArgumentOutOfRangeException.ThrowIfLessThan(diasFacturables, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(diasFacturables, diasDelMes);
 
-        return Redondeo.Importe(renta / diasDelMes * diasFacturables);
+        return Redondeo.Importe(renta * diasFacturables / diasDelMes);
     }
 }

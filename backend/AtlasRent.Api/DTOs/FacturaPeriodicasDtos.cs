@@ -124,7 +124,9 @@ public sealed record GeneracionPeriodicaRespuesta(
     int Omitidas,
     decimal ImporteEmitido,
     IReadOnlyList<FacturaEmitida> Facturas,
-    IReadOnlyList<ContratoOmitido> Omitidos);
+    IReadOnlyList<ContratoOmitido> Omitidos,
+    int Fallidas,
+    IReadOnlyList<ContratoFallido> Fallidos);
 
 /// <summary>Una factura que esta ejecución ha emitido de verdad: número y comprobante, si la serie lo lleva.</summary>
 public sealed record FacturaEmitida(
@@ -138,6 +140,9 @@ public sealed record FacturaEmitida(
 
 /// <summary>Un contrato que no se ha facturado en esta ejecución, con el motivo por el que no.</summary>
 public sealed record ContratoOmitido(Guid ContratoId, string Motivo, Guid? FacturaExistenteId, int? FacturaExistenteNumero);
+
+/// <summary>Un contrato que falló al facturarse en esta ejecución: no dejó nada escrito y queda como alerta (BUG-022).</summary>
+public sealed record ContratoFallido(Guid ContratoId, string Motivo);
 
 /// <summary>
 /// Alta de la factura de una reserva corta (§3.4: «se cobra antes»).

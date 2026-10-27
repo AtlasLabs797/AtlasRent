@@ -1,8 +1,12 @@
+using System.Linq.Expressions;
 using System.Text.Json;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.DTOs;
+using AtlasRent.Api.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using Serilog;
 
 namespace AtlasRent.Api.Services;
 
@@ -26,8 +30,13 @@ namespace AtlasRent.Api.Services;
 /// <b>Doble ejecución no duplica, y no por cortesía del código.</b> El índice único parcial
 /// <c>ix_factura_periodo_unico</c> sobre <c>(contrato_id, periodo_inicio, concepto)</c> es la red:
 /// aunque dos ejecuciones se solapen, la segunda se encuentra una violación de unicidad en lugar de
-/// una segunda factura. Aquí, que va por delante, la segunda ejecución ni lo intenta y lo dice:
-/// «este contrato ya tiene la factura de este mes».
+/// una segunda factura, y la recoge como «ya facturado por otra ejecución». Aquí, que va por
+/// delante, la segunda ejecución ni lo intenta cuando ya ve la factura emitida.
+/// </para>
+/// <para>
+/// <b>Cada contrato es una transacción completa</b> (alta, líneas, retención y emisión): o sale
+/// emitido o no deja nada, ni borrador ni número gastado. Un fallo en uno se registra (alerta,
+/// resultado en la respuesta y auditoría del lote) y el lote sigue con los demás (BUG-022).
 /// </para>
 /// </summary>
 public sealed class ServicioFacturacionPeriodica(
@@ -40,6 +49,9 @@ public sealed class ServicioFacturacionPeriodica(
 {
     /// <summary>Auditoría de la ejecución completa, que no es una fila sino un lote.</summary>
     public const string AccionEjecucion = "factura.periodicas.generadas";
+
+    /// <summary>Tipo de las alertas de la facturación periódica (el mismo que «periodos sin facturar»).</summary>
+    public const string TipoAlertaFallo = "factura";
 
     /// <summary>
     /// Concepto de la factura de renta de un mes. Va incluido en la clave de no duplicado, así que
@@ -59,6 +71,34 @@ public sealed class ServicioFacturacionPeriodica(
     /// <summary>Clave de la alerta de «este mes no está facturado» (F3-05, §3.16).</summary>
     public static string ClaveAlertaSinFacturar(Guid contratoId, DateOnly periodoInicio) =>
         $"factura-sin-facturar:{contratoId:D}:{periodoInicio:yyyy-MM}";
+
+    /// <summary>Clave de la alerta de «este contrato no se pudo facturar este mes» (BUG-022).</summary>
+    public static string ClaveAlertaFallo(Guid contratoId, DateOnly periodoInicio) =>
+        $"factura-periodica-fallo:{contratoId:D}:{periodoInicio:yyyy-MM}";
+
+    /// <summary>
+    /// Contratos que tocan el mes: vigentes (activos, con baja anunciada) o ya finalizados cuyo
+    /// último tramo cae en él. El fin es el efectivo (<see cref="FinFacturable"/>), exclusivo. Lo
+    /// comparten la ejecución y el aviso de «periodos sin facturar» para no discrepar.
+    /// </summary>
+    public static Expression<Func<Contrato, bool>> TocaElMes(PeriodoFacturacion mes)
+    {
+        var inicio = mes.Inicio;
+        var fin = mes.Fin;
+
+        return c => (c.Estado == EstadoContrato.Activo
+                || c.Estado == EstadoContrato.BajaProgramada
+                || c.Estado == EstadoContrato.Finalizado)
+            && c.FechaInicio <= fin
+            && (c.FechaFinReal ?? c.FechaBajaProgramada ?? c.FechaFinVigente) > inicio;
+    }
+
+    /// <summary>
+    /// Primer día que ya no se factura: la fecha real de fin, si la hay; si no, la baja programada
+    /// y, si no, el fin del bloque vigente. Una baja manda tanto si es anterior al fin del bloque
+    /// como si es posterior (la renovación no renueva una baja programada).
+    /// </summary>
+    public static DateOnly FinFacturable(Contrato c) => c.FechaFinReal ?? c.FechaBajaProgramada ?? c.FechaFinVigente;
 
     // ------------------------------------------------------------------ simulación
 
@@ -104,6 +144,8 @@ public sealed class ServicioFacturacionPeriodica(
 
         var emitidas = new List<FacturaEmitida>();
         var omitidas = new List<ContratoOmitido>();
+        var fallidos = new List<ContratoFallido>();
+        var cancelado = false;
 
         // El tipo de retención por defecto se busca una vez y no por contrato (§3.9): el catálogo
         // tiene un único tipo marcado como defecto, y decidirlo por factura daría resultados
@@ -131,9 +173,44 @@ public sealed class ServicioFacturacionPeriodica(
                 continue;
             }
 
-            var emitida = await EmitirRentaAsync(calculo, item, tipoRetencionDefecto?.Id, usuario, ip, ct);
+            try
+            {
+                emitidas.Add(await EmitirRentaAsync(calculo, item, tipoRetencionDefecto?.Id, usuario, ip, ct));
+                await alertas.ResolverAsync(ClaveAlertaFallo(item.Contrato.Id, calculo.Periodo.Inicio), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // La petición se canceló: se deja de facturar, pero el lote se cierra igualmente
+                // más abajo para que lo emitido hasta aquí conste en la auditoría del lote.
+                contexto.ChangeTracker.Clear();
+                cancelado = true;
+                break;
+            }
+            catch (Exception ex) when (EsDuplicadoDePeriodo(ex))
+            {
+                // Otra ejecución simultánea se adelantó y ganó la clave única; la nuestra se deshizo.
+                contexto.ChangeTracker.Clear();
+                omitidas.Add(new ContratoOmitido(
+                    item.Contrato.Id,
+                    $"El contrato ya tiene la factura de {calculo.Periodo.Inicio:yyyy-MM}"
+                        + " (la emitió otra ejecución a la vez).",
+                    null,
+                    null));
+            }
+            catch (Exception ex)
+            {
+                // La transacción del contrato ya se deshizo al salir: no queda borrador ni número.
+                contexto.ChangeTracker.Clear();
+                var motivo = MotivoDeFallo(ex);
+                Log.Error(ex, "Facturación periódica: el contrato {ContratoId:D} no se pudo facturar", item.Contrato.Id);
+                fallidos.Add(new ContratoFallido(item.Contrato.Id, motivo));
 
-            emitidas.Add(emitida);
+                await alertas.RegistrarAsync(
+                    TipoAlertaFallo,
+                    ClaveAlertaFallo(item.Contrato.Id, calculo.Periodo.Inicio),
+                    $"No se pudo facturar {calculo.Periodo.Inicio:MM/yyyy} del contrato {item.Contrato.Id:D}: {motivo}",
+                    ct);
+            }
         }
 
         var respuesta = new GeneracionPeriodicaRespuesta(
@@ -148,9 +225,16 @@ public sealed class ServicioFacturacionPeriodica(
             omitidas.Count,
             Redondeo.Importe(emitidas.Sum(e => e.Importe)),
             emitidas,
-            omitidas);
+            omitidas,
+            fallidos.Count,
+            fallidos);
 
-        await CerrarEjecucionAsync(calculo, respuesta, peticion.ContratosIds is not null, usuario, ip, mutacion, ct);
+        // El cierre se ejecuta siempre, también si la petición se canceló a medias.
+        await CerrarEjecucionAsync(
+            calculo, respuesta, peticion.ContratosIds is not null, usuario, ip, mutacion,
+            cancelado ? CancellationToken.None : ct);
+
+        ct.ThrowIfCancellationRequested();
 
         return respuesta;
     }
@@ -317,9 +401,7 @@ public sealed class ServicioFacturacionPeriodica(
         // los contratos, no de las unidades: no hay nada que facturar de una unidad suelta.
         var consulta = contexto.Contrato
             .AsNoTracking()
-            .Where(c => (c.Estado == EstadoContrato.Activo || c.Estado == EstadoContrato.BajaProgramada)
-                && c.FechaInicio <= mes.Fin
-                && c.FechaFinVigente >= mes.Inicio);
+            .Where(TocaElMes(mes));
 
         if (contratosIndicados is not null)
         {
@@ -339,23 +421,51 @@ public sealed class ServicioFacturacionPeriodica(
             .Where(f => f.PeriodoInicio == mes.Inicio
                 && f.Concepto == concepto
                 && f.Estado != EstadoFactura.Anulada)
-            .Select(f => new FacturaExistente(f.Id, f.ContratoId, f.Numero))
+            .Select(f => new FacturaExistente(f.Id, f.ContratoId, f.Numero, f.Estado == EstadoFactura.Borrador))
             .ToListAsync(ct);
+
+        var idsContratos = contratos.Select(c => c.Id).ToArray();
+        var incrementos = (await contexto.ContratoIncremento
+                .AsNoTracking()
+                .Where(i => idsContratos.Contains(i.ContratoId) && !i.Cancelado)
+                .ToListAsync(ct))
+            .OrderBy(i => i.FechaVigencia)
+            .ThenBy(i => i.CreatedAt)
+            .ToLookup(
+                i => i.ContratoId,
+                i => new IncrementoPactado(i.FechaVigencia, i.Tipo, i.Porcentaje, i.Importe, i.Aplicado, i.RentaAntes));
 
         var items = new List<Item>(contratos.Count);
 
         foreach (var contrato in contratos)
         {
-            var existente = existentes.FirstOrDefault(f => f.ContratoId == contrato.Id);
-            var dias = mes.DiasFacturables(contrato.FechaInicio, contrato.FechaFinVigente);
+            // Un borrador previo (de una ejecución antigua que se cortó) no cuenta como factura del
+            // mes: se reutiliza al emitir. Solo una emitida deja el contrato fuera.
+            var previa = existentes.FirstOrDefault(f => f.ContratoId == contrato.Id);
+            var existente = previa is { EsBorrador: false } ? previa : null;
+            var borrador = previa is { EsBorrador: true } ? previa.Id : (Guid?)null;
+
+            var desde = contrato.FechaInicio > mes.Inicio ? contrato.FechaInicio : mes.Inicio;
+            var hasta = FinFacturable(contrato) < mes.Fin.AddDays(1) ? FinFacturable(contrato) : mes.Fin.AddDays(1);
+            var dias = mes.DiasFacturables(contrato.FechaInicio, FinFacturable(contrato));
+
+            // Cada tramo es un trozo del mes con una renta; sin incrementos dentro, uno solo.
+            var tramos = dias == 0
+                ? []
+                : RentaPorTramos.Tramos(desde, hasta, contrato.Renta, incrementos[contrato.Id].ToList())
+                    .Select(t => new TramoFacturable(t.Renta, mes.DiasFacturables(t.Desde, t.Hasta)))
+                    .ToList();
+            var importe = Redondeo.Importe(tramos.Sum(t => mes.Importe(t.Renta, t.Dias)));
 
             items.Add(new Item(
                 contrato,
                 dias,
-                dias == 0 ? 0m : mes.Importe(contrato.Renta, dias),
+                importe,
                 dias == 0 ? mes.Fin : mes.Vencimiento(contrato.DiaPago, hoy),
                 MotivoOmision(serie, contrato),
-                existente));
+                existente,
+                tramos,
+                borrador));
         }
 
         return new Calculo(mes, serie, concepto, items);
@@ -382,10 +492,14 @@ public sealed class ServicioFacturacionPeriodica(
     // ------------------------------------------------------------------ emisión
 
     /// <summary>
-    /// Crea, línea y emite una factura de renta del mes. Los tres pasos son los de F3-02 y cada uno
-    /// tiene su propia transacción: una ejecución a medias deja facturas emitidas y contratos sin
-    /// facturar, que es un estado que la siguiente ejecución termina sin trabajo, porque el índice
-    /// único no vuelve a mirar lo que ya está escrito.
+    /// Crea, rellena y emite la factura de renta de un contrato <b>en una sola transacción</b>: o
+    /// sale emitida (con su número y su comprobante) o no deja nada, ni borrador ni número gastado
+    /// (BUG-022). Los pasos son los de F3-02, que se unen a la transacción abierta aquí.
+    /// <para>
+    /// Si ya hay un borrador del mismo contrato, periodo y concepto —lo dejó una ejecución antigua
+    /// que se cortó a medias— se reutiliza: el índice único no deja crear otro, y dejarlo bloquearía
+    /// ese contrato para siempre. Se vacía de líneas y se rehace como si fuera nuevo.
+    /// </para>
     /// </summary>
     private async Task<FacturaEmitida> EmitirRentaAsync(
         Calculo calculo,
@@ -397,53 +511,75 @@ public sealed class ServicioFacturacionPeriodica(
     {
         var contrato = item.Contrato;
 
-        var factura = await facturas.CrearAsync(
-            new FacturaPeticion
-            {
-                ClienteId = contrato.ClienteId,
-                UnidadId = contrato.UnidadId,
-                ContratoId = contrato.Id,
-                SerieId = calculo.Serie.Id,
-                Moneda = contrato.Moneda,
-                FechaVencimiento = item.Vencimiento,
-                Concepto = calculo.Concepto,
-            },
-            usuario,
-            ip,
-            null,
-            ct,
-            calculo.Periodo);
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
-        // La línea lleva la cantidad a uno y el importe ya prorrateado en el precio: el prorrateo se
-        // calcula una vez, en el dominio, y no se vuelve a repartir en la factura. Escribir los días
-        // y la renta en cantidad y precio daría un importe redondeado dos veces.
-        await facturas.AgregarLineaAsync(
-            factura.Id,
-            new FacturaLineaPeticion
+        var peticion = new FacturaPeticion
+        {
+            ClienteId = contrato.ClienteId,
+            UnidadId = contrato.UnidadId,
+            ContratoId = contrato.Id,
+            SerieId = calculo.Serie.Id,
+            Moneda = contrato.Moneda,
+            FechaVencimiento = item.Vencimiento,
+            Concepto = calculo.Concepto,
+        };
+
+        Guid facturaId;
+        if (item.BorradorPrevioId is { } previo)
+        {
+            await facturas.ActualizarAsync(previo, peticion, usuario, ip, null, ct);
+
+            var lineas = await contexto.FacturaLinea
+                .AsNoTracking()
+                .Where(l => l.FacturaId == previo)
+                .Select(l => l.Id)
+                .ToListAsync(ct);
+
+            foreach (var linea in lineas)
             {
-                Tipo = TipoLineaFactura.Renta,
-                Concepto = LineaConcepto(calculo.Periodo, item),
-                Cantidad = 1m,
-                PrecioUnitario = item.Importe,
-                // TODO(A#) ITBIS de la renta: §3.8 dice que sale «del tipo por defecto de la unidad o
-                // del contrato» y ni la unidad ni el contrato tienen ese campo todavía. Cuando lo
-                // tengan, esta línea lo lleva; hasta entonces la renta periódica va sin impuesto.
-                TipoItbisId = null,
-            },
-            usuario,
-            ip,
-            null,
-            ct);
+                await facturas.BorrarLineaAsync(previo, linea, usuario, ip, null, ct);
+            }
+
+            facturaId = previo;
+        }
+        else
+        {
+            facturaId = (await facturas.CrearAsync(peticion, usuario, ip, null, ct, calculo.Periodo)).Id;
+        }
+
+        // Una línea por tramo de renta, con la cantidad a uno y el importe ya prorrateado en el
+        // precio: el prorrateo se calcula una vez, en el dominio, y no se vuelve a repartir en la
+        // factura. Escribir los días y la renta en cantidad y precio redondearía dos veces.
+        foreach (var tramo in item.Tramos)
+        {
+            await facturas.AgregarLineaAsync(
+                facturaId,
+                new FacturaLineaPeticion
+                {
+                    Tipo = TipoLineaFactura.Renta,
+                    Concepto = LineaConcepto(calculo.Periodo, tramo, item.Tramos.Count > 1),
+                    Cantidad = 1m,
+                    PrecioUnitario = calculo.Periodo.Importe(tramo.Renta, tramo.Dias),
+                    // TODO(A#) ITBIS de la renta: §3.8 dice que sale «del tipo por defecto de la unidad o
+                    // del contrato» y ni la unidad ni el contrato tienen ese campo todavía. Cuando lo
+                    // tengan, esta línea lo lleva; hasta entonces la renta periódica va sin impuesto.
+                    TipoItbisId = null,
+                },
+                usuario,
+                ip,
+                null,
+                ct);
+        }
 
         // §3.9: si el cliente es agente de retención, la factura periódica también retiene, con el
         // tipo que la plataforma tiene marcado por defecto. No es una excepción de la factura manual
         // y dejar fuera a estos clientes sería una diferencia invisible entre dos facturas iguales.
         if (tipoRetencionId is { } tipo && contrato.Cliente is { AgenteRetencion: true })
         {
-            await AgregarRetencionAsync(factura.Id, tipo, usuario, ip, ct);
+            await AgregarRetencionAsync(facturaId, tipo, usuario, ip, ct);
         }
 
-        var emitida = await facturas.EmitirAsync(factura.Id, usuario, ip, null, ct);
+        var emitida = await facturas.EmitirAsync(facturaId, usuario, ip, null, ct);
 
         // El comprobante se lee de la base y no del DTO: es lo que sale de verdad, y la simulación
         // ya había dicho que la serie lo genera. Las facturas que no lo llevan lo devuelven nulo.
@@ -452,6 +588,9 @@ public sealed class ServicioFacturacionPeriodica(
             .Where(c => c.FacturaId == emitida.Id)
             .Select(c => new { c.Id, c.Numero })
             .SingleOrDefaultAsync(ct);
+
+        await transaccion.CommitAsync(ct);
+        contexto.ChangeTracker.Clear();
 
         return new FacturaEmitida(
             emitida.Id,
@@ -462,6 +601,20 @@ public sealed class ServicioFacturacionPeriodica(
             emitida.Total,
             emitida.FechaVencimiento);
     }
+
+    /// <summary>Violación del índice único de periodo: otra ejecución facturó este contrato primero.</summary>
+    private static bool EsDuplicadoDePeriodo(Exception ex) =>
+        ex is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg }
+        && pg.ConstraintName == "ix_factura_periodo_unico";
+
+    /// <summary>
+    /// Motivo que se enseña y se guarda en la alerta. Los errores de negocio traen su frase en
+    /// español; cualquier otro (base de datos, red) solo deja su tipo, sin detalle que pueda llevar datos.
+    /// </summary>
+    private static string MotivoDeFallo(Exception ex) =>
+        ex is InvalidOperationException or KeyNotFoundException or PermisoDenegadoException
+            ? ex.Message
+            : $"Error inesperado ({ex.GetType().Name}); consulte el registro del servidor.";
 
     /// <summary>
     /// Línea de retención de §3.9 con el tipo que la plataforma tiene marcado por defecto. El importe
@@ -492,10 +645,12 @@ public sealed class ServicioFacturacionPeriodica(
     /// Los días van escritos porque el importe prorrateado no se explica solo y quien lee la línea
     /// en el PDF tiene que poder ver por qué no es la renta completa.
     /// </summary>
-    private static string LineaConcepto(PeriodoFacturacion periodo, Item item) =>
-        item.DiasFacturables >= periodo.DiasDelMes
+    private static string LineaConcepto(PeriodoFacturacion periodo, TramoFacturable tramo, bool variosTramos) =>
+        tramo.Dias >= periodo.DiasDelMes
             ? $"Renta {periodo.Inicio:MM/yyyy}"
-            : $"Renta {periodo.Inicio:MM/yyyy} ({item.DiasFacturables} días)";
+            : variosTramos
+                ? $"Renta {periodo.Inicio:MM/yyyy} ({tramo.Dias} días a {tramo.Renta:0.00})"
+                : $"Renta {periodo.Inicio:MM/yyyy} ({tramo.Dias} días)";
 
     // ------------------------------------------------------------------ cierre
 
@@ -543,6 +698,8 @@ public sealed class ServicioFacturacionPeriodica(
                 ImporteEmitido = respuesta.ImporteEmitido,
                 Facturas = respuesta.Facturas.Select(f => new { f.FacturaId, f.ContratoId, f.Numero }),
                 Omitidos = respuesta.Omitidos.Select(o => new { o.ContratoId, o.Motivo }),
+                respuesta.Fallidas,
+                Fallidos = respuesta.Fallidos.Select(f => new { f.ContratoId, f.Motivo }),
             }),
         }, ct);
 
@@ -567,9 +724,9 @@ public sealed class ServicioFacturacionPeriodica(
         calculo.Periodo.Fin,
         calculo.Periodo.DiasDelMes,
         item.DiasFacturables,
-        item.Contrato.Renta,
+        item.Tramos.Count > 0 ? item.Tramos[0].Renta : item.Contrato.Renta,
         item.Importe,
-        item.DiasFacturables < calculo.Periodo.DiasDelMes,
+        item.DiasFacturables < calculo.Periodo.DiasDelMes || item.Tramos.Count > 1,
         item.Vencimiento,
         calculo.Serie.Id,
         calculo.Serie.Numero,
@@ -581,7 +738,9 @@ public sealed class ServicioFacturacionPeriodica(
         null,
         null);
 
-    private sealed record FacturaExistente(Guid Id, Guid? ContratoId, int? Numero);
+    private sealed record FacturaExistente(Guid Id, Guid? ContratoId, int? Numero, bool EsBorrador);
+
+    private sealed record TramoFacturable(decimal Renta, int Dias);
 
     private sealed record Calculo(
         PeriodoFacturacion Periodo,
@@ -595,5 +754,7 @@ public sealed class ServicioFacturacionPeriodica(
         decimal Importe,
         DateOnly Vencimiento,
         string? MotivoOmision,
-        FacturaExistente? FacturaExistente);
+        FacturaExistente? FacturaExistente,
+        IReadOnlyList<TramoFacturable> Tramos,
+        Guid? BorradorPrevioId);
 }
