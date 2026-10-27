@@ -16,6 +16,12 @@ public sealed class ContratoPeticion
 
     public Guid? UnidadId { get; set; }
 
+    /// <summary>
+    /// Reserva mensual de la que nace el contrato (§3.4). Solo se lee al crear; al activar el
+    /// contrato esa reserva pasa a Convertida sin conflicto.
+    /// </summary>
+    public Guid? ReservaId { get; set; }
+
     public Guid? FacturadoraId { get; set; }
 
     public DateOnly? FechaInicio { get; set; }

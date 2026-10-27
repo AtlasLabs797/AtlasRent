@@ -5,9 +5,9 @@ using AtlasRent.Api.Dominio;
 namespace AtlasRent.Api.DTOs;
 
 /// <summary>
-/// Alta y edición de una reserva. Un día de la corta se pide con sus horas, no con su tipo: el tipo
-/// lo deduce el servicio de las horas (4 h exactas = medio día; la jornada entera = día completo,
-/// D11).
+/// Alta y edición de una reserva. Un día de la corta lleva su fecha y, opcionalmente, una hora
+/// orientativa en texto libre; el tipo del día (medio día o día completo) es el de la modalidad de la
+/// reserva (D11: sin franjas fijas).
 /// <para>
 /// Las reglas del documento van en el servicio, que las devuelve como 409, no como atributos: lo que
 /// los atributos rechazan es solo lo que no es ni siquiera una forma de reserva.
@@ -64,16 +64,16 @@ public sealed class ReservaPeticion
     public IReadOnlyList<ReservaDiaPeticion> Dias { get; init; } = [];
 }
 
-/// <summary>Un día de reserva corta con su franja acordada.</summary>
+/// <summary>Un día de reserva corta con su hora orientativa, si la hay.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed class ReservaDiaPeticion
 {
     public required DateOnly Fecha { get; init; }
 
-    public required TimeOnly HoraEntrada { get; init; }
-
-    /// <summary>Siempre el mismo día que la entrada (docs/ESPECIFICACION.md §3.4).</summary>
-    public required TimeOnly HoraSalida { get; init; }
+    /// <summary>Texto libre orientativo ("de 9 a 19 aprox."). No decide la capacidad.</summary>
+    [UnaLinea]
+    [StringLength(60)]
+    public string? HoraOrientativa { get; init; }
 }
 
 /// <summary>Filtros de la lista paginada de reservas.</summary>
@@ -155,7 +155,6 @@ public sealed record ReservaRespuesta(
 public sealed record ReservaDiaRespuesta(
     Guid Id,
     DateOnly Fecha,
-    TimeOnly HoraEntrada,
-    TimeOnly HoraSalida,
+    string? HoraOrientativa,
     [property: JsonConverter(typeof(JsonStringEnumConverter<TipoOcupacionDia>))]
     TipoOcupacionDia Tipo);

@@ -19,43 +19,25 @@ public sealed class ReservaCortaReglasTests(ContenedorBdFixture bd, ApiTestFacto
     private const string Contrasena = "Clave-de-prueba-2026";
 
     /// <summary>
-    /// Media jornada = 4 horas exactas, y el día completo = la jornada entera. Ni una hora más ni
-    /// una hora menos: no hay alquiler por horas (D11).
+    /// Sin franjas fijas (D11): lo que manda es la modalidad, no las horas. Medio día y día completo
+    /// entran con cualquier hora orientativa.
     /// </summary>
     [Fact]
-    public async Task MediaJornadaDeCuatroHorasYLaMediaJornadaDeMasSeRechaza()
+    public async Task LaModalidadDecideElTipoDelDiaYNoLasHoras()
     {
         var ct = TestContext.Current.CancellationToken;
         using var sesion = await SesionAsync(ct);
         var clienteId = await AyudaReserva.ClienteAsync(sesion, ct);
         var unidadId = await AyudaReserva.UnidadAsync(sesion, ct);
 
-        var tresHoras = await AyudaReserva.CrearRawAsync(
-            sesion,
-            AyudaReserva.Corta(clienteId, unidadId, AyudaReserva.Dia(92), new[]
-            {
-                AyudaReserva.Franja(AyudaReserva.Dia(92), "08:00:00", "11:00:00"),
-            }),
-            ct);
-        tresHoras.StatusCode.Should().Be(HttpStatusCode.Conflict, "3 horas no son ni medio día ni jornada");
-
-        var cincoHoras = await AyudaReserva.CrearRawAsync(
-            sesion,
-            AyudaReserva.Corta(clienteId, unidadId, AyudaReserva.Dia(93), new[]
-            {
-                AyudaReserva.Franja(AyudaReserva.Dia(93), "08:00:00", "13:00:00"),
-            }),
-            ct);
-        cincoHoras.StatusCode.Should().Be(HttpStatusCode.Conflict, "5 horas tampoco");
-
-        var cuatroHoras = await AyudaReserva.CrearRawAsync(
+        var medio = await AyudaReserva.CrearRawAsync(
             sesion,
             AyudaReserva.Corta(clienteId, unidadId, AyudaReserva.Dia(94), new[]
             {
-                AyudaReserva.Franja(AyudaReserva.Dia(94), "08:00:00", "12:00:00"),
+                AyudaReserva.Franja(AyudaReserva.Dia(94), "08:00:00", "11:00:00"),
             }),
             ct);
-        cuatroHoras.StatusCode.Should().Be(HttpStatusCode.Created, "4 horas exactas son un medio día");
+        medio.StatusCode.Should().Be(HttpStatusCode.Created, "tres horas orientativas son un medio día");
 
         var jornada = await AyudaReserva.CrearRawAsync(
             sesion,
@@ -67,6 +49,9 @@ public sealed class ReservaCortaReglasTests(ContenedorBdFixture bd, ApiTestFacto
                 modalidad: "DiaCompleto"),
             ct);
         jornada.StatusCode.Should().Be(HttpStatusCode.Created, "el día completo entra si la unidad está libre");
+
+        var bloqueos = await AyudaReserva.BloqueosAsync(bd, unidadId, AyudaReserva.Dia(95), ct);
+        bloqueos.Should().ContainSingle(b => b.Tipo == TipoOcupacionDia.DiaCompleto);
     }
 
     /// <summary>

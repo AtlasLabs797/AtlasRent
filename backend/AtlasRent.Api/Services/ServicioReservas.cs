@@ -1,4 +1,4 @@
-﻿using AtlasRent.Api.Data;
+using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.DTOs;
 using Microsoft.EntityFrameworkCore;
@@ -42,21 +42,6 @@ public sealed class ServicioReservas(
     IRegistroAlertas alertas,
     TimeProvider reloj)
 {
-    /// <summary>
-    /// Jornada de una reserva corta: día completo de 08:00 a 16:00 y medio día de 4 horas exactas.
-    /// <para>
-    /// DECISIÓN DEL ORQUESTADOR: el medio día son 4 horas exactas. Para que eso no fuera arbitrario,
-    /// la jornada entera son las 8 horas que van de las 08:00 a las 16:00, de modo que el medio día
-    /// es exactamente la mitad. Son las horas que se piden en el formulario, y no un alquiler por
-    /// horas: entre medias no hay nada (D11).
-    /// </para>
-    /// </summary>
-    private static readonly TimeOnly InicioJornada = new(8, 0);
-
-    private static readonly TimeOnly FinJornada = new(16, 0);
-
-    private static readonly TimeSpan HorasMedioDia = TimeSpan.FromHours(4);
-
     private static readonly Dictionary<string, Func<IQueryable<Reserva>, bool, IOrderedQueryable<Reserva>>>
         Ordenes = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -150,7 +135,7 @@ public sealed class ServicioReservas(
         CancellationToken ct)
     {
         Validar(peticion);
-        await ExigirUnidadYDestinatarioAsync(peticion, ct);
+        await ExigirUnidadYDestinatarioAsync(peticion, comprobarAlquilable: true, ct);
 
         var reserva = new Reserva
         {
@@ -197,9 +182,29 @@ public sealed class ServicioReservas(
         ExigirActiva(reserva, "editar");
 
         Validar(peticion);
-        await ExigirUnidadYDestinatarioAsync(peticion, ct);
 
         var anteriores = reserva.Dias.ToList();
+        var origenAnterior = Origen(reserva);
+        var unidadAnterior = reserva.UnidadId;
+        var cambiaOcupacion = reserva.UnidadId != peticion.UnidadId
+            || reserva.Tipo != peticion.Tipo
+            || reserva.Modalidad != peticion.Modalidad
+            || reserva.EntradaPrevista != peticion.EntradaPrevista
+            || !anteriores.Select(d => d.Fecha).Order().SequenceEqual(peticion.Dias.Select(d => d.Fecha).Order());
+        var cambiaFacturable = cambiaOcupacion
+            || reserva.Importe != Redondeo.Importe(peticion.Importe)
+            || reserva.Moneda != peticion.Moneda;
+
+        await ExigirUnidadYDestinatarioAsync(peticion, comprobarAlquilable: cambiaOcupacion, ct);
+
+        // BUG-048: lo facturado no se toca; hay que anular la factura antes.
+        if (cambiaFacturable && await TieneFacturaVigenteAsync(reserva.Id, ct))
+        {
+            throw new InvalidOperationException(
+                "La reserva tiene una factura vigente: no se pueden cambiar días, importe ni moneda. "
+                + "Anule la factura antes.");
+        }
+
         Aplicar(reserva, peticion);
         var dias = ConstruirDias(peticion);
 
@@ -214,7 +219,8 @@ public sealed class ServicioReservas(
             mutacion,
             proyectar: AResumen,
             datosAuditoria: c => DatosAuditoria(c, dias.Count, anteriores.Select(d => d.Fecha)),
-            antesDeGuardar: () => ReescribirOcupacionAsync(reserva, anteriores, dias, usuario, ct),
+            antesDeGuardar: () => ReescribirOcupacionAsync(
+                reserva, anteriores, dias, origenAnterior, unidadAnterior, usuario, ct),
             ct: ct);
     }
 
@@ -245,6 +251,13 @@ public sealed class ServicioReservas(
     {
         var reserva = await CargarAsync(id, ct);
         ExigirCancelable(reserva);
+
+        // BUG-048: cancelar una reserva facturada deja la factura huérfana; primero se anula.
+        if (await TieneFacturaVigenteAsync(reserva.Id, ct))
+        {
+            throw new InvalidOperationException(
+                "La reserva tiene una factura vigente: anule la factura antes de cancelarla.");
+        }
 
         var estabaEnConflicto = reserva.Estado == EstadoReserva.EnConflicto;
 
@@ -316,6 +329,123 @@ public sealed class ServicioReservas(
             datosAuditoria: c => DatosAuditoria(c, c.Dias.Count),
             enTransaccionDelLlamador: contexto.Database.CurrentTransaction is not null,
             ct: ct);
+    }
+
+    /// <summary>
+    /// La reserva mensual de la que nace un contrato pasa a <see cref="EstadoReserva.Convertida"/>
+    /// (§3.4) y su candado se suelta: el contrato escribe el suyo en la misma transacción. Lo llama
+    /// el servicio de contratos al activar, desde su transacción.
+    /// </summary>
+    public async Task ConvertirEnContratoAsync(Guid id, Guid usuario, string ip, CancellationToken ct)
+    {
+        var reserva = await CargarAsync(id, ct);
+        var estabaEnConflicto = reserva.Estado == EstadoReserva.EnConflicto;
+        if (!estabaEnConflicto)
+        {
+            ExigirActiva(reserva, "convertir en contrato");
+        }
+
+        reserva.Estado = EstadoReserva.Convertida;
+
+        await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Reserva, reserva,
+            esAlta: false,
+            accion: "reserva.convertida",
+            entidad: "reserva",
+            usuario,
+            ip,
+            mutacion: null,
+            proyectar: AResumen,
+            datosAuditoria: c => DatosAuditoria(c, c.Dias.Count),
+            antesDeGuardar: () => LiberarAsync(reserva, ct),
+            despuesDeGuardar: estabaEnConflicto
+                ? () => alertas.ResolverAsync(ServicioAvisosOperacion.ClaveReservaConflicto(reserva.Id), ct)
+                : null,
+            enTransaccionDelLlamador: contexto.Database.CurrentTransaction is not null,
+            ct: ct);
+    }
+
+    /// <summary>
+    /// Cambios de estado por fecha (§3.4), una pasada diaria desde el trabajo de las 07:00.
+    /// <list type="bullet">
+    /// <item>Corta activa cuyo último día ya pasó: <c>Completada</c>.</item>
+    /// <item>Mensual activa cuya entrada prevista llegó (o pasó) y cuyo contrato enlazado sigue sin
+    /// activar: <c>EnConflicto</c>. Sigue bloqueando hasta que el gerente decida, y el aviso lo
+    /// escribe el barrido de avisos de operación. TODO(A1): una mensual sin ningún contrato enlazado
+    /// no pasa a conflicto (§3.4 habla de "el contrato sigue en borrador"); ¿debe hacerlo también?</item>
+    /// </list>
+    /// Idempotente: la condición de estado hace que una segunda pasada no encuentre nada.
+    /// </summary>
+    public async Task<(int Completadas, int EnConflicto)> ProcesarFechasAsync(CancellationToken ct)
+    {
+        var hoy = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
+
+        var cortas = await contexto.Reserva.AsNoTracking()
+            .Where(r => r.Estado == EstadoReserva.Activa && r.Activo && r.Tipo == TipoReserva.Corta
+                && r.Dias.Any() && r.Dias.Max(d => d.Fecha) < hoy)
+            .Select(r => r.Id)
+            .ToListAsync(ct);
+
+        var mensuales = await contexto.Reserva.AsNoTracking()
+            .Where(r => r.Estado == EstadoReserva.Activa && r.Activo && r.Tipo == TipoReserva.Mensual
+                && r.EntradaPrevista <= hoy
+                && contexto.Contrato.Any(c => c.ReservaId == r.Id
+                    && (c.Estado == EstadoContrato.Borrador
+                        || c.Estado == EstadoContrato.PendienteAprobacion
+                        || c.Estado == EstadoContrato.Aprobado))
+                && !contexto.Contrato.Any(c => c.ReservaId == r.Id
+                    && c.Estado != EstadoContrato.Borrador
+                    && c.Estado != EstadoContrato.PendienteAprobacion
+                    && c.Estado != EstadoContrato.Aprobado))
+            .Select(r => r.Id)
+            .ToListAsync(ct);
+
+        foreach (var id in cortas)
+        {
+            await CambiarEstadoDeTrabajoAsync(id, EstadoReserva.Completada, "reserva.completada", ct);
+        }
+
+        foreach (var id in mensuales)
+        {
+            await CambiarEstadoDeTrabajoAsync(id, EstadoReserva.EnConflicto, "reserva.en_conflicto", ct);
+        }
+
+        return (cortas.Count, mensuales.Count);
+    }
+
+    private async Task CambiarEstadoDeTrabajoAsync(
+        Guid id,
+        EstadoReserva nuevo,
+        string accion,
+        CancellationToken ct)
+    {
+        contexto.ChangeTracker.Clear();
+        await using var tx = await contexto.Database.BeginTransactionAsync(ct);
+
+        var reserva = await contexto.Reserva.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (reserva is null || reserva.Estado != EstadoReserva.Activa)
+        {
+            return;
+        }
+
+        reserva.Estado = nuevo;
+        await contexto.SaveChangesAsync(ct);
+
+        // Sin sesión: la fila de auditoría dice que lo hizo el sistema, igual que el fin de contratos.
+        await auditoria.RegistrarAsync(new RegistroAuditoria
+        {
+            Accion = accion,
+            Ip = "127.0.0.1",
+            UsuarioId = null,
+            Entidad = "reserva",
+            EntidadId = id.ToString("D"),
+            DatosJson = System.Text.Json.JsonSerializer.Serialize(new { Estado = nuevo.ToString() }),
+            Resultado = "permitido",
+            Origen = "job",
+        }, ct);
+
+        await tx.CommitAsync(ct);
     }
 
     // ---------------------------------------------------------------- internos
@@ -395,7 +525,7 @@ public sealed class ServicioReservas(
 
     private static void ValidarCorta(ReservaPeticion peticion)
     {
-        if (peticion.Modalidad is ModalidadAlquiler.Mensual)
+        if (peticion.Modalidad is not (ModalidadAlquiler.MedioDia or ModalidadAlquiler.DiaCompleto))
         {
             throw new InvalidOperationException(
                 "Una reserva corta es de medio día o de día completo, no mensual.");
@@ -417,22 +547,6 @@ public sealed class ServicioReservas(
 
         foreach (var dia in peticion.Dias)
         {
-            var tipo = TipoDeJornada(dia);
-
-            if (tipo is TipoOcupacionDia.MedioDia && peticion.Modalidad != ModalidadAlquiler.MedioDia)
-            {
-                throw new InvalidOperationException(
-                    $"El día {dia.Fecha:dd/MM/yyyy} son 4 horas, que es un medio día, y la reserva "
-                    + "es de día completo. Cada día va con su tipo.");
-            }
-
-            if (tipo is TipoOcupacionDia.DiaCompleto && peticion.Modalidad != ModalidadAlquiler.DiaCompleto)
-            {
-                throw new InvalidOperationException(
-                    $"El día {dia.Fecha:dd/MM/yyyy} es la jornada entera, y la reserva es de medio "
-                    + "día. Cada día va con su tipo.");
-            }
-
             // Dos personas el mismo día son dos medios días, y eso son dos reservas. Meter las dos
             // en una sola chocaría con el bloqueo por unidad, día y fila de origen, que solo admite
             // un día por reserva: el trigger contaría uno y dejaría pasar a un tercero. Aquí se
@@ -447,42 +561,36 @@ public sealed class ServicioReservas(
         }
     }
 
-    /// <summary>
-    /// El tipo de un día sale de las horas que se piden, nunca al revés: 4 horas exactas son medio
-    /// día y la jornada de 08:00 a 16:00 es día completo. Cualquier otra duración no existe (D11).
-    /// </summary>
-    private static TipoOcupacionDia TipoDeJornada(ReservaDiaPeticion dia)
+    private async Task ExigirUnidadYDestinatarioAsync(
+        ReservaPeticion peticion,
+        bool comprobarAlquilable,
+        CancellationToken ct)
     {
-        if (dia.HoraSalida <= dia.HoraEntrada)
+        var unidad = await contexto.Unidad.AsNoTracking()
+            .Include(u => u.Modalidades)
+            .FirstOrDefaultAsync(u => u.Id == peticion.UnidadId, ct)
+            ?? throw new KeyNotFoundException($"No existe la unidad '{peticion.UnidadId:D}'.");
+
+        // BUG-049: el estado manual no tiene fechas, así que se aplica como "ahora", igual que el
+        // calendario, que marca la unidad entera como no disponible.
+        if (comprobarAlquilable)
         {
-            throw new InvalidOperationException(
-                $"El día {dia.Fecha:dd/MM/yyyy} sale antes de entrar: la entrada y la salida son el "
-                + "mismo día.");
-        }
+            if (!unidad.Activo)
+            {
+                throw new InvalidOperationException("La unidad está inactiva y no se puede reservar.");
+            }
 
-        var duracion = dia.HoraSalida.ToTimeSpan() - dia.HoraEntrada.ToTimeSpan();
+            if (unidad.EstadoManual != EstadoUnidad.Disponible)
+            {
+                throw new InvalidOperationException(
+                    "La unidad está en mantenimiento o fuera de servicio y no se puede reservar.");
+            }
 
-        if (duracion == HorasMedioDia)
-        {
-            return TipoOcupacionDia.MedioDia;
-        }
-
-        if (dia.HoraEntrada == InicioJornada && dia.HoraSalida == FinJornada)
-        {
-            return TipoOcupacionDia.DiaCompleto;
-        }
-
-        throw new InvalidOperationException(
-            $"El día {dia.Fecha:dd/MM/yyyy} dura {duracion.TotalHours:0.##} h y no se puede "
-            + "reservar: los días son de medio día (4 h exactas) o de la jornada completa "
-            + $"({InicioJornada:hh\\:mm} a {FinJornada:hh\\:mm}). No hay alquiler por horas.");
-    }
-
-    private async Task ExigirUnidadYDestinatarioAsync(ReservaPeticion peticion, CancellationToken ct)
-    {
-        if (!await contexto.Unidad.AnyAsync(u => u.Id == peticion.UnidadId, ct))
-        {
-            throw new KeyNotFoundException($"No existe la unidad '{peticion.UnidadId:D}'.");
+            if (!unidad.Modalidades.Any(m => m.Modalidad == peticion.Modalidad))
+            {
+                throw new InvalidOperationException(
+                    $"La unidad no admite la modalidad {peticion.Modalidad}.");
+            }
         }
 
         if (peticion.ClienteId is { } clienteId &&
@@ -496,6 +604,14 @@ public sealed class ServicioReservas(
         {
             throw new KeyNotFoundException($"No existe el prospecto '{prospectoId:D}'.");
         }
+    }
+
+    private Task<bool> TieneFacturaVigenteAsync(Guid reservaId, CancellationToken ct)
+    {
+        var concepto = ServicioFacturacionPeriodica.ConceptoReserva(reservaId);
+
+        return contexto.Factura.AsNoTracking()
+            .AnyAsync(f => f.Concepto == concepto && f.Estado != EstadoFactura.Anulada, ct);
     }
 
     private static void ExigirActiva(Reserva reserva, string accion)
@@ -544,8 +660,7 @@ public sealed class ServicioReservas(
     }
 
     /// <summary>
-    /// Los días de la corta con su tipo ya deducido de las horas. Se validan en
-    /// <see cref="Validar"/> antes, así que aquí el tipo ya está comprobado.
+    /// Los días de la corta con el tipo de la modalidad de la reserva.
     /// <para>
     /// La clave foránea se pone después, en <see cref="AnadirDias"/>: en el momento de construir
     /// estas filas la reserva todavía no tiene <c>Id</c>, porque lo asigna
@@ -565,9 +680,10 @@ public sealed class ServicioReservas(
             {
                 Id = Guid.NewGuid(),
                 Fecha = dia.Fecha,
-                HoraEntrada = dia.HoraEntrada,
-                HoraSalida = dia.HoraSalida,
-                Tipo = TipoDeJornada(dia),
+                HoraOrientativa = string.IsNullOrWhiteSpace(dia.HoraOrientativa) ? null : dia.HoraOrientativa.Trim(),
+                Tipo = peticion.Modalidad == ModalidadAlquiler.MedioDia
+                    ? TipoOcupacionDia.MedioDia
+                    : TipoOcupacionDia.DiaCompleto,
             }),
         ];
     }
@@ -596,9 +712,19 @@ public sealed class ServicioReservas(
         Reserva reserva,
         List<ReservaDia> anteriores,
         List<ReservaDia> nuevas,
+        OrigenOcupacion origenAnterior,
+        Guid unidadAnterior,
         Guid usuario,
         CancellationToken ct)
     {
+        // BUG-041: al cambiar de mensual a corta (o al revés) el origen cambia, y el candado del
+        // origen viejo no lo suelta nadie más.
+        if (origenAnterior != Origen(reserva))
+        {
+            await disponibilidad.SincronizarAsync(
+                origenAnterior, reserva.Id, unidadAnterior, rangoDesde: null, dias: null, ct);
+        }
+
         if (anteriores.Count > 0)
         {
             contexto.ReservaDia.RemoveRange(anteriores);
@@ -700,8 +826,7 @@ public sealed class ServicioReservas(
             reserva.Activo,
             [.. reserva.Dias
                 .OrderBy(d => d.Fecha)
-                .ThenBy(d => d.HoraEntrada)
-                .Select(d => new ReservaDiaRespuesta(d.Id, d.Fecha, d.HoraEntrada, d.HoraSalida, d.Tipo))],
+                                .Select(d => new ReservaDiaRespuesta(d.Id, d.Fecha, d.HoraOrientativa, d.Tipo))],
             reserva.CreatedAt);
 
     /// <summary>

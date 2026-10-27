@@ -913,6 +913,7 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
         {
             entidad.ToTable("reserva_dia");
             entidad.HasKey(e => e.Id);
+            entidad.Property(e => e.HoraOrientativa).HasMaxLength(60);
             entidad.Property(e => e.CreatedAt).IsRequired();
             entidad.HasIndex(e => new { e.ReservaId, e.Fecha }).IsUnique();
             entidad.HasOne(e => e.Reserva)
@@ -947,6 +948,13 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.HasIndex(e => new { e.Estado, e.CreatedAt });
             entidad.HasIndex(e => e.ClienteId);
             entidad.HasIndex(e => new { e.UnidadId, e.Estado });
+            // BUG-026: la reserva de la que nace el contrato (§3.4). No es única: un contrato
+            // rechazado y rehecho puede apuntar a la misma reserva.
+            entidad.HasIndex(e => e.ReservaId);
+            entidad.HasOne(e => e.Reserva)
+                .WithMany()
+                .HasForeignKey(e => e.ReservaId)
+                .OnDelete(DeleteBehavior.Restrict);
             entidad.HasOne(e => e.Cliente)
                 .WithMany()
                 .HasForeignKey(e => e.ClienteId)

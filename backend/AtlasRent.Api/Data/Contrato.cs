@@ -32,6 +32,14 @@ public sealed class Contrato : IEntidadTrazada
     public Unidad? Unidad { get; set; }
 
     /// <summary>
+    /// Reserva mensual de la que nace el contrato (§3.4). Al activarlo, esa reserva pasa a
+    /// <c>Convertida</c> y su candado se sustituye por el del contrato, sin conflicto.
+    /// </summary>
+    public Guid? ReservaId { get; set; }
+
+    public Reserva? Reserva { get; set; }
+
+    /// <summary>
     /// Subempresa que factura. Obligatoria (docs/ESPECIFICACION.md §3.5: "la entidad que factura
     /// es la subempresa, nunca el hotel"), porque el contrato escribe en la cadena de facturación de
     /// F3 y sin esto la factura no sabría a nombre de quién va.

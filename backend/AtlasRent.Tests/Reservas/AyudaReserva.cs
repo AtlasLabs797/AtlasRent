@@ -118,9 +118,9 @@ internal static class AyudaReserva
         return (inmuebleId, await Id(unidad, ct));
     }
 
-    /// <summary>Un día de reserva corta con su franja, tal y como lo manda el cliente.</summary>
+    /// <summary>Un día de reserva corta con su hora orientativa (texto libre), tal y como lo manda el cliente.</summary>
     public static object Franja(DateOnly fecha, string desde = "08:00:00", string hasta = "12:00:00") =>
-        new { fecha = fecha.ToString("yyyy-MM-dd"), horaEntrada = desde, horaSalida = hasta };
+        new { fecha = fecha.ToString("yyyy-MM-dd"), horaOrientativa = $"{desde[..5]} a {hasta[..5]}" };
 
     /// <summary>Cuerpo de una reserva corta de medios días.</summary>
     public static object Corta(

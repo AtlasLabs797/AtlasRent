@@ -192,6 +192,7 @@ public sealed class ServicioContratos(
         };
 
         Aplicar(contrato, peticion);
+        contrato.ReservaId = await ValidarReservaEnlazadaAsync(peticion, ct);
 
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -479,6 +480,8 @@ public sealed class ServicioContratos(
                 "Un contrato sin plantilla congelada no se activa: hay que aprobarlo antes.");
         }
 
+        await ExigirUnidadAlquilableAsync(contrato.UnidadId, ct);
+
         var version = ConstruirVersion(contrato, 1, "Alta del contrato activo.", null, usuario);
 
         return await GuardadoAuditado.GuardarAsync(
@@ -494,6 +497,12 @@ public sealed class ServicioContratos(
             datosAuditoria: DatosAuditoria,
             antesDeGuardar: async () =>
             {
+                if (contrato.ReservaId is { } reservaId)
+                {
+                    // BUG-026: su propia reserva se convierte y suelta el candado; no es un conflicto.
+                    await reservas.ConvertirEnContratoAsync(reservaId, usuario, ip, ct);
+                }
+
                 await ResolverReservasSolapadasAsync(contrato, usuario, ip, ct);
                 await disponibilidad.OcuparRangoAsync(
                     contrato.UnidadId, OrigenOcupacion.Contrato, contrato.Id, contrato.FechaInicio, null, ct);
@@ -891,6 +900,55 @@ public sealed class ServicioContratos(
     /// busca otra unidad, que es lo que §3.4 le dice que haga.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// BUG-026: el contrato solo puede nacer de una reserva mensual viva, de su misma unidad y
+    /// cliente.
+    /// </summary>
+    private async Task<Guid?> ValidarReservaEnlazadaAsync(ContratoPeticion peticion, CancellationToken ct)
+    {
+        if (peticion.ReservaId is not { } id)
+        {
+            return null;
+        }
+
+        var reserva = await contexto.Reserva.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct)
+            ?? throw new KeyNotFoundException($"No existe la reserva '{id:D}'.");
+
+        if (reserva.Tipo != TipoReserva.Mensual
+            || !reserva.Activo
+            || reserva.Estado is not (EstadoReserva.Activa or EstadoReserva.EnConflicto))
+        {
+            throw new InvalidOperationException(
+                "Solo una reserva mensual viva (activa o en conflicto) se puede convertir en contrato.");
+        }
+
+        if (reserva.UnidadId != peticion.UnidadId || reserva.ClienteId != peticion.ClienteId)
+        {
+            throw new InvalidOperationException(
+                "El contrato tiene que ser de la misma unidad y del mismo cliente que la reserva.");
+        }
+
+        return id;
+    }
+
+    /// <summary>BUG-049: no se activa contrato en una unidad inactiva, en mantenimiento o sin alquiler mensual.</summary>
+    private async Task ExigirUnidadAlquilableAsync(Guid unidadId, CancellationToken ct)
+    {
+        var unidad = await contexto.Unidad.AsNoTracking()
+            .Include(u => u.Modalidades)
+            .FirstOrDefaultAsync(u => u.Id == unidadId, ct)
+            ?? throw new KeyNotFoundException($"No existe la unidad '{unidadId:D}'.");
+
+        if (!unidad.Activo
+            || unidad.EstadoManual != EstadoUnidad.Disponible
+            || !unidad.Modalidades.Any(m => m.Modalidad == ModalidadAlquiler.Mensual))
+        {
+            throw new InvalidOperationException(
+                "La unidad está inactiva, en mantenimiento o fuera de servicio, o no admite alquiler "
+                + "mensual: el contrato no se puede activar.");
+        }
+    }
+
     private async Task ResolverReservasSolapadasAsync(
         Contrato contrato,
         Guid usuario,
