@@ -127,10 +127,11 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
         using var empleado = await SesionAsync(Roles.Empleado, ct);
         using var gerente = await SesionAsync(Roles.Gerente, ct);
 
+        // Fechas literales y reloj fijo: el esperado no se calcula con la fórmula del código.
         var contratoId = await ContratoActivoAsync(
             empleado,
             gerente,
-            Vencido(14),
+            new DateOnly(2025, 1, 15),
             50_000m,
             ct,
             renovacionMeses: 6,
@@ -138,9 +139,11 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
 
         var inicio = await InicioAsync(contratoId, ct);
         var finInicial = await FinInicialAsync(contratoId, ct);
-        var esperado = finInicial.AddMonths(6);
+        inicio.Should().Be(new DateOnly(2025, 1, 15));
+        finInicial.Should().Be(new DateOnly(2026, 1, 15), "15/01/2025 más 12 meses");
+        var esperado = new DateOnly(2026, 7, 15);
 
-        await EjecutarAsync(ct);
+        await EjecutarAsync(ct, en: RelojFijo);
 
         (await InicioAsync(contratoId, ct)).Should().Be(inicio, "el inicio es lo que se firmó");
         (await FinInicialAsync(contratoId, ct)).Should().Be(
@@ -362,7 +365,7 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
         using var empleado = await SesionAsync(Roles.Empleado, ct);
         using var gerente = await SesionAsync(Roles.Gerente, ct);
 
-        var contratoId = await ContratoActivoAsync(empleado, gerente, Vencido(14), 50_000m, ct);
+        var contratoId = await ContratoActivoAsync(empleado, gerente, new DateOnly(2025, 1, 15), 50_000m, ct);
         var incrementoId = await CrearIncrementoAsync(
             bd,
             contratoId,
@@ -371,9 +374,8 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
             importe: null,
             await FinVigenteAsync(contratoId, ct),
             ct);
-        var finInicial = await FinInicialAsync(contratoId, ct);
 
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojFijo);
         await using var primero = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
         await using var segundo = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
 
@@ -400,7 +402,7 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
         (await BloquesAsync(contratoId, ct))
             .Should().ContainSingle("el índice único de (contrato_id, numero) es la red de la carrera");
         (await FinVigenteAsync(contratoId, ct))
-            .Should().Be(finInicial.AddMonths(12), "el bloque avanza una vez, no dos");
+            .Should().Be(new DateOnly(2027, 1, 15), "15/01/2026 más 12 meses: el bloque avanza una vez, no dos");
         (await RentaAsync(contratoId, ct)).Should().Be(55_000m, "el incremento se aplica una vez");
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
@@ -451,7 +453,7 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
         using var empleado = await SesionAsync(Roles.Empleado, ct);
         using var gerente = await SesionAsync(Roles.Gerente, ct);
 
-        var contratoId = await ContratoActivoAsync(empleado, gerente, Vencido(14), 50_000m, ct);
+        var contratoId = await ContratoActivoAsync(empleado, gerente, new DateOnly(2025, 1, 15), 50_000m, ct);
         var incrementoId = await CrearIncrementoAsync(
             bd,
             contratoId,
@@ -460,9 +462,8 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
             importe: null,
             await FinVigenteAsync(contratoId, ct),
             ct);
-        var finInicial = await FinInicialAsync(contratoId, ct);
 
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(RelojFijo);
         await using var primero = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
         await using var segundo = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
 
@@ -503,7 +504,7 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
         (await BloquesAsync(contratoId, ct))
             .Should().ContainSingle("una sola ejecución llegó a escribir el bloque");
         (await FinVigenteAsync(contratoId, ct))
-            .Should().Be(finInicial.AddMonths(12), "el bloque avanza una vez, no dos");
+            .Should().Be(new DateOnly(2027, 1, 15), "15/01/2026 más 12 meses: el bloque avanza una vez, no dos");
         (await RentaAsync(contratoId, ct)).Should().Be(55_000m, "el incremento se aplica una vez");
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
@@ -646,6 +647,9 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
     // -------------------------------------------------------------------------------------------
     // Atajos
     // -------------------------------------------------------------------------------------------
+
+    /// <summary>Instante fijo del trabajo en las pruebas que afirman fechas literales: 01/03/2026.</summary>
+    private static readonly DateTimeOffset RelojFijo = new(2026, 3, 1, 13, 0, 0, TimeSpan.Zero);
 
     /// <summary>Hoy en Santo Domingo, <paramref name="meses"/> meses hacia atrás.</summary>
     private static DateOnly Vencido(int meses) => TiempoNegocio.Hoy().AddMonths(-meses);
