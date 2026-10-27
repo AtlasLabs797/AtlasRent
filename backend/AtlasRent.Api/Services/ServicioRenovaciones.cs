@@ -336,17 +336,8 @@ public sealed class ServicioRenovaciones(
     /// tabla y no del código.
     /// </para>
     /// </summary>
-    private static decimal CalcularRenta(ContratoIncremento incremento, decimal renta)
-    {
-        const decimal DivisorPorcentaje = 100m;
-
-        return incremento.Tipo switch
-        {
-            TipoIncremento.Porcentaje => Redondeo.Importe(
-                renta * (1 + (incremento.Porcentaje ?? 0) / DivisorPorcentaje)),
-            _ => Redondeo.Importe(renta + (incremento.Importe ?? 0)),
-        };
-    }
+    private static decimal CalcularRenta(ContratoIncremento incremento, decimal renta) =>
+        RentaPorTramos.Incrementar(incremento.Tipo, incremento.Porcentaje, incremento.Importe, renta);
 
     /// <summary>El incremento en la frase que va al historial y a la alerta, tal como lo escribió el cliente.</summary>
     private static string Descripcion(ContratoIncremento incremento) =>

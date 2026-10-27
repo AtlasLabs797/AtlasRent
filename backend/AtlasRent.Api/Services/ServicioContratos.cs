@@ -613,10 +613,12 @@ public sealed class ServicioContratos(
         var contrato = await CargarAsync(id, ct);
         Exigir(contrato, EstadoContrato.Activo);
 
-        if (fechaFin < contrato.FechaFinVigente)
+        // §3.5: baja en cualquier fecha, también antes del fin del bloque en curso (decisión del
+        // responsable, BUG-024). Solo se pide que no sea pasada ni anterior al inicio del contrato.
+        if (fechaFin < TiempoNegocio.Hoy() || fechaFin < contrato.FechaInicio)
         {
             throw new InvalidOperationException(
-                $"La baja no puede ser antes del fin del bloque en curso ({contrato.FechaFinVigente:yyyy-MM-dd}).");
+                $"La baja no puede ser anterior a hoy ni al inicio del contrato ({contrato.FechaInicio:yyyy-MM-dd}).");
         }
 
         contrato.FechaBajaProgramada = fechaFin;

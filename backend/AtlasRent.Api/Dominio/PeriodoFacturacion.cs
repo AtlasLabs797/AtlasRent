@@ -37,17 +37,19 @@ public sealed record PeriodoFacturacion(DateOnly Inicio, DateOnly Fin)
     }
 
     /// <summary>
-    /// Días facturables entre <paramref name="desde"/> y <paramref name="hasta"/>, recortados al
-    /// periodo: un contrato que empieza antes del mes o acaba después solo factura lo que cae
+    /// Días facturables en <c>[desde, hasta)</c>: el inicio es inclusivo y el fin exclusivo, como
+    /// <c>FechaFinVigente</c> y la fecha de baja (el día del fin ya no es del inquilino, BUG-024).
+    /// Recortados al periodo: un contrato que empieza antes del mes o acaba después solo factura lo que cae
     /// dentro. Cero si el tramo no toca el periodo, que es lo que hace que ese contrato no sea
     /// candidato.
     /// </summary>
     public int DiasFacturables(DateOnly desde, DateOnly hasta)
     {
         var primero = desde > Inicio ? desde : Inicio;
-        var ultimo = hasta < Fin ? hasta : Fin;
+        var finExclusivo = Fin.AddDays(1);
+        var ultimo = hasta < finExclusivo ? hasta : finExclusivo;
 
-        return ultimo < primero ? 0 : ultimo.DayNumber - primero.DayNumber + 1;
+        return ultimo <= primero ? 0 : ultimo.DayNumber - primero.DayNumber;
     }
 
     /// <summary>

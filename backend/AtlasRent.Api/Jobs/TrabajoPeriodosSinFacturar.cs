@@ -48,9 +48,7 @@ public sealed class TrabajoPeriodosSinFacturar(
 
         var contratos = await contexto.Contrato
             .AsNoTracking()
-            .Where(c => (c.Estado == EstadoContrato.Activo || c.Estado == EstadoContrato.BajaProgramada)
-                && c.FechaInicio <= periodo.Fin
-                && c.FechaFinVigente >= periodo.Inicio)
+            .Where(ServicioFacturacionPeriodica.TocaElMes(periodo))
             .Select(c => new { c.Id, c.UnidadId, c.Renta, c.Moneda })
             .ToListAsync(ct);
 
