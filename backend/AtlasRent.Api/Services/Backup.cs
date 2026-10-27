@@ -48,6 +48,14 @@ public sealed class OpcionesBackup
     /// <summary>Copias que se conservan, la más reciente siempre (<c>Backup__Conservar</c>).</summary>
     public int Conservar { get; init; } = ConservarPorDefecto;
 
+    /// <summary>
+    /// Tamano maximo del contenido (volcado + documentos) que se acepta. La copia entera vive en
+    /// <c>byte[]</c>/<c>MemoryStream</c> y se copia al empaquetar y al cifrar (hasta ~3 veces en
+    /// memoria), y un <c>byte[]</c> no pasa de ~2 GiB: con 1 GiB queda margen. Superarlo es un fallo
+    /// con alerta clara, no un <c>OutOfMemoryException</c> a mitad del respaldo (BUG-045).
+    /// </summary>
+    public long LimiteBytesContenido { get; init; } = 1L << 30;
+
     public static OpcionesBackup Desde(IConfiguration configuracion)
     {
         var carpeta = configuracion[$"{Seccion}:CarpetaLocal"];

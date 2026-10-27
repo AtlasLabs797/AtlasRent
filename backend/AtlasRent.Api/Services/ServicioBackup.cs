@@ -238,6 +238,9 @@ public sealed class ServicioBackup(
                 "La copia del {Fecha} ya existe y verifica; no se vuelve a generar ({Bytes} entradas)",
                 fecha, previa.Entradas.Count);
 
+            // La copia local esta, pero puede que la subida de ese dia fallara: se reintenta hasta que conste.
+            await SubirAsync(fecha, ruta, ct);
+
             return new ResultadoCopia(fecha, ruta, new FileInfo(ruta).Length, previa.Documentos().Count, true, []);
         }
 
@@ -257,7 +260,7 @@ public sealed class ServicioBackup(
             ?? throw new CopiaSeguridadFallidaException(
                 $"La copia del {fecha} se escribió pero no supera la verificación. No se rota nada.");
 
-        var rotados = Rotar();
+        var rotados = await RotarAsync(ruta, ct);
         Log.Information(
             "Copia del {Fecha} correcta: {Entradas} entradas, {Documentos} documentos; {Rotados} copias antiguas borradas",
             fecha, copia.Entradas.Count, copia.Documentos().Count, rotados.Count);
@@ -414,6 +417,7 @@ public sealed class ServicioBackup(
 
     private async Task<byte[]> ConstruirAsync(DateOnly fecha, string cadenaConexion, CancellationToken ct)
     {
+        ComprobarTamanoDocumentos();
         var dump = await volcado.VolcarAsync(cadenaConexion, ct);
 
         if (!TieneFilas(dump))
@@ -427,6 +431,16 @@ public sealed class ServicioBackup(
         var entradas = new List<(string Nombre, byte[] Datos)> { (EntradaDump, dump) };
         entradas.AddRange(await DocumentosAsync(ct));
 
+        var total = entradas.Sum(entrada => (long)entrada.Datos.Length);
+        if (total > opciones.LimiteBytesContenido)
+        {
+            throw new CopiaSeguridadFallidaException(
+                $"El contenido de la copia ocupa {total / (1024 * 1024)} MiB y supera el limite seguro de "
+                + $"{opciones.LimiteBytesContenido / (1024 * 1024)} MiB: la copia se arma entera en memoria (el "
+                + "contenedor y el cifrado la duplican) y pasarse la reventaria. Hay que pasar el backup a "
+                + "streams antes de que la base crezca mas (BUG-045).");
+        }
+
         Log.Information(
             "Volcado de {Bytes} bytes con filas y {Documentos} documentos para empaquetar",
             dump.Length, entradas.Count - 1);
@@ -434,6 +448,24 @@ public sealed class ServicioBackup(
         // La fecha entra en el contenedor, no solo en el nombre del archivo: es lo que impide que un
         // archivo renombrado a una fecha futura se haga pasar por la copia de hoy.
         return ContenedorCopia.Empaquetar(fecha, entradas);
+    }
+
+    /// <summary>Corta antes de leer nada si solo los documentos ya pasan el limite.</summary>
+    private void ComprobarTamanoDocumentos()
+    {
+        if (!Directory.Exists(almacen.Carpeta))
+        {
+            return;
+        }
+
+        var bytes = Directory.EnumerateFiles(almacen.Carpeta, "*", SearchOption.AllDirectories)
+            .Sum(ruta => new FileInfo(ruta).Length);
+        if (bytes > opciones.LimiteBytesContenido)
+        {
+            throw new CopiaSeguridadFallidaException(
+                $"Los documentos de propiedad ocupan {bytes / (1024 * 1024)} MiB y superan el limite seguro "
+                + $"de {opciones.LimiteBytesContenido / (1024 * 1024)} MiB de la copia en memoria (BUG-045).");
+        }
     }
 
     private async Task<IReadOnlyList<(string Nombre, byte[] Datos)>> DocumentosAsync(CancellationToken ct)
@@ -494,19 +526,49 @@ public sealed class ServicioBackup(
     /// parte; aquí solo puede ocupar un hueco, nunca pasar por una copia buena.
     /// </para>
     /// </summary>
-    private IReadOnlyList<string> Rotar()
+    private async Task<IReadOnlyList<string>> RotarAsync(string rutaNueva, CancellationToken ct)
     {
-        var copias = CopiasOrdenadas();
-        var sobrantes = copias.Skip(opciones.Conservar).ToList();
+        // Una copia que no verifica no ocupa hueco de las que se conservan (BUG-045): si contara, una
+        // copia corrupta entre las recientes empujaria fuera a una buena. Tampoco se borra por ser
+        // invalida (puede estar cifrada con otra clave y ser recuperable): solo se borra lo que queda
+        // mas alla de las N validas mas recientes. La nueva ya esta verificada y no se vuelve a abrir.
+        var sobrantes = new List<string>();
+        var validas = 0;
+        foreach (var ruta in CopiasOrdenadas())
+        {
+            if (validas >= opciones.Conservar)
+            {
+                sobrantes.Add(ruta);
+            }
+            else if (string.Equals(ruta, rutaNueva, StringComparison.OrdinalIgnoreCase)
+                     || await VerificarAsync(ruta, ct) is not null)
+            {
+                validas++;
+            }
+            else
+            {
+                Log.Warning(
+                    "La copia {Archivo} no verifica: no cuenta entre las {Conservar} a conservar",
+                    Path.GetFileName(ruta), opciones.Conservar);
+            }
+        }
 
         foreach (var ruta in sobrantes)
         {
             File.Delete(ruta);
+            File.Delete(RutaMarcaSubida(ruta));
             Log.Information("Copia antigua borrada por rotación: {Archivo}", Path.GetFileName(ruta));
         }
 
         return sobrantes.Select(Path.GetFileName).OfType<string>().ToList();
     }
+
+    /// <summary>
+    /// Archivo vacio junto a la copia que dice que ya se subio. Sin el, cada ejecucion del dia
+    /// reintenta la subida; con el, no se sube dos veces. No termina en la extension de las copias,
+    /// asi que ni se lista ni se verifica como tal.
+    /// </summary>
+    private static string RutaMarcaSubida(string ruta) => ruta + ".subida";
 
     private async Task SubirAsync(DateOnly fecha, string ruta, CancellationToken ct)
     {
@@ -520,9 +582,19 @@ public sealed class ServicioBackup(
             return;
         }
 
+        if (File.Exists(RutaMarcaSubida(ruta)))
+        {
+            return;
+        }
+
         try
         {
             await almacenRemoto.SubirAsync(ruta, ct);
+            await File.WriteAllTextAsync(RutaMarcaSubida(ruta), $"{reloj.GetUtcNow():O}", ct);
+            if (alertas is not null)
+            {
+                await alertas.ResolverAsync($"backup-remoto:{fecha:yyyy-MM-dd}", ct);
+            }
         }
         catch (Exception e)
         {

@@ -67,6 +67,97 @@ public sealed class RotacionCopiaTests : IDisposable
         almacenRemoto: null,
         alertas: alertas);
 
+    private ServicioBackup CrearCon(
+        OpcionesBackup opciones, IVolcadoBaseDatos volcado, TimeProvider reloj, IAlmacenRemoto? remoto,
+        IRegistroAlertas? alertas = null) => new(
+        opciones,
+        volcado,
+        new AlmacenDocumentos(new OpcionesAlmacen { RutaDocumentos = Path.Combine(_carpeta, "documentos") }),
+        new ServicioCifradoCopia(opciones),
+        reloj,
+        remoto,
+        alertas);
+
+    private OpcionesBackup Opciones(int conservar, long limite = 1L << 30) => new()
+    {
+        CarpetaLocal = _carpeta,
+        ClaveCifrado = _opciones.ClaveCifrado,
+        Conservar = conservar,
+        LimiteBytesContenido = limite,
+    };
+
+    private sealed class RemotoQueFallaLaPrimeraVez : IAlmacenRemoto
+    {
+        public int Llamadas { get; private set; }
+
+        public Task SubirAsync(string rutaArchivo, CancellationToken ct) =>
+            ++Llamadas == 1 ? throw new IOException("sin red") : Task.CompletedTask;
+    }
+
+    /// <summary>BUG-045: si la subida fallo y la copia del dia ya existe, la siguiente ejecucion la reintenta.</summary>
+    [Fact]
+    public async Task UnaSubidaFallidaSeReintentaAunqueLaCopiaDelDiaYaExista()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var remoto = new RemotoQueFallaLaPrimeraVez();
+        var alertas = new AlertaEnMemo([]);
+        var servicio = CrearCon(
+            Opciones(4), new VolcadoFalso(DumpConDatos), new RelojPrueba(RelojPrueba.InicioDelDia), remoto, alertas);
+
+        await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        remoto.Llamadas.Should().Be(1);
+        alertas.Registradas.Should().ContainSingle(a => a.Clave.StartsWith("backup-remoto:"));
+
+        var segunda = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        segunda.YaExistia.Should().BeTrue();
+        remoto.Llamadas.Should().Be(2, "no constaba la subida y se reintenta");
+
+        await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        remoto.Llamadas.Should().Be(2, "ya consta la subida: no se sube dos veces");
+        Directory.GetFiles(_carpeta, "*.arbk").Should().HaveCount(1);
+    }
+
+    /// <summary>BUG-045: una copia corrupta entre las recientes no ocupa hueco ni empuja fuera a una buena.</summary>
+    [Fact]
+    public async Task LaRotacionNoCuentaLasCopiasInvalidasEntreLasQueConserva()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var reloj = new RelojPrueba(RelojPrueba.InicioDelDia);
+        var servicio = CrearCon(Opciones(2), new VolcadoFalso(DumpConDatos), reloj, null);
+
+        reloj.Avanzar(TimeSpan.FromDays(1));
+        var dia1 = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        reloj.Avanzar(TimeSpan.FromDays(1));
+        var dia2 = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+        await File.WriteAllBytesAsync(dia2.RutaArchivo, "corrupta"u8.ToArray(), ct);
+
+        reloj.Avanzar(TimeSpan.FromDays(1));
+        var dia3 = await servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+
+        dia3.Rotados.Should().BeEmpty("solo hay dos copias validas y se conservan dos");
+        File.Exists(dia1.RutaArchivo).Should().BeTrue("la buena mas antigua no se pierde por culpa de la corrupta");
+        File.Exists(dia2.RutaArchivo).Should().BeTrue("una copia invalida no se borra por invalida");
+        File.Exists(dia3.RutaArchivo).Should().BeTrue();
+    }
+
+    /// <summary>BUG-045: lo que no cabe en memoria falla con motivo claro y alerta, sin escribir copia.</summary>
+    [Fact]
+    public async Task UnContenidoQueSuperaElLimiteFallaConAlertaYSinCopia()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var alertas = new AlertaEnMemo([]);
+        var servicio = CrearCon(
+            Opciones(4, limite: 16), new VolcadoFalso(DumpConDatos), new RelojPrueba(RelojPrueba.InicioDelDia),
+            null, alertas);
+
+        var accion = () => servicio.EjecutarAsync("Host=localhost;Database=atlas_rent", ct);
+
+        (await accion.Should().ThrowAsync<CopiaSeguridadFallidaException>())
+            .Which.Message.Should().Contain("limite seguro");
+        Directory.GetFiles(_carpeta, "*.arbk").Should().BeEmpty();
+        alertas.Registradas.Should().ContainSingle(a => a.Tipo == "backup" && a.Mensaje.Contains("limite seguro"));
+    }
+
     /// <summary>Alerta en memoria: guarda lo que se le pasó para poder mirarlo en el test.</summary>
     private sealed class AlertaEnMemo(List<(string Tipo, string Clave, string Mensaje)> registradas) : IRegistroAlertas
     {
