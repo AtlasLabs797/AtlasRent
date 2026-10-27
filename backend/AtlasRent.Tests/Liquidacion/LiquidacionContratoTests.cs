@@ -56,9 +56,9 @@ public sealed class LiquidacionContratoTests(ContenedorBdFixture bd, ApiTestFact
         using var empleado = await AyudaLiquidacion.SesionAsync(api, bd, Roles.Empleado, ct);
 
         var (_, contratoId) = await AyudaInventario.ContratoActivoConInventarioAsync(
-            empleado, gerente, bd, UnElemento, desplazamientoInicio: 320, ct: ct);
+            empleado, gerente, bd, UnElemento, desplazamientoInicio: -320, ct: ct);
 
-        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(320).AddMonths(12), ct);
+        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(), ct);
         (await AyudaContrato.EstadoAsync(bd, contratoId, ct)).Should().Be(EstadoContrato.Finalizado);
 
         // Sin firma: 409, y el contrato se queda exactamente como estaba.
@@ -104,7 +104,7 @@ public sealed class LiquidacionContratoTests(ContenedorBdFixture bd, ApiTestFact
         var (_, contratoId) = await AyudaLiquidacion.ContratoActivoAsync(
             empleado, gerente, bd, AyudaContrato.Dia(-400), ct);
 
-        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(1), ct);
+        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(), ct);
 
         var liquidado = await AyudaContrato.Boton(gerente, contratoId, "liquidacion", null, ct);
         liquidado.StatusCode.Should().Be(HttpStatusCode.OK, await liquidado.Cuerpo());
@@ -134,7 +134,7 @@ public sealed class LiquidacionContratoTests(ContenedorBdFixture bd, ApiTestFact
         var (_, contratoId) = await AyudaLiquidacion.ContratoActivoAsync(
             empleado, gerente, bd, AyudaContrato.Dia(-400), ct);
 
-        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(1), ct);
+        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(), ct);
         await AyudaContrato.AceptarAsync(gerente, contratoId, "liquidacion", null, ct);
 
         var repetida = await AyudaContrato.Boton(gerente, contratoId, "liquidacion", null, ct);
@@ -192,9 +192,9 @@ public sealed class LiquidacionContratoTests(ContenedorBdFixture bd, ApiTestFact
         // En finalizado: sí se puede, y es el caso que el fin por fecha efectiva produce todos los
         // días sin que nadie tenga que hacer nada.
         var (_, finalizado) = await AyudaInventario.ContratoActivoConInventarioAsync(
-            empleado, gerente, bd, UnElemento, desplazamientoInicio: 332, ct: ct);
+            empleado, gerente, bd, UnElemento, desplazamientoInicio: -332, ct: ct);
         await AyudaLiquidacion.DarBajaYFinalizarAsync(
-            gerente, finalizado, AyudaContrato.Dia(332).AddMonths(12), ct);
+            gerente, finalizado, AyudaContrato.Dia(), ct);
         (await AyudaContrato.EstadoAsync(bd, finalizado, ct)).Should().Be(EstadoContrato.Finalizado);
 
         var congelado = await AyudaInventario.InventarioContratoAsync(empleado, finalizado, ct);
@@ -222,7 +222,7 @@ public sealed class LiquidacionContratoTests(ContenedorBdFixture bd, ApiTestFact
 
         var (_, contratoId) = await AyudaLiquidacion.ContratoActivoAsync(
             empleado, gerente, bd, AyudaContrato.Dia(-400), ct);
-        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(1), ct);
+        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(), ct);
 
         var porEmpleado = await AyudaContrato.Boton(empleado, contratoId, "liquidacion", null, ct);
         porEmpleado.StatusCode.Should().Be(HttpStatusCode.Forbidden, await porEmpleado.Cuerpo());

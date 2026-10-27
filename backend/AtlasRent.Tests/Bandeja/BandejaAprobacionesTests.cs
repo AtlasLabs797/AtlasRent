@@ -192,7 +192,7 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
             "contrato.estado no le viene al empleado en la matriz de la especificación §2");
 
         var aprobar = await empleado.PostAsync(
-            $"/api/v1/contratos/solicitudes/{contratoId.ContratoId:D}/aprobacion", new { }, ct);
+            $"/api/v1/contratos/solicitudes/{await SolicitudVivaAsync(contratoId.ContratoId, ct):D}/aprobacion", new { }, ct);
         aprobar.StatusCode.Should().Be(HttpStatusCode.Forbidden, await aprobar.Cuerpo());
 
         (await AyudaContrato.EstadoAsync(bd, contratoId.ContratoId, ct)).ToString()
@@ -225,7 +225,7 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
 
         var contratoId = await PendienteAsync(empleado, 130, ct);
         var clave = $"aprobacion-bandeja-{Guid.NewGuid():N}";
-        var ruta = $"/api/v1/contratos/solicitudes/{contratoId.ContratoId:D}/aprobacion";
+        var ruta = $"/api/v1/contratos/solicitudes/{await SolicitudVivaAsync(contratoId.ContratoId, ct):D}/aprobacion";
 
         var primera = await gerente.PostAsync(ruta, new { }, clave, ct);
         primera.StatusCode.Should().Be(HttpStatusCode.OK, await primera.Cuerpo());
@@ -288,7 +288,7 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
         await EditarAsync(empleado, contrato, 75_000m, ct);
 
         var desdeLaBandeja = await gerente.PostAsync(
-            $"/api/v1/contratos/solicitudes/{contrato.ContratoId:D}/aprobacion", new { }, ct);
+            $"/api/v1/contratos/solicitudes/{await SolicitudVivaAsync(contrato.ContratoId, ct):D}/aprobacion", new { }, ct);
         desdeLaBandeja.StatusCode.Should().Be(
             HttpStatusCode.Conflict, "lo que hay ahora no es lo que se pidió aprobar");
 
@@ -322,7 +322,7 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
         var porLaFicha = await PendienteAsync(empleado, 151, ct);
 
         var respuesta = await gerente.PostAsync(
-            $"/api/v1/contratos/solicitudes/{porLaBandeja.ContratoId:D}/aprobacion", new { }, ct);
+            $"/api/v1/contratos/solicitudes/{await SolicitudVivaAsync(porLaBandeja.ContratoId, ct):D}/aprobacion", new { }, ct);
         respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
 
         await AyudaContrato.AceptarAsync(gerente, porLaFicha.ContratoId, "aprobacion", null, ct);
@@ -366,7 +366,7 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
         using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
 
         var contratoId = await PendienteAsync(empleado, 160, ct);
-        var ruta = $"/api/v1/contratos/solicitudes/{contratoId.ContratoId:D}/rechazo";
+        var ruta = $"/api/v1/contratos/solicitudes/{await SolicitudVivaAsync(contratoId.ContratoId, ct):D}/rechazo";
 
         var sinComentario = await gerente.PostAsync(ruta, new { comentario = "" }, ct);
         sinComentario.StatusCode.Should().Be(HttpStatusCode.BadRequest, await sinComentario.Cuerpo());
@@ -378,6 +378,68 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
         (await AyudaContrato.EstadoAsync(bd, contratoId.ContratoId, ct)).ToString().Should().Be("Borrador");
         (await AyudaBandeja.SolicitudesDeAsync(bd, contratoId.ContratoId, ct)).Should().ContainSingle();
     }
+
+    // ---------------------------------------------------------------- BUG-042
+
+    /// <summary>
+    /// El <c>{id}</c> de la ruta es el de la solicitud (el que viaja en la fila), no el del contrato: con
+    /// la solicitud vigente aprueba; con el id del contrato no existe esa solicitud (404).
+    /// </summary>
+    [Fact]
+    public async Task LaRutaDeLaBandejaRecibeElIdDeLaSolicitudYNoElDelContrato()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var contrato = await PendienteAsync(empleado, 170, ct);
+
+        var conElContrato = await gerente.PostAsync(
+            $"/api/v1/contratos/solicitudes/{contrato.ContratoId:D}/aprobacion", new { }, ct);
+        conElContrato.StatusCode.Should().Be(HttpStatusCode.NotFound, await conElContrato.Cuerpo());
+        (await AyudaContrato.EstadoAsync(bd, contrato.ContratoId, ct)).ToString().Should().Be("PendienteAprobacion");
+
+        var fila = FilaPropia(await BandejaAsync(gerente, ct), contrato.ContratoId);
+        var vigente = await gerente.PostAsync(
+            $"/api/v1/contratos/solicitudes/{fila.SolicitudId:D}/aprobacion", new { }, ct);
+        vigente.StatusCode.Should().Be(HttpStatusCode.OK, await vigente.Cuerpo());
+        (await AyudaContrato.EstadoAsync(bd, contrato.ContratoId, ct)).ToString().Should().Be("Aprobado");
+    }
+
+    /// <summary>
+    /// Aprobar una solicitud que ya no es la vigente (reenviada) da 409 y no cambia nada: se aprobaría
+    /// el contenido de otra solicitud distinta de la que el gerente tiene en pantalla.
+    /// </summary>
+    [Fact]
+    public async Task AprobarUnaSolicitudSustituidaEsConflictoYNoCambiaNada()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var contrato = await PendienteAsync(empleado, 171, ct);
+        var vieja = await SolicitudVivaAsync(contrato.ContratoId, ct);
+
+        await AyudaContrato.AceptarAsync(empleado, contrato.ContratoId, "solicitud", new { }, ct);
+        var nueva = await SolicitudVivaAsync(contrato.ContratoId, ct);
+        nueva.Should().NotBe(vieja);
+
+        var sustituida = await gerente.PostAsync(
+            $"/api/v1/contratos/solicitudes/{vieja:D}/aprobacion", new { }, ct);
+        sustituida.StatusCode.Should().Be(HttpStatusCode.Conflict, await sustituida.Cuerpo());
+        (await sustituida.Cuerpo()).Should().Contain("cambió");
+        (await AyudaContrato.EstadoAsync(bd, contrato.ContratoId, ct)).ToString().Should().Be("PendienteAprobacion");
+        (await AyudaBandeja.SolicitudesDeAsync(bd, contrato.ContratoId, ct))
+            .Single(s => s.Id == nueva).Resultado.ToString().Should().Be("Pendiente");
+
+        var vigente = await gerente.PostAsync(
+            $"/api/v1/contratos/solicitudes/{nueva:D}/aprobacion", new { }, ct);
+        vigente.StatusCode.Should().Be(HttpStatusCode.OK, await vigente.Cuerpo());
+    }
+
+    /// <summary>La última solicitud del contrato: el identificador que viaja en la fila de la bandeja.</summary>
+    private async Task<Guid> SolicitudVivaAsync(Guid contratoId, CancellationToken ct) =>
+        (await AyudaBandeja.SolicitudesDeAsync(bd, contratoId, ct)).Last().Id;
 
     // ---------------------------------------------------------------- atajos
 

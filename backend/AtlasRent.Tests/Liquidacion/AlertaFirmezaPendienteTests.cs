@@ -88,7 +88,7 @@ public sealed class AlertaFirmezaPendienteTests(ContenedorBdFixture bd, ApiTestF
         var (_, contratoId) = await AyudaLiquidacion.ContratoActivoAsync(
             empleado, gerente, bd, AyudaContrato.Dia(-400), ct);
 
-        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(1), ct);
+        await AyudaLiquidacion.DarBajaYFinalizarAsync(gerente, contratoId, AyudaContrato.Dia(), ct);
 
         var alerta = await AyudaLiquidacion.AlertaAsync(bd, contratoId, ct);
         alerta.Should().NotBeNull("el fin manual deja el mismo aviso que el fin automático");

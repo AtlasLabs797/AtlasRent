@@ -111,6 +111,33 @@ public sealed class ServicioDisponibilidad(AtlasRentDbContext contexto, TimeProv
         await GuardarAsync(ct);
     }
 
+    /// <summary>
+    /// Termina el bloqueo de un contrato en su fecha de fin efectiva: recorta el rango a
+    /// <c>[inicio, fechaFin)</c> y lo deja bloqueando, así el calendario conserva el pasado y la unidad
+    /// queda libre desde <paramref name="fechaFin"/> (BUG-025). Si el rango quedaría vacío (fin igual al
+    /// inicio) se apaga, porque nunca bloqueó ningún día.
+    /// </summary>
+    public async Task RecortarRangoAsync(OrigenOcupacion origen, Guid origenId, DateOnly fechaFin, CancellationToken ct)
+    {
+        var filas = await contexto.OcupacionRango
+            .Where(r => r.Origen == origen && r.OrigenId == origenId && r.Bloquea)
+            .ToListAsync(ct);
+
+        foreach (var fila in filas)
+        {
+            if (fechaFin <= fila.FechaInicio)
+            {
+                fila.Bloquea = false;
+            }
+            else if (fila.FechaFin is null || fila.FechaFin > fechaFin)
+            {
+                fila.FechaFin = fechaFin;
+            }
+        }
+
+        await GuardarAsync(ct);
+    }
+
     /// <summary>Libera los días de una fila de origen, sin borrarlos.</summary>
     public async Task LiberarDiasAsync(OrigenOcupacion origen, Guid origenId, CancellationToken ct)
     {

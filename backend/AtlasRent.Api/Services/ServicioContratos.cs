@@ -342,14 +342,15 @@ public sealed class ServicioContratos(
         Guid aprobador,
         string ip,
         MutacionIdempotente? mutacion,
-        CancellationToken ct)
+        CancellationToken ct,
+        Guid? solicitudId = null)
     {
         await ExigirEstadoAsync(contratoId: id, aprobador, ct);
 
         var contrato = await CargarAsync(id, ct);
         Exigir(contrato, EstadoContrato.PendienteAprobacion);
 
-        var solicitud = await CargarSolicitudVivaAsync(id, ct);
+        var solicitud = await CargarSolicitudVivaAsync(id, ct, solicitudId);
 
         // El contrato tiene que seguir siendo el mismo que se mandó a aprobar. Normalmente la
         // caducidad ya lo dejó escrito al editar; esta comparación es la red para un cambio que
@@ -397,7 +398,8 @@ public sealed class ServicioContratos(
         Guid rechazante,
         string ip,
         MutacionIdempotente? mutacion,
-        CancellationToken ct)
+        CancellationToken ct,
+        Guid? solicitudId = null)
     {
         await ExigirEstadoAsync(contratoId: id, rechazante, ct);
 
@@ -411,7 +413,7 @@ public sealed class ServicioContratos(
         var contrato = await CargarAsync(id, ct);
         Exigir(contrato, EstadoContrato.PendienteAprobacion);
 
-        var solicitud = await CargarSolicitudVivaAsync(id, ct);
+        var solicitud = await CargarSolicitudVivaAsync(id, ct, solicitudId);
 
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -693,7 +695,19 @@ public sealed class ServicioContratos(
         var contrato = await CargarAsync(id, ct);
         Exigir(contrato, EstadoContrato.BajaProgramada);
 
-        contrato.FechaFinReal = contrato.FechaBajaProgramada ?? TiempoNegocio.Hoy();
+        var hoy = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
+        var fechaFin = contrato.FechaBajaProgramada ?? hoy;
+
+        // BUG-025: solo se finaliza cuando la fecha efectiva de la baja ya llegó. Finalizar antes
+        // liberaría la unidad por adelantado.
+        if (fechaFin > hoy)
+        {
+            throw new InvalidOperationException(
+                $"El contrato no se puede finalizar todavía: su fecha de baja es {fechaFin:yyyy-MM-dd} y hoy es " +
+                $"{hoy:yyyy-MM-dd}. Se finaliza solo cuando llegue ese día, o anula la baja.");
+        }
+
+        contrato.FechaFinReal = fechaFin;
 
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -708,8 +722,8 @@ public sealed class ServicioContratos(
             datosAuditoria: DatosAuditoria,
             antesDeGuardar: async () =>
             {
-                await disponibilidad.LiberarRangoAsync(OrigenOcupacion.Contrato, contrato.Id, ct);
-                CambiarEstado(contrato, EstadoContrato.Finalizado, usuario, "Finalizado.");
+                await disponibilidad.RecortarRangoAsync(OrigenOcupacion.Contrato, contrato.Id, fechaFin, ct);
+                CambiarEstado(contrato, EstadoContrato.Finalizado, usuario, "Finalizado.", hoy);
 
                 // §3.5: "alerta persistente hasta liquidar". Fin ≠ liquidación: liberar la unidad no
                 // cierra el contrato, así que desde este mismo instante y en la misma transacción
@@ -720,7 +734,7 @@ public sealed class ServicioContratos(
                     alertas,
                     contrato.Id,
                     contrato.FechaFinReal!.Value,
-                    TiempoNegocio.Hoy(),
+                    hoy,
                     ct);
             },
             ct: ct);
@@ -757,6 +771,8 @@ public sealed class ServicioContratos(
 
         var contrato = await CargarAsync(id, ct);
         Exigir(contrato, EstadoContrato.Finalizado);
+
+        await ExigirSaldosCerradosAsync(id, ct);
 
         // Lo que la revisión de salida dejó escrito. Se lee aquí, y no después, porque el importe de
         // los faltantes y la decisión sobre la fianza tienen que salir de lo que firmó el cliente y no
@@ -800,7 +816,7 @@ public sealed class ServicioContratos(
                 // exactamente igual que estaba, y no con el inventario cerrado a medias.
                 await inventario.ExigirRevisionFirmadaAsync(id, ct);
 
-                CambiarEstado(contrato, EstadoContrato.Liquidado, usuario, "Liquidado.");
+                CambiarEstado(contrato, EstadoContrato.Liquidado, usuario, "Liquidado.", TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow()));
 
                 // TODO(A#) F3-01: emitir el cobro por el importe de faltantes registrado aquí y mover
                 // la fianza según esta decisión. La firma que hará falta cuando existan las tablas
@@ -837,7 +853,7 @@ public sealed class ServicioContratos(
                     CreatedBy = usuario,
                     ContratoId = contrato.Id,
                     RevisionInventarioId = revision?.Id,
-                    FechaLiquidacion = TiempoNegocio.Hoy(),
+                    FechaLiquidacion = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow()),
                     LiquidadoPorId = usuario,
                     ImporteFaltantes = importeFaltantes,
                     DecisionFianza = decision,
@@ -858,6 +874,64 @@ public sealed class ServicioContratos(
     }
 
     // ---------------------------------------------------------------- internos
+
+    /// <summary>
+    /// §3.5: la liquidación cierra fianza y saldos, así que no se liquida con la fianza cobrada sin
+    /// resolver (ni devuelta, ni descontada, ni retenida) ni con facturas del contrato pendientes de
+    /// cobro (BUG-050). Solo valida: no mueve dinero.
+    /// <para>
+    /// TODO(A#): ¿una fianza "Retenida" (retención entera decidida a mano) cuenta como resuelta? Aquí sí.
+    /// TODO(A#): ¿liquidar debe generar solo el cobro por faltantes o la devolución de fianza? La
+    /// especificación no lo define; se exige que alguien lo haga antes por los endpoints de cobros y fianzas.
+    /// </para>
+    /// </summary>
+    private async Task ExigirSaldosCerradosAsync(Guid contratoId, CancellationToken ct)
+    {
+        var fianzas = await contexto.Fianza.AsNoTracking()
+            .Where(f => f.ContratoId == contratoId
+                && f.Estado != EstadoFianza.Retenida
+                && f.Estado != EstadoFianza.Devuelta
+                && f.Estado != EstadoFianza.RetenidaParcial)
+            .Select(f => new
+            {
+                Cobrado = contexto.CobroAsignacion
+                    .Where(a => a.FianzaId == f.Id && a.Vigente && a.Cobro!.Estado == EstadoCobro.Registrado)
+                    .Sum(a => (decimal?)a.Importe) ?? 0m,
+                Salido = contexto.FianzaDevolucion
+                    .Where(d => d.FianzaId == f.Id)
+                    .Sum(d => (decimal?)(d.Importe + d.ImporteDescontado)) ?? 0m,
+            })
+            .ToListAsync(ct);
+
+        var sinResolver = fianzas.Count(f => CalculoFianza.Saldo(f.Cobrado, f.Salido, 0m) > 0m);
+
+        var facturas = await contexto.Factura.AsNoTracking()
+            .Where(f => f.ContratoId == contratoId
+                && f.Estado == EstadoFactura.Emitida
+                && f.Serie!.Tipo != TipoSerie.Proforma)
+            .Where(PendienteDeFactura.ConPendiente(contexto))
+            .CountAsync(ct);
+
+        if (sinResolver == 0 && facturas == 0)
+        {
+            return;
+        }
+
+        var faltan = new List<string>();
+        if (sinResolver > 0)
+        {
+            faltan.Add($"{sinResolver} fianza(s) cobrada(s) sin devolver, descontar ni retener");
+        }
+
+        if (facturas > 0)
+        {
+            faltan.Add($"{facturas} factura(s) del contrato con importe pendiente de cobro");
+        }
+
+        throw new InvalidOperationException(
+            "No se puede liquidar el contrato: la liquidación cierra la fianza y los saldos, y falta " +
+            string.Join(" y ", faltan) + ".");
+    }
 
     /// <summary>
     /// Segunda puerta del permiso de estado. El endpoint lo pide con <c>[Accion(ContratoEstado)]</c>,
@@ -990,13 +1064,27 @@ public sealed class ServicioContratos(
         solicitud.UpdatedBy = usuario;
     }
 
-    private async Task<SolicitudAprobacion> CargarSolicitudVivaAsync(Guid contratoId, CancellationToken ct) =>
-        await contexto.SolicitudAprobacion
+    private async Task<SolicitudAprobacion> CargarSolicitudVivaAsync(
+        Guid contratoId,
+        CancellationToken ct,
+        Guid? solicitudEsperada = null)
+    {
+        var viva = await contexto.SolicitudAprobacion
             .Where(s => s.ContratoId == contratoId && s.Resultado == ResultadoSolicitud.Pendiente)
             .OrderByDescending(s => s.SolicitadoAt)
-            .FirstOrDefaultAsync(ct)
-        ?? throw new InvalidOperationException(
+            .FirstOrDefaultAsync(ct);
+
+        // BUG-042: si el llamante decide sobre una solicitud concreta (la de la bandeja) y la viva ya es
+        // otra, o ya no hay, se rechaza: se aprobaría algo distinto de lo que tiene delante.
+        if (solicitudEsperada is { } esperada && viva?.Id != esperada)
+        {
+            throw new InvalidOperationException(
+                "La solicitud cambió: ya no es la vigente de este contrato. Vuelve a revisarla.");
+        }
+
+        return viva ?? throw new InvalidOperationException(
             "Este contrato no tiene ninguna solicitud de aprobación viva. Vuelve a enviarlo a aprobación.");
+    }
 
     /// <summary>
     /// Siguiente número de versión. Se lee el máximo dentro de la transacción del cambio y el
@@ -1197,7 +1285,9 @@ public sealed class ServicioContratos(
         contrato.FechaFinInicial = contrato.FechaInicio.AddMonths(contrato.DuracionInicialMeses);
         // El fin del bloque en curso solo lo mueve la renovación automática (F2-06) o una baja
         // anteriorizada; al editar, se respeta lo que ya estaba pactado.
-        if (contrato.FechaFinVigente < contrato.FechaFinInicial)
+        // BUG-023: un borrador (o pendiente) no ha tenido renovación ni baja, así que su fin vigente es
+        // siempre el inicial, también si el borrador se acorta. En un contrato activo no se toca.
+        if (contrato.Estado is EstadoContrato.Borrador or EstadoContrato.PendienteAprobacion)
         {
             contrato.FechaFinVigente = contrato.FechaFinInicial;
         }
@@ -1255,7 +1345,8 @@ public sealed class ServicioContratos(
         Contrato contrato,
         EstadoContrato destino,
         Guid? usuario,
-        string? comentario)
+        string? comentario,
+        DateOnly? hoy = null)
     {
         if (!Transiciones[contrato.Estado].Contains(destino))
         {
@@ -1264,7 +1355,7 @@ public sealed class ServicioContratos(
         }
 
         contrato.Estado = destino;
-        contrato.EstadoActualDesde = TiempoNegocio.Hoy();
+        contrato.EstadoActualDesde = hoy ?? TiempoNegocio.Hoy();
         contrato.EstadoActualPorId = usuario;
         contrato.EstadoActualComentario = Limpiar(comentario);
     }

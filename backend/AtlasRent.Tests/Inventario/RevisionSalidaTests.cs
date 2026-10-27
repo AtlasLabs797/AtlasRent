@@ -217,13 +217,13 @@ public sealed class RevisionSalidaTests(ContenedorBdFixture bd, ApiTestFactoryBl
         using var gerente = await AyudaInventario.SesionAsync(api, bd, Roles.Gerente, ct);
 
         var (_, contratoId) = await AyudaInventario.ContratoActivoConInventarioAsync(
-            empleado, gerente, bd, TresElementos, desplazamientoInicio: 314, ct: ct);
+            empleado, gerente, bd, TresElementos, desplazamientoInicio: -314, ct: ct);
 
         var congelado = await AyudaInventario.InventarioContratoAsync(empleado, contratoId, ct);
         congelado.GetArrayLength().Should().Be(3, "el inventario sí está congelado: lo que falta es la revisión");
 
         await AyudaContrato.AceptarAsync(
-            gerente, contratoId, "baja", new { fechaFin = AyudaContrato.Dia(314).AddMonths(12).ToString("yyyy-MM-dd") }, ct);
+            gerente, contratoId, "baja", new { fechaFin = AyudaContrato.Dia().ToString("yyyy-MM-dd") }, ct);
         await AyudaContrato.AceptarAsync(gerente, contratoId, "finalizacion", null, ct);
         (await AyudaContrato.EstadoAsync(bd, contratoId, ct)).Should().Be(EstadoContrato.Finalizado);
 

@@ -59,7 +59,7 @@ public sealed class FinPorFechaEfectivaTests(ContenedorBdFixture bd, ApiTestFact
         (await AyudaLiquidacion.FechaFinRealAsync(bd, contratoId, ct))
             .Should().Be(efectiva, "la fecha efectiva es la pactada, no el día que el trabajo corrió");
         (await AyudaLiquidacion.CandadoAsync(bd, contratoId, ct))
-            .Bloquea.Should().BeFalse("el candado se apaga, no se borra");
+            .FechaFin.Should().Be(efectiva, "el candado se recorta a la fecha efectiva, no se borra");
 
         // Y la reserva corta de ese día ya entra.
         var despues = await AyudaReserva.CrearRawAsync(

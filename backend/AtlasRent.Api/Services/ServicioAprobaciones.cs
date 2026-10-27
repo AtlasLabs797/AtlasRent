@@ -126,7 +126,7 @@ public sealed class ServicioAprobaciones(
         return solicitud.Tipo switch
         {
             TipoSolicitud.Contrato
-                => await contratos.AprobarAsync(solicitud.ContratoId!.Value, usuario, ip, mutacion, ct),
+                => await contratos.AprobarAsync(solicitud.ContratoId!.Value, usuario, ip, mutacion, ct, solicitudId),
             TipoSolicitud.AccionAgente
                 => await propuestas.AprobarAsync(solicitud.Id, usuario, ip, mutacion, ct),
             _ => throw new InvalidOperationException($"No hay servicio que decida una solicitud de tipo '{solicitud.Tipo}'."),
@@ -153,11 +153,25 @@ public sealed class ServicioAprobaciones(
                     usuario,
                     ip,
                     mutacion,
-                    ct),
+                    ct,
+                    solicitudId),
             TipoSolicitud.AccionAgente
                 => await propuestas.RechazarAsync(solicitud.Id, comentario, usuario, ip, mutacion, ct),
             _ => throw new InvalidOperationException($"No hay servicio que decida una solicitud de tipo '{solicitud.Tipo}'."),
         };
+    }
+
+    /// <summary>
+    /// Contrato de una solicitud de tipo contrato (BUG-042): la ruta de la bandeja recibe el
+    /// identificador de la solicitud, el que viaja en la fila. 404 si no existe o no es de un contrato.
+    /// </summary>
+    public async Task<Guid> ContratoDeLaSolicitudAsync(Guid solicitudId, CancellationToken ct)
+    {
+        var solicitud = await LeerAsync(solicitudId, ct);
+
+        return solicitud.Tipo == TipoSolicitud.Contrato && solicitud.ContratoId is { } contratoId
+            ? contratoId
+            : throw new KeyNotFoundException($"No hay ninguna solicitud de contrato con identificador '{solicitudId:D}'.");
     }
 
     /// <summary>Solo el tipo y el contrato: lo que hace falta para saber a quién le toca decidir.</summary>
