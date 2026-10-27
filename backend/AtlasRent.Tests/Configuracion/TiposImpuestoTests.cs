@@ -253,8 +253,10 @@ public sealed class TiposImpuestoTests(ContenedorBdFixture bd, ApiTestFactory ap
     }
 
     /// <summary>
-    /// Calcula con el mismo camino que usarán las facturas: los porcentajes se leen de la
-    /// configuración, nunca de una constante del código (D14).
+    /// Calcula leyendo de la base los porcentajes que hay ahora mismo en la configuración y aplicando
+    /// el cálculo puro del dominio: los porcentajes salen de la configuración, nunca de una constante
+    /// del código (D14). (Antes pasaba por <c>ServicioConfiguracion.CalcularAsync</c>, que solo usaban
+    /// estas pruebas y divergía del cálculo real de facturas, que va por línea: BUG-052.)
     /// </summary>
     private async Task<ResultadoImpuestos> CalcularAsync(
         decimal subtotal,
@@ -263,18 +265,15 @@ public sealed class TiposImpuestoTests(ContenedorBdFixture bd, ApiTestFactory ap
         params Guid[] tipoRetencionIds)
     {
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
-        var servicio = new ServicioConfiguracion(
-            contexto, new AuditoriaService(contexto), new ServicioIdempotencia(contexto, TimeProvider.System),
-            // Esta prueba solo calcula impuestos: el RNC cifrado no se toca, pero el constructor
-            // necesita el servicio.
-            new ServicioCifrado(new OpcionesSeguridad
-            {
-                ClaveJwt = [],
-                ClaveCifrado = ApiTestFactory.ClaveCifrado,
-                ClaveHmacDocumento = api.ClaveHmacDocumento,
-            }),
-            TimeProvider.System);
+        var porcentajeItbis = await contexto.TipoItbis.AsNoTracking()
+            .Where(t => t.Id == tipoItbisId && t.Activo)
+            .Select(t => t.Porcentaje)
+            .SingleAsync(ct);
+        var tipos = await contexto.TipoRetencion.AsNoTracking()
+            .Where(t => t.Activo && tipoRetencionIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => (t.Porcentaje, t.Base), ct);
 
-        return await servicio.CalcularAsync(subtotal, tipoItbisId, tipoRetencionIds, ct);
+        return CalculoImpuestos.Calcular(
+            subtotal, porcentajeItbis, tipoRetencionIds.Select(id => tipos[id]).ToList());
     }
 }

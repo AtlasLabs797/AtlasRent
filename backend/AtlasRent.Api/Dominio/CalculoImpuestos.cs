@@ -20,7 +20,7 @@ public sealed record ResultadoImpuestos(
 /// Cálculo de ITBIS y retenciones de una factura (docs/ESPECIFICACION.md §3.9, D14).
 /// <para>
 /// El 100 es un divisor de porcentaje, no una cifra fiscal: los porcentajes entran como datos, los
-/// lee <c>ServicioConfiguracion.CalcularAsync</c> de la tabla y nunca de aquí.
+/// leen los servicios de la tabla de configuración y nunca de aquí.
 /// </para>
 /// </summary>
 public static class CalculoImpuestos
