@@ -20,11 +20,14 @@ public readonly record struct TramoDeRenta(DateOnly Desde, DateOnly Hasta, decim
 /// </summary>
 public static class RentaPorTramos
 {
+    /// <summary>Divisor de un tanto por ciento de incremento pactado; no es una cifra fiscal.</summary>
+    private const decimal PorCien = 100m;
+
     /// <summary>Renta tras un incremento: porcentaje sobre la vigente o importe fijo, medio hacia arriba.</summary>
     public static decimal Incrementar(TipoIncremento tipo, decimal? porcentaje, decimal? importe, decimal renta) =>
         tipo switch
         {
-            TipoIncremento.Porcentaje => Redondeo.Importe(renta * (1 + (porcentaje ?? 0) / 100m)),
+            TipoIncremento.Porcentaje => Redondeo.Importe(renta * (1 + (porcentaje ?? 0) / PorCien)),
             _ => Redondeo.Importe(renta + (importe ?? 0)),
         };
 

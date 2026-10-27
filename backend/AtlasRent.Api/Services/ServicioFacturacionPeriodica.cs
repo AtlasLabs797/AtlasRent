@@ -421,7 +421,7 @@ public sealed class ServicioFacturacionPeriodica(
             .Where(f => f.PeriodoInicio == mes.Inicio
                 && f.Concepto == concepto
                 && f.Estado != EstadoFactura.Anulada)
-            .Select(f => new FacturaExistente(f.Id, f.ContratoId, f.Numero, f.Estado == EstadoFactura.Borrador))
+            .Select(f => new FacturaExistente(f.Id, f.ContratoId, f.Numero, f.Estado == EstadoFactura.Borrador, f.Moneda))
             .ToListAsync(ct);
 
         var idsContratos = contratos.Select(c => c.Id).ToArray();
@@ -441,9 +441,12 @@ public sealed class ServicioFacturacionPeriodica(
         {
             // Un borrador previo (de una ejecución antigua que se cortó) no cuenta como factura del
             // mes: se reutiliza al emitir. Solo una emitida deja el contrato fuera.
+            // Salvo si es de otra moneda que el contrato: es la que dejó «Rehacer en otra moneda» (BUG-033), una
+            // factura deliberada que ya factura el mes, y reutilizarla la pisaría.
             var previa = existentes.FirstOrDefault(f => f.ContratoId == contrato.Id);
-            var existente = previa is { EsBorrador: false } ? previa : null;
-            var borrador = previa is { EsBorrador: true } ? previa.Id : (Guid?)null;
+            var reutilizable = previa is { EsBorrador: true } && previa.Moneda == contrato.Moneda;
+            var existente = reutilizable ? null : previa;
+            var borrador = reutilizable ? previa!.Id : (Guid?)null;
 
             var desde = contrato.FechaInicio > mes.Inicio ? contrato.FechaInicio : mes.Inicio;
             var hasta = FinFacturable(contrato) < mes.Fin.AddDays(1) ? FinFacturable(contrato) : mes.Fin.AddDays(1);
@@ -738,7 +741,7 @@ public sealed class ServicioFacturacionPeriodica(
         null,
         null);
 
-    private sealed record FacturaExistente(Guid Id, Guid? ContratoId, int? Numero, bool EsBorrador);
+    private sealed record FacturaExistente(Guid Id, Guid? ContratoId, int? Numero, bool EsBorrador, Moneda Moneda);
 
     private sealed record TramoFacturable(decimal Renta, int Dias);
 
