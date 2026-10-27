@@ -29,8 +29,14 @@ public sealed class TrabajoIntegridadAuditoria(
     ContextoSesion sesion,
     AtlasRentDbContext contexto,
     IntegridadAuditoria integridad,
-    OpcionesLimites limites)
+    OpcionesLimites limites,
+    IRegistroAlertas alertas)
 {
+    /// <summary>Clave de la alerta de cadena rota: una sola fila viva, con contador de repeticiones.</summary>
+    public const string ClaveAlerta = "integridad-auditoria";
+
+    public const string TipoAlerta = "auditoria";
+
     /// <summary>Rol con el que tiene que correr. Ver el comentario de la clase antes de tocarlo.</summary>
     public const string RolRequisito = Roles.Admin;
 
@@ -60,6 +66,15 @@ public sealed class TrabajoIntegridadAuditoria(
             resultado.SecuenciaRota,
             resultado.IdRota,
             resultado.TotalRegistros);
+
+        // Un log no despierta a nadie: la cadena rota queda tambien en la tabla de alertas (BUG-045).
+        // La clave es fija, asi que cada ejecucion diaria sube el contador de la misma fila viva.
+        await alertas.RegistrarAsync(
+            TipoAlerta,
+            ClaveAlerta,
+            $"La cadena de firmas de auditoria esta rota en la secuencia {resultado.SecuenciaRota} "
+            + $"(registro {resultado.IdRota}). Revisar si alguien ha tocado la tabla por debajo de la aplicacion.",
+            ct);
 
         return resultado;
     }
