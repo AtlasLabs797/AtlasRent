@@ -20,7 +20,16 @@ public sealed class ImporteJsonConverter : JsonConverter<decimal>
 
     public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        var valor = reader.GetDecimal();
+        // El frontend manda el dinero como texto decimal (AGENTS §6) y las opciones web admiten
+        // números entre comillas: hay que leer los dos, o toda la entrada de importes da 400.
+        var valor = reader.TokenType == JsonTokenType.String
+            && decimal.TryParse(
+                reader.GetString(),
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var leido)
+            ? leido
+            : reader.GetDecimal();
         if (Math.Abs(valor) > Maximo)
         {
             throw new JsonException($"El importe no puede pasar de {Maximo:0.00} en valor absoluto.");

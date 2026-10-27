@@ -73,7 +73,7 @@ public sealed class TrabajoIntegridadAuditoria(
     {
         try
         {
-            var dias = limites.RetencionIntentosLoginDias;
+            var dias = limites.DiasConservarIntentosLogin;
             var borrados = await contexto.Database
                 .SqlQuery<long>($"SELECT purgar_intentos_login({dias}) AS \"Value\"")
                 .SingleAsync(ct);

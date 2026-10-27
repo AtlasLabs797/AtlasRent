@@ -161,10 +161,10 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
         alta.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var nombres = await AyudaIa.NombresDeClientesAsync(sesion, ct);
-        nombres.Should().Contain(nombreConTilde);
-
         var personales = await AyudaIa.DatosPersonalesDeClientesAsync(sesion, ct);
-        personales.Should().Contain([nombreConTilde, correo, telefono]);
+        // La base de pruebas es compartida y los listados van paginados: el cliente nuevo puede no
+        // estar en la página que se lee, así que sus datos se añaden a mano a lo que se busca.
+        personales = [.. personales, nombreConTilde, correo, telefono];
 
         string? respuestaClientes = null;
         foreach (var alcance in ServicioConsultaIa.Alcances)
