@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using System.Net;
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
@@ -5,6 +7,7 @@ using AtlasRent.Api.DTOs;
 using AtlasRent.Api.Services;
 using AtlasRent.Tests.Facturas;
 using AtlasRent.Tests.Infra;
+using AtlasRent.Tests.Reservas;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -531,6 +534,270 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
         }
 
         return lineas;
+    }
+
+    /// <summary>
+    /// AUD-04: secuencias al azar de cobros en dólares y en pesos, anulaciones de cobros (con 409
+    /// esperado cuando el crédito que dejaron ya se gastó) y una fase concurrente cada pocos pasos. Va
+    /// por la API real. Las invariantes se recalculan aquí directamente de las filas con decimal, sin
+    /// pasar por <see cref="CalculoCobro"/> ni por el servicio, para que un error del servicio no
+    /// pueda dar por buena su propia cuenta.
+    /// </summary>
+    [Fact]
+    public async Task CobrosEnVariasMonedasAnulacionesYConcurrenciaMantienenLasInvariantes()
+    {
+        const int semilla = 20261026;
+        const int pasos = 60;
+
+        var ct = TestContext.Current.CancellationToken;
+        using var sesion = await AyudaCobros.SesionAsync(bd, api, Roles.Admin, ct);
+
+        var (clienteId, contratoId) = await AyudaCobros.ContratoAsync(sesion, bd, ct);
+        var serieId = await AyudaFacturas.CrearSerieAsync(sesion, TipoSerie.Normal, Moneda.USD, ct);
+        var formaPagoId = await AyudaCobros.FormaPagoAsync(sesion, ct);
+        var cuentaUsd = await AyudaCobros.CuentaAsync(sesion, Moneda.USD, ct);
+        var cuentaDop = await AyudaCobros.CuentaAsync(sesion, Moneda.DOP, ct);
+        var hoy = await AyudaFacturas.HoyAsync(sesion, ct);
+
+        await using var limpieza = AyudaCobros.SinRastroDeCambio(bd, hoy, Moneda.DOP);
+        await AyudaCobros.CargarCambioAsync(sesion, hoy, Moneda.DOP, AyudaCobros.CambioDelDia, ct);
+
+        var aleatorio = new Random(semilla);
+        var numeroSerie = 2_000_000;
+        var anulaciones409 = 0;
+        var anulaciones200 = 0;
+        var concurrentes = 0;
+
+        for (var paso = 1; paso <= pasos; paso++)
+        {
+            try
+            {
+                await using (var contexto = bd.CrearContexto(bd.CadenaApp))
+                {
+                    for (var i = 0; i < 2; i++)
+                    {
+                        var total = Importe(aleatorio, 50m, 3_000m);
+                        contexto.Factura.Add(new Factura
+                        {
+                            Id = Guid.NewGuid(),
+                            ClienteId = clienteId,
+                            ContratoId = contratoId,
+                            SerieId = serieId,
+                            Numero = numeroSerie++,
+                            Estado = EstadoFactura.Emitida,
+                            Moneda = Moneda.USD,
+                            FechaEmision = hoy.AddDays(-30),
+                            FechaVencimiento = hoy.AddDays(aleatorio.Next(-20, 61)),
+                            Concepto = $"Cartera del paso {paso}",
+                            Subtotal = total,
+                            Itbis = 0m,
+                            Total = total,
+                            Retencion = 0m,
+                            NetoACobrar = total,
+                            TipoCambioValor = 1m,
+                            TipoCambioFecha = hoy,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                        });
+                    }
+
+                    await contexto.SaveChangesAsync(ct);
+                }
+
+                var accion = paso == 1 ? -1 : paso % 7 == 0 ? 9 : aleatorio.Next(9);
+                if (accion < 0)
+                {
+                    // Paso fijo: A cobra de más (crédito), B gasta 100 de ese crédito, y anular A tiene que dar 409.
+                    var a = await RegistrarHttpAsync(Moneda.USD, 10_000m, 0m);
+                    await using (var extra = bd.CrearContexto(bd.CadenaApp))
+                    {
+                        extra.Factura.Add(new Factura
+                        {
+                            Id = Guid.NewGuid(), ClienteId = clienteId, ContratoId = contratoId, SerieId = serieId,
+                            Numero = numeroSerie++, Estado = EstadoFactura.Emitida, Moneda = Moneda.USD,
+                            FechaEmision = hoy.AddDays(-30), FechaVencimiento = hoy.AddDays(30),
+                            Concepto = "Deuda para B", Subtotal = 500m, Itbis = 0m, Total = 500m, Retencion = 0m,
+                            NetoACobrar = 500m, TipoCambioValor = 1m, TipoCambioFecha = hoy,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                        });
+                        await extra.SaveChangesAsync(ct);
+                    }
+
+                    var b = await RegistrarHttpAsync(Moneda.USD, 1m, 100m);
+                    var rechazo = await sesion.PostAsync($"/api/v1/cobros/{a:D}/anular", new { motivo = "A" }, ct);
+                    rechazo.StatusCode.Should().Be(HttpStatusCode.Conflict, await rechazo.Cuerpo());
+                    anulaciones409++;
+                    (await sesion.PostAsync($"/api/v1/cobros/{b:D}/anular", new { motivo = "B" }, ct))
+                        .StatusCode.Should().Be(HttpStatusCode.OK);
+                    (await sesion.PostAsync($"/api/v1/cobros/{a:D}/anular", new { motivo = "A" }, ct))
+                        .StatusCode.Should().Be(HttpStatusCode.OK);
+                    anulaciones200 += 2;
+                }
+                else if (accion < 3)
+                {
+                    await RegistrarHttpAsync(Moneda.USD, Importe(aleatorio, 1m, 2_500m), aleatorio.Next(2) == 0 ? -1m : 0m);
+                }
+                else if (accion < 6)
+                {
+                    await RegistrarHttpAsync(Moneda.DOP, Importe(aleatorio, 60m, 150_000m), aleatorio.Next(2) == 0 ? -1m : 0m);
+                }
+                else if (accion < 9)
+                {
+                    var vigentes = await VigentesAsync();
+                    if (vigentes.Count > 0)
+                    {
+                        var elegido = vigentes[aleatorio.Next(vigentes.Count)];
+                        var saldoMoneda = await SaldoDeAsync(elegido.Moneda);
+                        var alcanza = Redondeo.Importe(saldoMoneda + elegido.Usado - elegido.Excedente) >= 0m;
+
+                        var anulado = await sesion.PostAsync(
+                            $"/api/v1/cobros/{elegido.Id:D}/anular", new { motivo = $"Paso {paso}" }, ct);
+
+                        anulado.StatusCode.Should().Be(
+                            alcanza ? HttpStatusCode.OK : HttpStatusCode.Conflict,
+                            "anular solo se permite si el crédito que dejó no se ha gastado: " + await anulado.Cuerpo());
+
+                        if (alcanza)
+                        {
+                            anulaciones200++;
+                        }
+                        else
+                        {
+                            anulaciones409++;
+                        }
+                    }
+                }
+                else
+                {
+                    // Fase concurrente: dos cobros en dólares a la vez sobre la misma cartera.
+                    concurrentes++;
+                    var barrera = new Barrier(2);
+                    var tareas = Enumerable.Range(0, 2).Select(_ =>
+                    {
+                        var importe = Importe(aleatorio, 500m, 4_000m);
+                        return Task.Run(async () =>
+                        {
+                            barrera.SignalAndWait(ct);
+                            return await sesion.PostAsync(
+                                "/api/v1/cobros",
+                                AyudaCobros.Peticion(
+                                    clienteId, contratoId, hoy, Moneda.USD, importe, formaPagoId, cuentaUsd),
+                                Guid.NewGuid().ToString("N"),
+                                ct);
+                        }, ct);
+                    }).ToArray();
+
+                    foreach (var respuesta in await Task.WhenAll(tareas))
+                    {
+                        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+                    }
+                }
+
+                await ComprobarInvariantesDeFilasAsync();
+            }
+            catch (Exception fallo)
+            {
+                throw new InvalidOperationException(
+                    $"Paso {paso} de {pasos} (semilla {semilla}): {fallo.Message}", fallo);
+            }
+        }
+
+        // Sin estas cuentas, un generador que dejara de anular o de provocar el 409 pasaría en verde.
+        anulaciones200.Should().BeGreaterThan(0);
+        anulaciones409.Should().BeGreaterThan(0, "tiene que haberse ejercitado la anulación de un cobro cuyo crédito se gastó");
+        concurrentes.Should().BeGreaterThan(0);
+
+        async Task<Guid> RegistrarHttpAsync(Moneda moneda, decimal importe, decimal usarCredito)
+        {
+            // -1: todo el crédito que haya en esa moneda; 0: ninguno; otro valor: ese importe.
+            var credito = usarCredito < 0m ? await SaldoDeAsync(moneda) : usarCredito;
+            var peticion = AyudaCobros.Peticion(
+                clienteId, contratoId, hoy, moneda, importe, formaPagoId,
+                moneda == Moneda.USD ? cuentaUsd : cuentaDop,
+                usarSaldoAFavor: credito,
+                tipoCambioAplicado: moneda == Moneda.DOP ? 60m : null);
+
+            var respuesta = await sesion.PostAsync("/api/v1/cobros", peticion, ct);
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+            return (await respuesta.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct)).GetProperty("id").GetGuid();
+        }
+
+        async Task<decimal> SaldoDeAsync(Moneda moneda) =>
+            await AyudaCobros.SaldoAsync(bd, contratoId, moneda, ct) ?? 0m;
+
+        async Task<List<(Guid Id, Moneda Moneda, decimal Usado, decimal Excedente)>> VigentesAsync()
+        {
+            await using var contexto = bd.CrearContexto(bd.CadenaApp);
+            var filas = await contexto.Cobro.AsNoTracking()
+                .Where(c => c.ContratoId == contratoId && c.Estado == EstadoCobro.Registrado)
+                .Select(c => new { c.Id, c.MonedaRecibida, c.SaldoFavorUsado, c.Excedente })
+                .ToListAsync(ct);
+
+            return [.. filas.Select(f => (f.Id, f.MonedaRecibida, f.SaldoFavorUsado, f.Excedente))];
+        }
+
+        async Task ComprobarInvariantesDeFilasAsync()
+        {
+            await using var contexto = bd.CrearContexto(bd.CadenaApp);
+
+            var facturas = await contexto.Factura.AsNoTracking()
+                .Where(f => f.ContratoId == contratoId)
+                .Select(f => new { f.Id, f.NetoACobrar })
+                .ToListAsync(ct);
+            var cobros = await contexto.Cobro.AsNoTracking()
+                .Where(c => c.ContratoId == contratoId)
+                .Select(c => new
+                {
+                    c.Id, c.Estado, c.MonedaRecibida, c.ImporteRecibido, c.SaldoFavorUsado, c.Excedente,
+                })
+                .ToListAsync(ct);
+            var asignaciones = await contexto.CobroAsignacion.AsNoTracking()
+                .Where(a => a.Cobro!.ContratoId == contratoId)
+                .Select(a => new { a.CobroId, a.FacturaId, a.Importe, a.ImporteRecibido, a.Vigente })
+                .ToListAsync(ct);
+            var saldos = await contexto.SaldoAFavor.AsNoTracking()
+                .Where(s => s.ContratoId == contratoId)
+                .ToListAsync(ct);
+
+            var estadoDe = cobros.ToDictionary(c => c.Id, c => c.Estado);
+
+            // 1. Ninguna factura cobrada por encima de su neto.
+            foreach (var factura in facturas)
+            {
+                var cobrado = asignaciones
+                    .Where(a => a.FacturaId == factura.Id && a.Vigente && estadoDe[a.CobroId] == EstadoCobro.Registrado)
+                    .Sum(a => a.Importe);
+                cobrado.Should().BeLessThanOrEqualTo(factura.NetoACobrar, $"factura {factura.Id}: sobrecobrada");
+            }
+
+            // 2. Un cobro anulado no deja asignaciones vigentes.
+            asignaciones.Where(a => a.Vigente && estadoDe[a.CobroId] == EstadoCobro.Anulado)
+                .Should().BeEmpty("lo anulado no cuenta");
+
+            foreach (var cobro in cobros.Where(c => c.Estado == EstadoCobro.Registrado))
+            {
+                // 3. Todo el dinero del cobro (recibido más crédito gastado) está en asignaciones o en excedente.
+                var consumido = asignaciones
+                    .Where(a => a.CobroId == cobro.Id && a.Vigente)
+                    .Sum(a => a.ImporteRecibido ?? a.Importe);
+                (consumido + cobro.Excedente).Should().Be(
+                    cobro.ImporteRecibido + cobro.SaldoFavorUsado, $"cobro {cobro.Id}: el dinero no cuadra");
+                cobro.Excedente.Should().BeGreaterThanOrEqualTo(0m);
+            }
+
+            // 4. El saldo a favor de cada moneda es exactamente el excedente menos el crédito gastado
+            // de los cobros vigentes, y nunca negativo.
+            foreach (var moneda in new[] { Moneda.USD, Moneda.DOP })
+            {
+                var esperado = cobros
+                    .Where(c => c.Estado == EstadoCobro.Registrado && c.MonedaRecibida == moneda)
+                    .Sum(c => c.Excedente - c.SaldoFavorUsado);
+                var real = saldos.Where(s => s.Moneda == moneda).Sum(s => s.Importe);
+
+                real.Should().Be(esperado, $"saldo a favor en {moneda}");
+                real.Should().BeGreaterThanOrEqualTo(0m);
+            }
+        }
     }
 
     private static decimal Importe(Random aleatorio, decimal minimo, decimal maximo) =>
