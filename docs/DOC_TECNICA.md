@@ -180,6 +180,7 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
   - **`cobrado` no incluye la retención.** La retención cierra el pendiente pero no es dinero que entró en caja, igual que el ajuste de F3-07. Ver la nota de F3-10 más arriba.
 - **Anular factura (una transacción):** factura y comprobante anulados; sus `cobro_asignacion` anuladas; cobros sin asignaciones vigentes → anulados; auditoría con la lista de afectados.
 - **Anticipo:** campos de nota en `reserva`; ninguna consulta económica los lee.
+- **Reservas (auditoría 26/10/2026):** `reserva_dia.hora_orientativa` (texto libre, 60 car., opcional) sustituye a `hora_entrada`/`hora_salida`; el tipo del día (medio día / completo) es el de la modalidad de la reserva (D11). `contrato.reserva_id` enlaza el contrato con la reserva mensual de la que nace: al activarlo la reserva pasa a `Convertida` y su candado se suelta. El trabajo de las 07:00 (`TrabajoFinContratos` → `ServicioReservas.ProcesarFechasAsync`) completa las cortas pasadas y pasa a `EnConflicto` la mensual cuya entrada llegó con el contrato enlazado sin activar. Con factura vigente (concepto `Reserva corta {id}`) la reserva no cambia días/importe/moneda ni se cancela. Reservar o activar contrato exige unidad activa, `estado_manual = Disponible` y modalidad admitida.
 
 ## 6. API
 - REST `/api/v1`, JSON, errores `ProblemDetails` con código de referencia.

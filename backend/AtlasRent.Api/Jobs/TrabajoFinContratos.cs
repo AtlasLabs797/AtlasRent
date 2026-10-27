@@ -14,11 +14,16 @@ namespace AtlasRent.Api.Jobs;
 /// contrato, no un gerente, y el historial tiene que poder distinguir las dos cosas.
 /// </para>
 /// </summary>
-public sealed class TrabajoFinContratos(ServicioFines fines)
+public sealed class TrabajoFinContratos(ServicioFines fines, ServicioReservas reservas)
 {
     public async Task EjecutarAsync(CancellationToken ct)
     {
         var resumen = await fines.FinalizarVencidosAsync(ct);
+        var (completadas, enConflicto) = await reservas.ProcesarFechasAsync(ct);
+        Log.Information(
+            "Reservas por fecha: {Completadas} completada(s), {EnConflicto} en conflicto",
+            completadas,
+            enConflicto);
 
         Log.Information(
             "Trabajo de fin terminado: {Finalizados} finalizado(s), {Omitidos} omitido(s), {Alertas} "

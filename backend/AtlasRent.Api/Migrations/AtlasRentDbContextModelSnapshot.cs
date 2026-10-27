@@ -1228,6 +1228,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("renta");
 
+                    b.Property<Guid?>("ReservaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reserva_id");
+
                     b.Property<Guid>("UnidadId")
                         .HasColumnType("uuid")
                         .HasColumnName("unidad_id");
@@ -1254,6 +1258,9 @@ namespace AtlasRent.Api.Migrations
 
                     b.HasIndex("FacturadoraId")
                         .HasDatabaseName("ix_contrato_facturadora_id");
+
+                    b.HasIndex("ReservaId")
+                        .HasDatabaseName("ix_contrato_reserva_id");
 
                     b.HasIndex("Estado", "CreatedAt")
                         .HasDatabaseName("ix_contrato_estado_created_at");
@@ -3925,13 +3932,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("date")
                         .HasColumnName("fecha");
 
-                    b.Property<TimeOnly>("HoraEntrada")
-                        .HasColumnType("time without time zone")
-                        .HasColumnName("hora_entrada");
-
-                    b.Property<TimeOnly>("HoraSalida")
-                        .HasColumnType("time without time zone")
-                        .HasColumnName("hora_salida");
+                    b.Property<string>("HoraOrientativa")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("hora_orientativa");
 
                     b.Property<Guid>("ReservaId")
                         .HasColumnType("uuid")
@@ -5220,6 +5224,12 @@ namespace AtlasRent.Api.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_contrato_subempresa_facturadora_id");
 
+                    b.HasOne("AtlasRent.Api.Data.Reserva", "Reserva")
+                        .WithMany()
+                        .HasForeignKey("ReservaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_contrato_reserva_reserva_id");
+
                     b.HasOne("AtlasRent.Api.Data.Unidad", "Unidad")
                         .WithMany()
                         .HasForeignKey("UnidadId")
@@ -5230,6 +5240,8 @@ namespace AtlasRent.Api.Migrations
                     b.Navigation("Cliente");
 
                     b.Navigation("Facturadora");
+
+                    b.Navigation("Reserva");
 
                     b.Navigation("Unidad");
                 });

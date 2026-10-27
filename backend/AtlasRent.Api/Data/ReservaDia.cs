@@ -3,12 +3,11 @@ using AtlasRent.Api.Dominio;
 namespace AtlasRent.Api.Data;
 
 /// <summary>
-/// Un día reservado de una reserva corta: fecha, hora de entrada, hora de salida y el tipo que se
-/// tipo derivado de esas horas (<see cref="TipoOcupacionDia.MedioDia"/> si son 4 horas exactas,
-/// <see cref="TipoOcupacionDia.DiaCompleto"/> si son la jornada entera).
+/// Un día reservado de una reserva corta: fecha, hora orientativa opcional y tipo
+/// (<see cref="TipoOcupacionDia.MedioDia"/> o <see cref="TipoOcupacionDia.DiaCompleto"/>).
 /// <para>
 /// <b>Esto es negocio, no bloqueo.</b> <c>ocupacion_dia</c> es el candado que escribe
-/// <c>ServicioDisponibilidad</c>, y solo sabe día y tipo; aquí además están las horas, que ni el
+/// <c>ServicioDisponibilidad</c>, y solo sabe día y tipo; aquí además está la hora orientativa, que ni el
 /// bloqueo ni la ocupación necesitan. Por eso las dos cosas no se pueden fusionar: al cancelar una
 /// reserva se apagan sus filas de <c>ocupacion_dia</c> y estas siguen ahí.
 /// </para>
@@ -26,16 +25,13 @@ public sealed class ReservaDia : IEntidadTrazada
     /// <summary>Día reservado.</summary>
     public DateOnly Fecha { get; set; }
 
-    /// <summary>Hora de entrada acordada.</summary>
-    public TimeOnly HoraEntrada { get; set; }
-
     /// <summary>
-    /// Hora de salida acordada. Siempre el mismo día que la entrada (docs/ESPECIFICACION.md §3.4);
-    /// el servicio rechaza cualquier otra cosa antes de llegar aquí.
+    /// Hora orientativa en texto libre y opcional (D11, §3.4: "sin franjas fijas"). No decide nada:
+    /// la capacidad sale del <see cref="Tipo"/>.
     /// </summary>
-    public TimeOnly HoraSalida { get; set; }
+    public string? HoraOrientativa { get; set; }
 
-    /// <summary>Tipo de la jornada de ese día, derivado de las horas.</summary>
+    /// <summary>Tipo de la jornada de ese día: el de la modalidad de la reserva.</summary>
     public TipoOcupacionDia Tipo { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

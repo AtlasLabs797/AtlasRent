@@ -318,27 +318,38 @@ public sealed class ServicioFacturacionPeriodica(
                 $"Esta reserva corta ya tiene su factura (número {yaExiste.Numero?.ToString() ?? "sin número"}).");
         }
 
-        var factura = await facturas.CrearAsync(
-            new FacturaPeticion
-            {
-                ClienteId = clienteId,
-                UnidadId = reserva.UnidadId,
-                ContratoId = null,
-                SerieId = serie.Id,
-                Moneda = reserva.Moneda,
-                // §3.4: la reserva corta se cobra antes de empezarla, así que vence el día en que
-                // empieza. La salida no se usa porque en un medio día o en un día completo no hay
-                // ninguna venta que se cobre más tarde.
-                FechaVencimiento = reserva.EntradaPrevista,
-                Concepto = concepto,
-            },
-            usuario,
-            ip,
-            // La clave de idempotencia se guarda en la emisión, que es la última escritura: si se
-            // guardara en el alta, el reintento devolvería el borrador y no la factura emitida.
-            null,
-            ct,
-            periodo);
+        // BUG-048: dos peticiones a la vez pasan la comprobación de arriba; la que pierde la clave
+        // única ix_factura_periodo_unico es un "ya facturada", no un error de servidor.
+        FacturaResumen factura;
+        try
+        {
+            factura = await facturas.CrearAsync(
+                new FacturaPeticion
+                {
+                    ClienteId = clienteId,
+                    UnidadId = reserva.UnidadId,
+                    ContratoId = null,
+                    SerieId = serie.Id,
+                    Moneda = reserva.Moneda,
+                    // §3.4: la reserva corta se cobra antes de empezarla, así que vence el día en que
+                    // empieza. La salida no se usa porque en un medio día o en un día completo no hay
+                    // ninguna venta que se cobre más tarde.
+                    FechaVencimiento = reserva.EntradaPrevista,
+                    Concepto = concepto,
+                },
+                usuario,
+                ip,
+                // La clave de idempotencia se guarda en la emisión, que es la última escritura: si se
+                // guardara en el alta, el reintento devolvería el borrador y no la factura emitida.
+                null,
+                ct,
+                periodo);
+        }
+        catch (DbUpdateException ex) when (EsDuplicadoDePeriodo(ex))
+        {
+            contexto.ChangeTracker.Clear();
+            throw new InvalidOperationException("Esta reserva corta ya tiene su factura.");
+        }
 
         await facturas.AgregarLineaAsync(
             factura.Id,
