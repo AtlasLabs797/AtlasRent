@@ -485,6 +485,57 @@ public sealed class PropuestaAprobacionTests(ContenedorBdFixture bd, ApiTestFact
             .Estado.Should().Be(EstadoRecordatorio.Pendiente, "el aviso se queda como estaba");
     }
 
+    /// <summary>BUG-039: si el correo falla, aprobar no deja la propuesta Aprobada y dice la causa.</summary>
+    [Fact]
+    public async Task SiElCorreoFallaLaPropuestaNoQuedaAprobada()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, escenario, _) = await EscenarioAsync(ct);
+        var propuesta = await ProponerAsync(admin, escenario.ClienteId, ct);
+
+        api.Doble.Fallar = new InvalidOperationException("smtp caído");
+
+        try
+        {
+            var respuesta = await admin.PostAsync($"/api/v1/ia/propuestas/{propuesta.Id:D}/aprobacion", new { }, ct);
+
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+            var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+            cuerpo.GetProperty("resultado").GetString().Should().NotBe(nameof(ResultadoSolicitud.Aprobada));
+            cuerpo.GetProperty("motivoCaducidad").GetString().Should().NotBeNullOrWhiteSpace("el aprobador recibe la causa");
+        }
+        finally
+        {
+            api.Doble.Restablecer();
+        }
+
+        (await AyudaRecordatorios.AvisosAsync(bd, escenario.ClienteId, ct))
+            .Single()
+            .Estado.Should().Be(EstadoRecordatorio.Pendiente, "el aviso no salió y sigue pendiente");
+    }
+
+    /// <summary>BUG-039: si el cliente se pausó tras proponer, el aviso se omite y la propuesta no queda Aprobada.</summary>
+    [Fact]
+    public async Task SiElClienteSePausaLaPropuestaNoQuedaAprobada()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, escenario, _) = await EscenarioAsync(ct);
+        var propuesta = await ProponerAsync(admin, escenario.ClienteId, ct);
+
+        await AyudaRecordatorios.PausarAsync(admin, escenario.ClienteId, true, ct);
+
+        var respuesta = await admin.PostAsync($"/api/v1/ia/propuestas/{propuesta.Id:D}/aprobacion", new { }, ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        cuerpo.GetProperty("resultado").GetString().Should().NotBe(nameof(ResultadoSolicitud.Aprobada));
+        cuerpo.GetProperty("motivoCaducidad").GetString().Should().Contain("pausados");
+
+        (await AyudaRecordatorios.CorreosDe(bd, api, escenario.ClienteId, ct)).Should().BeEmpty();
+    }
+
     // ---------------------------------------------------------------- ayuda
 
     /// <summary>

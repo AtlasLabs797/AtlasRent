@@ -273,13 +273,19 @@ public sealed class ServicioEnvios(
         await ExigirAsync(AccionDe(envio.TipoDocumento), recurso, usuario, ct);
         await ExigirContenidoAsync(envio.TipoDocumento, recurso, usuario, ct);
 
-        if (envio.Estado is EstadoEnvio.Enviado or EstadoEnvio.Entregado or EstadoEnvio.Leido)
+        // Salido, o ya reclamado por otro intento (BUG-038): no se manda de nuevo. `Enviando` es un
+        // envío que alguien ya sacó hacia el servidor de correo; si ese intento murió antes de apuntar
+        // el resultado no se sabe si el correo salió, y reenviar arriesga el duplicado. Se deja para
+        // revisión manual (el barrido avisa pasado un tiempo, AvisarEnviandoAtascadoAsync).
+        if (envio.Estado is EstadoEnvio.Enviado or EstadoEnvio.Entregado or EstadoEnvio.Leido
+            or EstadoEnvio.Enviando)
         {
             return envio.Estado;
         }
 
         var pdf = cifrado.DescifrarBytes(envio.PdfCopia);
         var nombreArchivo = envio.NombreArchivo;
+        var modificadaAt = envio.DocumentoModificadoAt;
 
         if (pdf.Length == 0)
         {
@@ -295,8 +301,34 @@ public sealed class ServicioEnvios(
 
             pdf = documento.Pdf;
             nombreArchivo = documento.NombreArchivo;
-            envio.DocumentoModificadoAt ??= documento.ModificadaAt;
+            modificadaAt ??= documento.ModificadaAt;
         }
+
+        // BUG-038: la fila se reclama con un UPDATE condicional antes de llamar al servidor de correo.
+        // Dos trabajos simultáneos (o un reintento de Hangfire tras un fallo al guardar) compiten por
+        // este UPDATE y solo uno lo gana; el que pierde no manda nada. El intento se cuenta aquí, en
+        // el mismo UPDATE, así que el contador refleja lo que pasó aunque el proceso muera a mitad.
+        var ahora = reloj.GetUtcNow();
+        var reclamada = await contexto.Envio
+            .Where(e => e.Id == envioId
+                && (e.Estado == EstadoEnvio.Pendiente || e.Estado == EstadoEnvio.Fallido))
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(e => e.Estado, EstadoEnvio.Enviando)
+                    .SetProperty(e => e.Intentos, e => e.Intentos + 1)
+                    .SetProperty(e => e.UpdatedAt, ahora)
+                    .SetProperty(e => e.UpdatedBy, usuario),
+                ct);
+
+        // La entidad ya estaba rastreada y el UPDATE fue directo a la BD: se refresca para no guardar
+        // encima del estado nuevo con el viejo.
+        await contexto.Entry(envio).ReloadAsync(ct);
+
+        if (reclamada == 0)
+        {
+            return envio.Estado;
+        }
+
+        envio.DocumentoModificadoAt = modificadaAt;
 
         var mensaje = new MensajeCorreo(
             envio.DestinatarioEmail,
@@ -305,10 +337,6 @@ public sealed class ServicioEnvios(
             envio.Cuerpo,
             nombreArchivo,
             pdf);
-
-        // El intento se cuenta antes de llamar al servidor, igual que en el envío directo: si esto
-        // se cae a mitad, el contador refleja lo que pasó de verdad.
-        envio.Intentos += 1;
 
         EstadoEnvio estado;
         string? error = null;
@@ -355,6 +383,52 @@ public sealed class ServicioEnvios(
 
         return estado;
     }
+
+    /// <summary>
+    /// Deja una fila encolada como <c>Fallido</c> sin llamar al servidor de correo (BUG-038): el
+    /// trabajo lo usa cuando el usuario que pidió el envío ya no tiene permiso. Reintentar no lo va a
+    /// arreglar, y dejarla <c>Pendiente</c> haría que el barrido la reencolara para siempre.
+    /// </summary>
+    public async Task MarcarFallidoAsync(Guid envioId, string motivo, Guid usuario, string ip, CancellationToken ct)
+    {
+        var envio = await contexto.Envio.FirstOrDefaultAsync(e => e.Id == envioId, ct);
+
+        if (envio is null || envio.Estado != EstadoEnvio.Pendiente)
+        {
+            return;
+        }
+
+        envio.Estado = EstadoEnvio.Fallido;
+        envio.UltimoError = motivo;
+
+        await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Envio, envio,
+            esAlta: false,
+            accion: "envio.fallido",
+            entidad: "envio",
+            usuario,
+            ip,
+            mutacion: null,
+            proyectar: ARespuesta,
+            datosAuditoria: DatosAuditoria,
+            ct: ct);
+
+        await AvisarFalloAsync(envio, motivo, ct);
+    }
+
+    /// <summary>
+    /// Alerta de un envío que lleva demasiado en <c>Enviando</c> (BUG-038): se reclamó y nadie apuntó el
+    /// resultado, así que no se sabe si el correo salió. Hay que mirarlo a mano; no se reenvía solo.
+    /// </summary>
+    public async Task AvisarEnviandoAtascadoAsync(Envio envio, CancellationToken ct) =>
+        await alertas.RegistrarAsync(
+            TipoAlertaEnvioFallido,
+            $"envio:{envio.Id:D}:atascado",
+            $"El envío '{envio.Id:D}' ({envio.TipoDocumento} a {envio.DestinatarioEmail}) lleva mucho tiempo "
+                + "en curso sin resultado: no se sabe si el correo salió. Compruébalo en el servidor de correo "
+                + "antes de reenviarlo.",
+            ct);
 
     // ---------------------------------------------------------------- lectura
 

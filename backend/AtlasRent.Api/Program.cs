@@ -411,6 +411,7 @@ builder.Services.AddScoped<IColaEnvios>(servicios => servicios.GetService<IBackg
     : new ColaEnviosSinServidor());
 builder.Services.AddScoped<ServicioEnviosMasivos>();
 builder.Services.AddScoped<TrabajoEnvio>();
+builder.Services.AddScoped<TrabajoBarridoEnvios>();
 
 // SEC-023: aviso de IP nueva al administrador (alerta + correo por la cola). Misma fábrica que
 // IColaEnvios, pero sin servidor de jobs no hay cola y no se falla: el login no puede depender de ella.

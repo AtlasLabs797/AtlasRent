@@ -37,6 +37,7 @@ public sealed class ServicioEnviosMasivos(
     ServicioFacturas facturas,
     IPolicyService politica,
     IColaEnvios cola,
+    ServicioEnvios envios,
     TimeProvider reloj)
 {
     /// <summary>
@@ -206,6 +207,70 @@ public sealed class ServicioEnviosMasivos(
         return respuesta;
     }
 
+    // ---------------------------------------------------------------- barrido (BUG-037)
+
+    /// <summary>Cuánto lleva una fila <c>Pendiente</c> de un lote sin moverse para que el barrido la reencole.</summary>
+    public static readonly TimeSpan EsperaBarrido = TimeSpan.FromMinutes(30);
+
+    /// <summary>Cuánto lleva una fila <c>Enviando</c> sin resultado para avisar de que hay que revisarla.</summary>
+    public static readonly TimeSpan EsperaEnviandoAtascado = TimeSpan.FromMinutes(60);
+
+    private const string IpDelBarrido = "127.0.0.1";
+
+    /// <summary>
+    /// Reencola las filas <c>Pendiente</c> de lotes que llevan más de <see cref="EsperaBarrido"/> sin
+    /// moverse (BUG-037). Confirmar encola <b>después</b> del commit; si el proceso cae entre medias,
+    /// la fila queda <c>Pendiente</c> sin trabajo. El barrido es idempotente: reencolar una fila que sí
+    /// tenía trabajo es inocuo porque <c>EnviarPendienteAsync</c> la reclama con un UPDATE condicional
+    /// y el segundo trabajo no manda nada. Se sella <c>updated_at</c> al reencolar para no repetirlo
+    /// en cada pasada mientras la cola va lenta. Además avisa de las filas <c>Enviando</c> atascadas.
+    /// </summary>
+    /// <returns>Cuántas filas reencoló.</returns>
+    public async Task<int> BarrerPendientesAsync(CancellationToken ct)
+    {
+        var ahora = reloj.GetUtcNow();
+        var limite = ahora - EsperaBarrido;
+
+        var huerfanas = await contexto.Envio
+            .Where(e => e.LoteId != null
+                && e.Estado == EstadoEnvio.Pendiente
+                && (e.UpdatedAt ?? e.CreatedAt) < limite)
+            .OrderBy(e => e.CreatedAt)
+            .Take(500)
+            .ToListAsync(ct);
+
+        var reencoladas = 0;
+
+        foreach (var envio in huerfanas)
+        {
+            var usuario = envio.UpdatedBy ?? envio.CreatedBy;
+
+            if (usuario is null)
+            {
+                continue;
+            }
+
+            envio.UpdatedAt = ahora;
+            await contexto.SaveChangesAsync(ct);
+
+            cola.EncolarEnvio(envio.Id, usuario.Value, IpDelBarrido);
+            reencoladas++;
+        }
+
+        var limiteAtasco = ahora - EsperaEnviandoAtascado;
+        var atascadas = await contexto.Envio.AsNoTracking()
+            .Where(e => e.Estado == EstadoEnvio.Enviando && (e.UpdatedAt ?? e.CreatedAt) < limiteAtasco)
+            .Take(100)
+            .ToListAsync(ct);
+
+        foreach (var envio in atascadas)
+        {
+            await envios.AvisarEnviandoAtascadoAsync(envio, ct);
+        }
+
+        return reencoladas;
+    }
+
     // ---------------------------------------------------------------- progreso
 
     /// <summary>
@@ -231,7 +296,7 @@ public sealed class ServicioEnviosMasivos(
             filas.Count,
             filas.Count(e => e.Estado is EstadoEnvio.Enviado or EstadoEnvio.Entregado or EstadoEnvio.Leido),
             filas.Count(e => e.Estado == EstadoEnvio.Fallido),
-            filas.Count(e => e.Estado == EstadoEnvio.Pendiente),
+            filas.Count(e => e.Estado is EstadoEnvio.Pendiente or EstadoEnvio.Enviando),
             [.. filas
                 .Where(e => e.Estado == EstadoEnvio.Fallido)
                 .OrderBy(e => e.DocumentoId)
@@ -284,6 +349,8 @@ public sealed class ServicioEnviosMasivos(
         foreach (var envio in fallidos)
         {
             envio.Estado = EstadoEnvio.Pendiente;
+            envio.UpdatedAt = reloj.GetUtcNow();
+            envio.UpdatedBy = usuario;
         }
 
         var respuesta = new ReintentoLote(

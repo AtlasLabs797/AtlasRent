@@ -2,7 +2,7 @@ namespace AtlasRent.Api.Dominio;
 
 /// <summary>
 /// Estado de un envío de correo (docs/ESPECIFICACION.md §3.14). Son los cinco estados de la
-/// especificación y ni uno más.
+/// especificación más `Enviando`, interno (BUG-038).
 /// <para>
 /// <c>Entregado</c> y <c>Leido</c> no los pone este servicio: salen de las respuestas del servidor
 /// de correo (un enlace de seguimiento o un retorno), y hasta que exista esa integración ningún
@@ -34,4 +34,11 @@ public enum EstadoEnvio
     /// volver a mandar porque el antidiplicado (§3.14) solo mira los envíos que sí salieron.
     /// </summary>
     Fallido = 5,
+
+    /// <summary>
+    /// Reclamado por un trabajo que está llamando (o llamó) al servidor de correo y aún no ha apuntado
+    /// el resultado (BUG-038). Si el proceso muere ahí no se sabe si el correo salió, así que ningún
+    /// reintento automático lo vuelve a mandar: queda para revisión manual (alerta tras un tiempo).
+    /// </summary>
+    Enviando = 6,
 }

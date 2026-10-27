@@ -232,7 +232,27 @@ public sealed class ServicioPropuestasAgente(
         // El envío va sin `Idempotency-Key`: la clave de esta petición responde por la propuesta, y la
         // que se guarda es la respuesta de aprobar. El aviso, además, no se puede mandar dos veces
         // porque `EnviarAsync` solo entra si sigue `Pendiente`.
-        await recordatorios.EnviarAsync(payload.RecordatorioId, aprobador, ip, mutacion: null, ct);
+        var envio = await recordatorios.EnviarAsync(payload.RecordatorioId, aprobador, ip, mutacion: null, ct);
+
+        // BUG-039: aprobar no es «se mandó». Si el aviso no quedó Enviado (se omitió porque el cliente
+        // pagó o se pausó, o el correo falló) la propuesta no se marca Aprobada: caduca con la causa, que
+        // le llega a quien aprobó en la respuesta. El aviso sigue su camino en Recordatorios.
+        if (envio.Estado != EstadoRecordatorio.Enviado)
+        {
+            var motivo = envio.Estado == EstadoRecordatorio.Omitido
+                ? $"No se envió: {envio.MotivoOmision}"
+                : "El envío no salió. El aviso sigue pendiente en Recordatorios y se puede reintentar desde ahí.";
+
+            return await ResolverAsync(
+                solicitud,
+                ResultadoSolicitud.Caducada,
+                AccionCaducar,
+                motivo.Length > 200 ? motivo[..200] : motivo,
+                aprobador,
+                ip,
+                mutacion,
+                ct);
+        }
 
         solicitud.Resultado = ResultadoSolicitud.Aprobada;
         solicitud.MotivoCaducidad = null;

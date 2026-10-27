@@ -1,5 +1,7 @@
+using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.Services;
+using Hangfire;
 using Serilog;
 
 namespace AtlasRent.Api.Jobs;
@@ -21,9 +23,27 @@ namespace AtlasRent.Api.Jobs;
 /// </summary>
 public sealed class TrabajoEnvio(ServicioEnvios envios)
 {
+    // BUG-038: tres intentos y no los diez por defecto. Un fallo del servidor de correo no llega aquí
+    // (EnviarPendienteAsync lo convierte en Fallido); lo que se reintenta es un fallo transitorio de BD,
+    // y reintentar es seguro porque la fila se reclama antes de enviar y un reintento no reenvía.
+    [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
     public async Task EjecutarAsync(Guid envioId, Guid usuario, string ip, CancellationToken ct)
     {
-        var estado = await envios.EnviarPendienteAsync(envioId, usuario, ip, ct);
+        EstadoEnvio estado;
+
+        try
+        {
+            estado = await envios.EnviarPendienteAsync(envioId, usuario, ip, ct);
+        }
+        catch (PermisoDenegadoException)
+        {
+            // Reintentar no cambia un permiso. La fila queda Fallido (visible en el lote) en vez de
+            // Pendiente, o el barrido la reencolaría para siempre.
+            await envios.MarcarFallidoAsync(
+                envioId, "El usuario que pidió el envío ya no tiene permiso para mandarlo.", usuario, ip, ct);
+            Log.Warning("Envío masivo: el envío {EnvioId} se descarta por falta de permiso.", envioId);
+            return;
+        }
 
         if (estado == EstadoEnvio.Enviado)
         {
