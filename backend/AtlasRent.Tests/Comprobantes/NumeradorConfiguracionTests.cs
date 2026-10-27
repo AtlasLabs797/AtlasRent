@@ -127,6 +127,66 @@ public sealed class NumeradorConfiguracionTests(ContenedorBdFixture bd, ApiTestF
     }
 
     /// <summary>
+    /// BUG-046: con algun numero emitido, moneda, prefijo y tipo quedan fijos; el resto se puede editar.
+    /// </summary>
+    [Theory]
+    [InlineData("moneda")]
+    [InlineData("prefijo")]
+    [InlineData("tipo")]
+    public async Task NoSePuedeCambiarMonedaPrefijoNiTipoDeUnaSerieConNumerosEmitidos(string campo)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var admin = await AyudaFacturas.SesionAsync(bd, api, Roles.Admin, ct);
+
+        var serieId = await AyudaComprobante.SerieFiscalAsync(admin, ct);
+        var clienteId = await AyudaFacturas.CrearClienteAsync(admin, ct);
+        var hoy = await AyudaFacturas.HoyAsync(admin, ct);
+        await AyudaComprobante.NumeradorAsync(admin, serieId, hoy, ct);
+        var facturaId = await AyudaComprobante.BorradorAsync(admin, clienteId, serieId, ct);
+        (await admin.PostAsync($"/api/v1/facturas/{facturaId:D}/emitir", new { }, ct)).StatusCode
+            .Should().Be(HttpStatusCode.OK);
+
+        var actual = await AyudaComprobante.SerieAsync(admin, serieId, ct);
+        object Cuerpo(string? moneda, string prefijo, string tipo, string? condiciones) => new
+        {
+            numero = actual.GetProperty("numero").GetInt32(),
+            prefijo,
+            tipo,
+            moneda,
+            condicionesPago = condiciones,
+            sumaAFacturado = true,
+            sumaASaldos = true,
+            generaComprobante = true,
+            activa = true,
+        };
+
+        var prefijoActual = actual.GetProperty("prefijo").GetString()!;
+        var cambio = campo switch
+        {
+            "moneda" => Cuerpo("USD", prefijoActual, "Fiscal", null),
+            "prefijo" => Cuerpo(null, $"X{Guid.NewGuid():N}"[..8], "Fiscal", null),
+            _ => Cuerpo(null, prefijoActual, "Normal", null),
+        };
+
+        var respuesta = await admin.PutAsync($"/api/v1/config/series/{serieId:D}", cambio, ct);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await respuesta.Content.ReadAsStringAsync(ct)).Should().Contain("serie nueva");
+        await using (var contexto = bd.CrearContexto(bd.CadenaApp))
+        {
+            var serie = await contexto.Serie.AsNoTracking().SingleAsync(s => s.Id == serieId, ct);
+            serie.Prefijo.Should().Be(prefijoActual);
+            serie.Moneda.Should().BeNull();
+            serie.Tipo.Should().Be(AtlasRent.Api.Dominio.TipoSerie.Fiscal);
+        }
+
+        // Lo que no cambia el sentido de los numeros sigue siendo editable.
+        var inocuo = await admin.PutAsync(
+            $"/api/v1/config/series/{serieId:D}", Cuerpo(null, prefijoActual, "Fiscal", "Pago a 30 dias"), ct);
+        inocuo.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>
     /// Una serie que no ha emitido nada sí admite el cambio: el veto es para las facturas que ya
     /// salieron, no una regla de que la bandera no se pueda tocar nunca.
     /// </summary>

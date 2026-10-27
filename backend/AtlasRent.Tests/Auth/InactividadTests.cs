@@ -3,6 +3,7 @@ using AtlasRent.Api.Services;
 using AtlasRent.Tests.Infra;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AtlasRent.Tests.Auth;
@@ -56,6 +57,38 @@ public sealed class InactividadTests(ContenedorBdFixture bd, ApiTestFactory api)
         sesiones.Should().OnlyContain(s => s.RevocadaAt != null);
         // La rotada conserva su motivo de rotación; la que estaba en uso cae por inactividad.
         sesiones.Should().Contain(s => s.MotivoRevocacion == MotivosRevocacion.Inactividad);
+    }
+
+    [Fact]
+    public async Task LaValidacionDeUnaSesionInactivaMasDe30MinutosLaRechazaYLaRevocaPorInactividad()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var usuario = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, ct: ct);
+        using var cliente = api.CrearCliente();
+        var login = await AyudaAuth.LoginAsync(cliente, usuario.NombreAcceso, Contrasena, ct);
+        login.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        Guid sesionId;
+        await using (var contexto = bd.CrearContexto(bd.CadenaApp))
+        {
+            sesionId = (await contexto.Sesion.AsNoTracking().SingleAsync(s => s.UsuarioId == usuario.Id, ct)).Id;
+        }
+
+        api.Reloj.Avanzar(TimeSpan.FromMinutes(31));
+
+        // Se llama al servicio directamente: por la API, el JWT de 15 minutos ya habria caducado
+        // antes de llegar a esta regla.
+        using var ambito = api.Services.CreateScope();
+        var servicio = ambito.ServiceProvider.GetRequiredService<ServicioSesiones>();
+        var resultado = await servicio.ValidarAsync(sesionId, ct);
+
+        resultado.Valida.Should().BeFalse();
+        resultado.CodigoReferencia.Should().Be(Problemas.SesionExpirada);
+
+        await using var comprobacion = bd.CrearContexto(bd.CadenaApp);
+        var sesion = await comprobacion.Sesion.AsNoTracking().SingleAsync(s => s.Id == sesionId, ct);
+        sesion.RevocadaAt.Should().NotBeNull();
+        sesion.MotivoRevocacion.Should().Be(MotivosRevocacion.Inactividad);
     }
 
     private static Task<HttpResponseMessage> EnviarRefresco(HttpClient cliente, string csrf, CancellationToken ct)

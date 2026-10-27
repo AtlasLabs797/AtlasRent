@@ -1,0 +1,2 @@
+# Los literales multilinea de los tests y el analisis del volcado dependen del fin de linea.
+*.cs text eol=lf

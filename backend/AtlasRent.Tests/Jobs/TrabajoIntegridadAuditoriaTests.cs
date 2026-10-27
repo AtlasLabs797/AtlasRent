@@ -5,6 +5,7 @@ using AtlasRent.Api.Services;
 using AtlasRent.Tests.Infra;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Xunit;
 
 namespace AtlasRent.Tests.Jobs;
@@ -33,7 +34,7 @@ public sealed class TrabajoIntegridadAuditoriaTests(ContenedorBdFixture bd)
         var sesion = new ContextoSesion();
         await using var contexto = bd.CrearContexto(bd.CadenaApp, sesion);
 
-        var trabajo = new TrabajoIntegridadAuditoria(sesion, contexto, new IntegridadAuditoria(contexto), new OpcionesLimites());
+        var trabajo = new TrabajoIntegridadAuditoria(sesion, contexto, new IntegridadAuditoria(contexto), new OpcionesLimites(), new ServicioAlertas(contexto, TimeProvider.System));
         var resultado = await trabajo.EjecutarAsync(ct);
 
         TrabajoIntegridadAuditoria.RolRequisito.Should().Be(Roles.Admin);
@@ -49,6 +50,64 @@ public sealed class TrabajoIntegridadAuditoriaTests(ContenedorBdFixture bd)
 
         sinRol.TotalRegistros.Should().Be(0, "la RLS esconde auditoría a quien no es admin ni gerente");
         sinRol.Integra.Should().BeTrue("y por eso, sin el rol del trabajo, el resultado es un falso íntegro");
+    }
+
+    /// <summary>BUG-045: una cadena rota deja alerta en la tabla, y repetirla no duplica la fila.</summary>
+    [Fact]
+    public async Task UnaCadenaRotaDejaUnaSolaAlertaViva()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var conexion = new NpgsqlConnection(bd.CadenaSuperusuario);
+        await conexion.OpenAsync(ct);
+        await Ejecutar(conexion, "DELETE FROM alerta WHERE clave = 'integridad-auditoria'", ct);
+
+        await SembrarAuditoriaDeEmpleadoAsync(ct);
+        await Ejecutar(conexion, "ALTER TABLE auditoria DISABLE TRIGGER trg_auditoria_inmutable", ct);
+        await Ejecutar(
+            conexion,
+            "UPDATE auditoria SET resultado = 'denegado' WHERE accion = 'trabajo-integridad-f1-12'",
+            ct);
+        await Ejecutar(conexion, "ALTER TABLE auditoria ENABLE TRIGGER trg_auditoria_inmutable", ct);
+
+        for (var i = 0; i < 2; i++)
+        {
+            var sesion = new ContextoSesion();
+            await using var contexto = bd.CrearContexto(bd.CadenaApp, sesion);
+            var trabajo = new TrabajoIntegridadAuditoria(
+                sesion, contexto, new IntegridadAuditoria(contexto), new OpcionesLimites(),
+                new ServicioAlertas(contexto, TimeProvider.System));
+
+            (await trabajo.EjecutarAsync(ct)).Integra.Should().BeFalse();
+        }
+
+        await using var consulta = new NpgsqlCommand(
+            "SELECT repeticiones FROM alerta WHERE tipo = 'auditoria' AND clave = 'integridad-auditoria' "
+            + "AND resuelta_at IS NULL",
+            conexion);
+        var repeticiones = new List<int>();
+        await using (var lector = await consulta.ExecuteReaderAsync(ct))
+        {
+            while (await lector.ReadAsync(ct))
+            {
+                repeticiones.Add(lector.GetInt32(0));
+            }
+        }
+
+        repeticiones.Should().Equal(2);
+
+        // Se deja la fila como estaba para no dejar la cadena rota a los demas tests.
+        await Ejecutar(conexion, "ALTER TABLE auditoria DISABLE TRIGGER trg_auditoria_inmutable", ct);
+        await Ejecutar(
+            conexion,
+            "UPDATE auditoria SET resultado = 'permitido' WHERE accion = 'trabajo-integridad-f1-12'",
+            ct);
+        await Ejecutar(conexion, "ALTER TABLE auditoria ENABLE TRIGGER trg_auditoria_inmutable", ct);
+    }
+
+    private static async Task Ejecutar(NpgsqlConnection conexion, string sql, CancellationToken ct)
+    {
+        await using var orden = new NpgsqlCommand(sql, conexion);
+        await orden.ExecuteNonQueryAsync(ct);
     }
 
     /// <summary>
