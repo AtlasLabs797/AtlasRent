@@ -202,7 +202,11 @@ public sealed class ServicioRenovaciones(
         while (contrato.FechaFinVigente < hoy)
         {
             var inicio = contrato.FechaFinVigente;
-            var fin = inicio.AddMonths(contrato.RenovacionMeses);
+            // Desde el inicio del contrato y no encadenando desde el fin vigente (BUG-043): encadenar
+            // AddMonths deriva a fin de mes (31/01 -> 28/02 -> 28/03). El bloque N (el 1 es el inicial)
+            // termina en inicio + duración inicial + (N-1) bloques de renovación.
+            var fin = contrato.FechaInicio.AddMonths(
+                contrato.DuracionInicialMeses + ((numeroBloque - 1) * contrato.RenovacionMeses));
 
             // Los incrementos cuya FechaVigencia es anterior o igual al inicio del bloque nuevo: uno con fecha
             // futura no adelanta la renta, espera a su bloque. Con más de un bloque de atraso, el

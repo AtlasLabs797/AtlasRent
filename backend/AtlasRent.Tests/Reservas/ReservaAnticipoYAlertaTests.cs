@@ -167,79 +167,73 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
     }
 
     /// <summary>
-    /// El trabajo diario avisa de las reservas activas que entran dentro de 7 días, ni un día antes
-    /// ni un día después, y correrlo dos veces no deja dos alertas: la clave de deduplicación lleva
-    /// la reserva.
-    /// <para>
-    /// Se ejecuta el trabajo directamente en vez de esperar al planificador, que es apagado en las
-    /// pruebas; lo que se prueba es el trabajo, no el cron. El cron se comprueba en
-    /// <c>ProgramacionJobsTests</c>.
-    /// </para>
+    /// §3.4: la reserva mensual que lleva 7 días sin convertirse avisa, una vez y de forma
+    /// persistente (BUG-028). A los 6 días todavía no; a los 7 sí; el trabajo repetido no duplica y
+    /// un día más tarde (el trabajo no corrió) sigue avisando.
     /// </summary>
     [Fact]
-    public async Task LaAlertaDeSieteDiasNoSeDuplica()
+    public async Task LaReservaMensualSinConvertirAvisaALosSieteDiasYNoSeDuplica()
     {
         var ct = TestContext.Current.CancellationToken;
         using var sesion = await SesionAsync(ct);
         var clienteId = await AyudaReserva.ClienteAsync(sesion, ct);
         var hoy = TiempoNegocio.Hoy();
 
-        var enSiete = await AyudaReserva.CrearAsync(
-            sesion, AyudaReserva.Mensual(clienteId, await AyudaReserva.UnidadAsync(sesion, ct), hoy.AddDays(7)), ct);
-        var enOcho = await AyudaReserva.CrearAsync(
-            sesion, AyudaReserva.Mensual(clienteId, await AyudaReserva.UnidadAsync(sesion, ct), hoy.AddDays(8)), ct);
-        var enSeis = await AyudaReserva.CrearAsync(
-            sesion, AyudaReserva.Mensual(clienteId, await AyudaReserva.UnidadAsync(sesion, ct), hoy.AddDays(6)), ct);
+        var id = await AyudaReserva.CrearAsync(
+            sesion, AyudaReserva.Mensual(clienteId, await AyudaReserva.UnidadAsync(sesion, ct), hoy.AddDays(60)), ct);
+        var clave = TrabajoAlertaReserva.Clave(id);
 
-        var reloj = new RelojPrueba();
-        await using var contexto = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
-        var trabajo = new TrabajoAlertaReserva(contexto, new ServicioAlertas(contexto, reloj), reloj);
+        await EjecutarAsync(TimeSpan.FromDays(6), ct);
+        (await AlertasDeAsync(clave, ct)).Should().BeEmpty("a los 6 días todavía no avisa");
 
-        await trabajo.EjecutarAsync(ct);
-        await trabajo.EjecutarAsync(ct);
+        await EjecutarAsync(TimeSpan.FromDays(7), ct);
+        await EjecutarAsync(TimeSpan.FromDays(8), ct);
+        await EjecutarAsync(TimeSpan.FromDays(9), ct);
 
-        var claves = new[]
-        {
-            TrabajoAlertaReserva.Clave(enSiete),
-            TrabajoAlertaReserva.Clave(enOcho),
-            TrabajoAlertaReserva.Clave(enSeis),
-        };
-        var alertas = await contexto.Alerta.AsNoTracking()
-            .Where(a => claves.Contains(a.Clave))
-            .ToListAsync(ct);
-
-        alertas.Should().ContainSingle("solo avisa de la que entra dentro de 7 días");
-        alertas[0].Clave.Should().Be(TrabajoAlertaReserva.Clave(enSiete));
+        var alertas = await AlertasDeAsync(clave, ct);
+        alertas.Should().ContainSingle("tres ejecuciones son una alerta, no tres");
         alertas[0].Tipo.Should().Be("reserva");
-        alertas[0].Repeticiones.Should().Be(2,
-            "dos ejecuciones del trabajo son una alerta con dos repeticiones, no dos alertas");
+        alertas[0].ResueltaAt.Should().BeNull();
+        alertas[0].Repeticiones.Should().Be(3);
     }
 
-    /// <summary>
-    /// Una reserva que no está activa no entra en el aviso: una cancelada cuya entrada prevista sea
-    /// dentro de 7 días ya no tiene nada que avisar.
-    /// </summary>
+    /// <summary>La reserva cancelada cierra el aviso que tuviera abierto.</summary>
     [Fact]
-    public async Task UnaReservaCanceladaNoSeAvisa()
+    public async Task UnaReservaCanceladaCierraElAviso()
     {
         var ct = TestContext.Current.CancellationToken;
         using var sesion = await SesionAsync(ct);
         var clienteId = await AyudaReserva.ClienteAsync(sesion, ct);
         var unidadId = await AyudaReserva.UnidadAsync(sesion, ct);
-        var entrada = TiempoNegocio.Hoy().AddDays(7);
 
         var id = await AyudaReserva.CrearAsync(
-            sesion, AyudaReserva.Mensual(clienteId, unidadId, entrada), ct);
+            sesion, AyudaReserva.Mensual(clienteId, unidadId, TiempoNegocio.Hoy().AddDays(60)), ct);
+        var clave = TrabajoAlertaReserva.Clave(id);
+
+        await EjecutarAsync(TimeSpan.FromDays(7), ct);
+        (await AlertasDeAsync(clave, ct)).Should().ContainSingle().Which.ResueltaAt.Should().BeNull();
+
         (await sesion.DeleteAsync($"/api/v1/reservas/{id:D}", ct))
             .StatusCode.Should().Be(HttpStatusCode.OK);
+        await EjecutarAsync(TimeSpan.FromDays(8), ct);
 
+        (await AlertasDeAsync(clave, ct)).Should().ContainSingle()
+            .Which.ResueltaAt.Should().NotBeNull("cancelada ya no hay nada que convertir");
+    }
+
+    private async Task EjecutarAsync(TimeSpan avance, CancellationToken ct)
+    {
         var reloj = new RelojPrueba();
+        reloj.Avanzar(avance);
         await using var contexto = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
         await new TrabajoAlertaReserva(contexto, new ServicioAlertas(contexto, reloj), reloj)
             .EjecutarAsync(ct);
+    }
 
-        (await contexto.Alerta.CountAsync(a => a.Clave == TrabajoAlertaReserva.Clave(id), ct))
-            .Should().Be(0, "una reserva cancelada no genera avisos");
+    private async Task<List<Alerta>> AlertasDeAsync(string clave, CancellationToken ct)
+    {
+        await using var contexto = bd.CrearContexto(bd.CadenaApp, new ContextoSesion());
+        return await contexto.Alerta.AsNoTracking().Where(a => a.Clave == clave).ToListAsync(ct);
     }
 
     private async Task<SesionCliente> SesionAsync(CancellationToken ct)

@@ -553,23 +553,51 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
         using var empleado = await SesionAsync(Roles.Empleado, ct);
         using var gerente = await SesionAsync(Roles.Gerente, ct);
 
-        var contratoId = await ContratoActivoAsync(empleado, gerente, Vencido(38), 50_000m, ct);
-        var finInicial = await FinInicialAsync(contratoId, ct);
+        // Fechas fijas y reloj fijo, con los resultados escritos a mano: contrato del 31/03/2022 de
+        // un año (fin inicial 31/03/2023) visto el 01/06/2025.
+        var contratoId = await ContratoActivoAsync(empleado, gerente, new DateOnly(2022, 3, 31), 50_000m, ct);
+        var hoy = new DateTimeOffset(2025, 6, 1, 13, 0, 0, TimeSpan.Zero);
 
-        await EjecutarAsync(ct);
+        await EjecutarAsync(ct, en: hoy);
 
         var bloques = await BloquesAsync(contratoId, ct);
         bloques.Should().HaveCount(3, "el trabajo recupera los bloques que se dejó pasar");
         bloques.Select(b => b.Numero).Should().Equal([2, 3, 4], "numerados y sin huecos");
-        bloques[0].FechaInicio.Should().Be(finInicial);
-        bloques[1].FechaInicio.Should().Be(finInicial.AddMonths(12));
-        bloques[2].FechaInicio.Should().Be(finInicial.AddMonths(24));
-        bloques[2].FechaFin.Should().Be(finInicial.AddMonths(36));
-        (await FinVigenteAsync(contratoId, ct)).Should().Be(finInicial.AddMonths(36));
+        bloques[0].FechaInicio.Should().Be(new DateOnly(2023, 3, 31));
+        bloques[1].FechaInicio.Should().Be(new DateOnly(2024, 3, 31));
+        bloques[2].FechaInicio.Should().Be(new DateOnly(2025, 3, 31));
+        bloques[2].FechaFin.Should().Be(new DateOnly(2026, 3, 31));
+        (await FinVigenteAsync(contratoId, ct)).Should().Be(new DateOnly(2026, 3, 31));
 
         // Y la siguiente ejecución, con el bloque en curso ya vigente, no añade ni uno más.
-        await EjecutarAsync(ct);
+        await EjecutarAsync(ct, en: hoy);
         (await BloquesAsync(contratoId, ct)).Should().HaveCount(3);
+    }
+
+    /// <summary>
+    /// BUG-043: encadenar <c>AddMonths</c> desde el fin vigente derivaba a fin de mes. Un contrato
+    /// del 31/01/2024 de un año con renovación mensual tiene que ir 28/02, 31/03, 30/04, 31/05 (cada
+    /// fin contado desde el inicio del contrato) y no 28/02, 28/03, 28/04.
+    /// </summary>
+    [Fact]
+    public async Task LaRenovacionMensualNoDerivaAFinDeMes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await SesionAsync(Roles.Empleado, ct);
+        using var gerente = await SesionAsync(Roles.Gerente, ct);
+
+        // Inicio 31/01/2024, 12 meses: fin inicial 31/01/2025.
+        var contratoId = await ContratoActivoAsync(
+            empleado, gerente, new DateOnly(2024, 1, 31), 50_000m, ct, renovacionMeses: 1, regla: "Mensual");
+
+        await EjecutarAsync(ct, en: new DateTimeOffset(2025, 5, 15, 13, 0, 0, TimeSpan.Zero));
+
+        var bloques = await BloquesAsync(contratoId, ct);
+        bloques.Select(b => b.FechaFin).Should().Equal(
+            [new DateOnly(2025, 2, 28), new DateOnly(2025, 3, 31), new DateOnly(2025, 4, 30), new DateOnly(2025, 5, 31)]);
+        bloques.Select(b => b.FechaInicio).Should().Equal(
+            [new DateOnly(2025, 1, 31), new DateOnly(2025, 2, 28), new DateOnly(2025, 3, 31), new DateOnly(2025, 4, 30)]);
+        (await FinVigenteAsync(contratoId, ct)).Should().Be(new DateOnly(2025, 5, 31));
     }
 
     /// <summary>
@@ -704,9 +732,9 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
     /// Una pasada del trabajo con su propio contexto. <paramref name="avanzar"/> mueve el reloj para
     /// poder ver qué pasa meses después sin esperar meses.
     /// </summary>
-    private async Task EjecutarAsync(CancellationToken ct, TimeSpan? avanzar = null)
+    private async Task EjecutarAsync(CancellationToken ct, TimeSpan? avanzar = null, DateTimeOffset? en = null)
     {
-        var reloj = new RelojPrueba();
+        var reloj = new RelojPrueba(en);
         if (avanzar is { } delta)
         {
             reloj.Avanzar(delta);

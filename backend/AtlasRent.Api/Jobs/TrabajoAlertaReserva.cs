@@ -7,25 +7,22 @@ using Serilog;
 namespace AtlasRent.Api.Jobs;
 
 /// <summary>
-/// Aviso de que una reserva entra dentro de 7 días (F2-03, docs/ESPECIFICACION.md §3.4).
+/// Aviso de la reserva mensual que lleva 7 días sin convertirse en contrato (F2-03,
+/// docs/ESPECIFICACION.md §3.4: "alerta si una reserva mensual lleva 7 días sin convertirse (una vez,
+/// persistente)").
 /// <para>
-/// Recorre las reservas <see cref="EstadoReserva.Activa"/> cuya entrada prevista cae <b>exactamente</b>
-/// dentro de 7 días y deja una alerta con <see cref="ServicioAlertas"/>. Lo de "exactamente" es lo
-/// que hace el trabajo idempotente por la vía de la base: la clave de deduplicación lleva el
-/// identificador de la reserva, así que correrlo dos veces el mismo día —que es lo que pasa si
-/// alguien lo relanza a mano o si el servidor se reinicia a media ejecución— no deja dos alertas.
+/// Recorre las reservas mensuales <see cref="EstadoReserva.Activa"/> cuya fecha de reserva es de hace
+/// 7 días o más y deja una alerta con <see cref="ServicioAlertas"/>. Es una ventana y no una igualdad
+/// (BUG-028): si el trabajo no corre un día, al siguiente sigue avisando. La clave lleva el
+/// identificador de la reserva, así que correrlo varias veces no deja más de una alerta viva.
 /// </para>
 /// <para>
-/// El día se calcula en la zona de negocio (D16), no en UTC, como en el trabajo de copia: a las
-/// 05:00 en Santo Domingo son las 09:00 UTC, y buscar "hoy" en UTC escribiría el día siguiente en
-/// las reservas de la frontera.
+/// El aviso es persistente: se mantiene abierto mientras la reserva siga <c>Activa</c> y se cierra
+/// solo cuando se convierte, se cancela o cambia de estado (p. ej. en conflicto, que tiene su propio
+/// aviso).
 /// </para>
 /// <para>
-/// DECISIÓN DEL ORQUESTADOR: avisa de toda reserva activa que entra dentro de 7 días, mensual o
-/// corta. La especificación (§3.4) habla de la reserva mensual que lleva 7 días sin convertirse en
-/// contrato, que es otro momento; este trabajo es el que se ha pedido aquí y el que avisa de que
-/// toca. Si más adelante se quiere el aviso de los 7 días sin convertir, es otro trabajo y otra
-/// clave de deduplicación.
+/// El día se calcula en la zona de negocio (D16), no en UTC, como en el trabajo de copia.
 /// </para>
 /// </summary>
 public sealed class TrabajoAlertaReserva(
@@ -33,29 +30,32 @@ public sealed class TrabajoAlertaReserva(
     IRegistroAlertas alertas,
     TimeProvider reloj)
 {
-    /// <summary>Cuántos días antes de la entrada prevista se avisa.</summary>
-    private const int DiasDeAviso = 7;
+    /// <summary>Cuántos días sin convertirse tiene que llevar la reserva para avisar.</summary>
+    private const int DiasSinConvertir = 7;
 
     /// <summary>Tipo de alerta, el mismo que usan las de copia y las de integridad.</summary>
     private const string TipoAlerta = "reserva";
+
+    private const string Prefijo = "reserva-sin-convertir:";
 
     /// <summary>
     /// Clave de deduplicación de la alerta. Lleva la reserva y no la fecha: el aviso es una vez y
     /// para siempre por reserva, como el resto de alertas del sistema.
     /// </summary>
-    public static string Clave(Guid reservaId) => $"reserva-entrada:{reservaId:D}";
+    public static string Clave(Guid reservaId) => $"{Prefijo}{reservaId:D}";
 
     public async Task EjecutarAsync(CancellationToken ct)
     {
         var hoy = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
-        var objetivo = hoy.AddDays(DiasDeAviso);
+        var limite = hoy.AddDays(-DiasSinConvertir);
 
         var reservas = await contexto.Reserva
             .AsNoTracking()
             .Where(r => r.Activo
+                && r.Tipo == TipoReserva.Mensual
                 && r.Estado == EstadoReserva.Activa
-                && r.EntradaPrevista == objetivo)
-            .Select(r => new { r.Id, r.UnidadId, r.EntradaPrevista })
+                && r.FechaReserva <= limite)
+            .Select(r => new { r.Id, r.UnidadId, r.FechaReserva })
             .ToListAsync(ct);
 
         foreach (var reserva in reservas)
@@ -63,14 +63,32 @@ public sealed class TrabajoAlertaReserva(
             await alertas.RegistrarAsync(
                 TipoAlerta,
                 Clave(reserva.Id),
-                $"La reserva {reserva.Id:D} de la unidad {reserva.UnidadId:D} entra el "
-                    + $"{reserva.EntradaPrevista:dd/MM/yyyy}, dentro de {DiasDeAviso} días.",
+                $"La reserva mensual {reserva.Id:D} de la unidad {reserva.UnidadId:D}, hecha el "
+                    + $"{reserva.FechaReserva:dd/MM/yyyy}, lleva más de {DiasSinConvertir} días sin "
+                    + "convertirse en contrato.",
                 ct);
         }
 
+        // Cerrar las que ya no aplican (convertida, cancelada, en conflicto...). La comparación va en
+        // memoria: las vivas de este prefijo son pocas.
+        var vigentes = reservas.Select(r => Clave(r.Id)).ToHashSet();
+        var vivas = await contexto.Alerta.AsNoTracking()
+            .Where(a => a.ResueltaAt == null && a.Clave.StartsWith(Prefijo))
+            .Select(a => a.Clave)
+            .ToListAsync(ct);
+
+        var cerradas = 0;
+        foreach (var clave in vivas.Where(c => !vigentes.Contains(c)))
+        {
+            await alertas.ResolverAsync(clave, ct);
+            cerradas++;
+        }
+
         Log.Information(
-            "Alerta de reservas: {Cantidad} reserva(s) entran el {Objetivo:dd/MM/yyyy}",
+            "Alerta de reservas: {Cantidad} reserva(s) mensual(es) llevan {Dias} días o más sin convertirse, "
+                + "{Cerradas} alerta(s) cerradas",
             reservas.Count,
-            objetivo);
+            DiasSinConvertir,
+            cerradas);
     }
 }
