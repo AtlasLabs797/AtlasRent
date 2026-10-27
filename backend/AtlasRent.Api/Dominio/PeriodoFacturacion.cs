@@ -90,6 +90,8 @@ public sealed record PeriodoFacturacion(DateOnly Inicio, DateOnly Fin)
         var dia = Math.Min(diaPago, DiasDelMes);
         var vencimiento = new DateOnly(Inicio.Year, Inicio.Month, dia);
 
+        // TODO(A#): facturar con retraso mueve el vencimiento al siguiente ciclo en vez de al día de
+        // pago del periodo facturado; ¿es lo que quiere la casa o debe nacer vencida? (BUG-052).
         return vencimiento >= hoy
             ? vencimiento
             : DelMesDelSiguienteCiclo(dia);

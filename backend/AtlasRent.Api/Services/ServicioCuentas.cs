@@ -425,6 +425,9 @@ public sealed class ServicioCuentas(
 
         var salidos = envio.Where(e => e.Estado != EstadoEnvio.Fallido);
 
+        // Para «modificada tras el envío» solo cuenta lo que ya salió: uno Pendiente sigue en cola (BUG-052).
+        var salieron = envio.Where(e => e.Estado != EstadoEnvio.Fallido && e.Estado != EstadoEnvio.Pendiente);
+
         if (noEnviadas)
         {
             consulta = consulta.Where(f => !envio.Any(e => e.DocumentoId == f.Id));
@@ -441,7 +444,7 @@ public sealed class ServicioCuentas(
         {
             // Un envío que no salió no dice nada de si el documento cambió después.
             consulta = consulta.Where(f => f.ModificadaAt != null
-                && salidos.Any(e => e.DocumentoId == f.Id
+                && salieron.Any(e => e.DocumentoId == f.Id
                     && (e.DocumentoModificadoAt == null || f.ModificadaAt > e.DocumentoModificadoAt)));
         }
 
@@ -774,8 +777,8 @@ public sealed class ServicioCuentas(
     /// Las facturas de la página a las que alguien las tocó después de que saliera el último envío que
     /// sí salió (F4-02, §3.14 y F3-08).
     /// <para>
-    /// <b>Un envío <c>Fallido</c> no cuenta.</b> No llegó a salir nada, así que no puede haber un
-    /// documento en manos del cliente que después se haya cambiado.
+    /// <b>Un envío <c>Fallido</c> o <c>Pendiente</c> no cuenta.</b> No llegó a salir nada, así que no puede
+    /// haber un documento en manos del cliente que después se haya cambiado.
     /// </para>
     /// </summary>
     private async Task<HashSet<Guid>> ModificadasTrasEnvioAsync(Guid[] ids, CancellationToken ct)
@@ -786,6 +789,7 @@ public sealed class ServicioCuentas(
                 && contexto.Envio.Any(e => e.TipoDocumento == TipoDocumentoEnvio.Factura
                     && e.DocumentoId == f.Id
                     && e.Estado != EstadoEnvio.Fallido
+                    && e.Estado != EstadoEnvio.Pendiente
                     && (e.DocumentoModificadoAt == null || f.ModificadaAt > e.DocumentoModificadoAt)))
             .Select(f => f.Id)
             .ToListAsync(ct);

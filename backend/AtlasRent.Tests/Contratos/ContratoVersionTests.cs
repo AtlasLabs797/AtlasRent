@@ -1,5 +1,6 @@
 using System.Net;
 using AtlasRent.Api.Authorization;
+using AtlasRent.Api.Dominio;
 using AtlasRent.Tests.Infra;
 using AtlasRent.Tests.Reservas;
 using AwesomeAssertions;
@@ -27,6 +28,46 @@ public sealed class ContratoVersionTests(ContenedorBdFixture bd, ApiTestFactoryB
     /// Dos cambios de renta sobre un contrato vigente: tres versiones (la del alta y dos cambios), la
     /// renta anterior en cada una y el alcance escrito.
     /// </summary>
+    /// <summary>
+    /// BUG-052: un contrato vigente no cambia de moneda por un cambio en activo: lo ya facturado y
+    /// cobrado está en la moneda del contrato y nunca se convierte (AGENTS.md §6). Es un 409, no se
+    /// crea versión y la moneda sigue siendo la misma.
+    /// </summary>
+    [Fact]
+    public async Task UnContratoActivoNoCambiaDeMoneda()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaPermisos.SesionAsync(
+            api, await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Empleado, ct: ct), Contrasena, ct);
+        using var gerente = await AyudaPermisos.SesionAsync(
+            api, await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Gerente, ct: ct), Contrasena, ct);
+        var contratoId = await AyudaContrato.HastaActivoAsync(empleado, gerente, bd, ct);
+
+        var respuesta = await AyudaContrato.Boton(
+            gerente,
+            contratoId,
+            "cambios",
+            new
+            {
+                renta = 55_000m,
+                moneda = "USD",
+                diaPago = 5,
+                fianza = 20_000m,
+                reglaRenovacion = "Anual",
+                renovacionMeses = 12,
+                motivo = "Pasar a dólares",
+            },
+            ct);
+
+        respuesta.StatusCode.Should().Be(System.Net.HttpStatusCode.Conflict);
+
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+        (await contexto.Contrato.AsNoTracking().SingleAsync(c => c.Id == contratoId, ct))
+            .Moneda.Should().Be(Moneda.DOP);
+        (await contexto.ContratoVersion.AsNoTracking().CountAsync(v => v.ContratoId == contratoId, ct))
+            .Should().Be(1, "solo la versión de la activación: el cambio rechazado no abre otra");
+    }
+
     [Fact]
     public async Task CadaCambioEnUnActivoCreaVersion()
     {

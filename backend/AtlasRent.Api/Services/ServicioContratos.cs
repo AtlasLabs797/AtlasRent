@@ -67,6 +67,8 @@ public sealed class ServicioContratos(
     {
         [EstadoContrato.Borrador] = [EstadoContrato.PendienteAprobacion],
         [EstadoContrato.PendienteAprobacion] = [EstadoContrato.Aprobado, EstadoContrato.Borrador],
+        // TODO(A#): un contrato Aprobado solo puede activarse; no hay salida si el cliente se echa atrás
+        // antes de activar (¿vuelta a Borrador, o cancelación?). Decisión de producto (BUG-052).
         [EstadoContrato.Aprobado] = [EstadoContrato.Activo],
         [EstadoContrato.Activo] = [EstadoContrato.BajaProgramada],
         // Anular la baja antes de que llegue la fecha es un botón normal de la ficha: si no existiera,
@@ -556,6 +558,14 @@ public sealed class ServicioContratos(
         var rentaAnterior = contrato.Renta;
         var plantillaAnterior = contrato.PlantillaContratoId;
         var huellaAntes = HuellaContrato.Calcular(contrato);
+
+        // La moneda del contrato no se cambia estando vigente: lo facturado y cobrado ya está en ella
+        // y un documento nunca se convierte (AGENTS.md §6, BUG-052).
+        if (peticion.Moneda is { } monedaNueva && monedaNueva != contrato.Moneda)
+        {
+            throw new InvalidOperationException(
+                $"Un contrato vigente no cambia de moneda (es {contrato.Moneda}): lo ya facturado y cobrado está en ella.");
+        }
 
         var cambio = AComoPeticion(peticion, contrato);
         Validar(cambio, contrato);
