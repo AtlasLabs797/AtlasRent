@@ -28,7 +28,8 @@ public sealed class FiltroAccionGlobal(IPolicyService politica) : IAsyncAuthoriz
         }
 
         var recurso = $"{contexto.HttpContext.Request.Method} {contexto.ActionDescriptor.AttributeRouteInfo?.Template}";
-        var declaracion = metadatos.OfType<AccionAttribute>().FirstOrDefault();
+        // Los metadatos van de lo general a lo particular (clase y después método): manda el último.
+        var declaracion = metadatos.OfType<AccionAttribute>().LastOrDefault();
 
         try
         {
