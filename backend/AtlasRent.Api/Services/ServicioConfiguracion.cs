@@ -167,6 +167,17 @@ public sealed class ServicioConfiguracion(
                     + $"{(serie.GeneraComprobante ? "sí" : "no")}). Crea una serie nueva.");
         }
 
+        // Moneda, prefijo y tipo dan sentido a los numeros ya emitidos (o anulados, que conservan el
+        // suyo): cambiarlos reinterpreta el historico (BUG-046). La salida es crear una serie nueva.
+        if ((serie.Moneda != antes.Moneda || serie.Prefijo != antes.Prefijo || serie.Tipo != antes.Tipo)
+            && (antes.Siguiente > 1
+                || await contexto.Factura.AsNoTracking().AnyAsync(f => f.SerieId == id && f.Numero != null, ct)))
+        {
+            throw new InvalidOperationException(
+                $"La serie {serie.Numero} ya tiene numeros emitidos y no admite cambiar moneda, prefijo ni "
+                    + "tipo. Crea una serie nueva.");
+        }
+
         return await GuardarAsync(
             contexto.Serie,
             serie,
