@@ -769,6 +769,8 @@ public sealed class ServicioFacturas(
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
+        await TomarCerrojoDeCobrosAsync(id, ct);
+
         var factura = await CargarAsync(id, ct);
         ExigirAnulable(factura);
 
@@ -1204,6 +1206,10 @@ public sealed class ServicioFacturas(
                 nameof(peticion));
         }
 
+        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
+
+        await TomarCerrojoDeCobrosAsync(id, ct);
+
         var original = await CargarAsync(id, ct);
         ExigirAnulable(original);
 
@@ -1218,8 +1224,6 @@ public sealed class ServicioFacturas(
         }
 
         ExigirMonedaDeSerie(serie, peticion.Moneda);
-
-        await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
         var devueltos = new List<object>();
 
@@ -1306,6 +1310,24 @@ public sealed class ServicioFacturas(
         await transaccion.CommitAsync(ct);
 
         return new FacturaRehacerRespuesta(original.Id, original.Numero, resumen);
+    }
+
+    /// <summary>
+    /// BUG-019: la anulación cambia asignaciones y saldo a favor del contrato de la factura, así que toma el
+    /// mismo cerrojo que los cobros antes de leer nada. Si la factura no existe, no hay nada que serializar
+    /// y la carga posterior da el 404.
+    /// </summary>
+    private async Task TomarCerrojoDeCobrosAsync(Guid facturaId, CancellationToken ct)
+    {
+        var origen = await contexto.Factura.AsNoTracking()
+            .Where(f => f.Id == facturaId)
+            .Select(f => new { f.ContratoId, f.ClienteId })
+            .FirstOrDefaultAsync(ct);
+
+        if (origen is not null)
+        {
+            await CerrojoCobros.TomarAsync(contexto, origen.ContratoId, origen.ClienteId, ct);
+        }
     }
 
     /// <summary>
@@ -1424,6 +1446,14 @@ public sealed class ServicioFacturas(
                 continue;
             }
 
+            var saldo = cobro.ContratoId is { } cid
+                ? await contexto.SaldoAFavor
+                    .SingleOrDefaultAsync(s => s.ContratoId == cid && s.Moneda == cobro.MonedaRecibida, ct)
+                : null;
+
+            // BUG-032: si anular el cobro entero deja el saldo a favor en negativo, su crédito ya se gastó.
+            await ServicioCobros.ExigirCreditoSinGastarAsync(contexto, cobro, saldo, ct);
+
             cobro.Estado = EstadoCobro.Anulado;
             cobro.AnuladoAt = ahora;
             cobro.AnuladoPor = usuario;
@@ -1433,17 +1463,11 @@ public sealed class ServicioFacturas(
 
             // El dinero que no se aplicó a ninguna factura vuelve a ser crédito del contrato, y el
             // crédito que este cobro consumió vuelve a estar disponible (§3.10.1).
-            if (cobro.ContratoId is { } contratoId)
+            if (saldo is not null)
             {
-                var saldo = await contexto.SaldoAFavor
-                    .SingleOrDefaultAsync(s => s.ContratoId == contratoId && s.Moneda == cobro.MonedaRecibida, ct);
-
-                if (saldo is not null)
-                {
-                    saldo.Importe = Redondeo.Importe(Math.Max(0m, saldo.Importe + SaldoQueCambia(cobro)));
-                    saldo.UpdatedAt = ahora;
-                    saldo.UpdatedBy = usuario;
-                }
+                saldo.Importe = Redondeo.Importe(saldo.Importe + SaldoQueCambia(cobro));
+                saldo.UpdatedAt = ahora;
+                saldo.UpdatedBy = usuario;
             }
         }
     }

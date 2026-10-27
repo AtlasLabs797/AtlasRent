@@ -441,30 +441,7 @@ public sealed class ServicioCobros(
 
         var saldo = await CargarSaldoAsync(cobro.ContratoId, cobro.MonedaRecibida, ct);
 
-        // BUG-032: anular saca del saldo el excedente que dejó este cobro y devuelve el crédito que
-        // gastó. Si el saldo ya no llega, es que ese excedente financió otro cobro: no se esconde con un
-        // clamp a cero, se pide anular antes el cobro que lo gastó.
-        if (saldo is not null && Redondeo.Importe(saldo.Importe + cobro.SaldoFavorUsado - cobro.Excedente) < 0m)
-        {
-            var gastadores = await contexto.Cobro.AsNoTracking()
-                .Where(c => c.ContratoId == cobro.ContratoId
-                    && c.MonedaRecibida == cobro.MonedaRecibida
-                    && c.Estado == EstadoCobro.Registrado
-                    && c.SaldoFavorUsado > 0m
-                    && c.Id != cobro.Id
-                    && c.CreatedAt >= cobro.CreatedAt)
-                .OrderBy(c => c.CreatedAt)
-                .Select(c => c.Id)
-                .ToListAsync(ct);
-
-            throw new InvalidOperationException(
-                $"El cobro '{id:D}' dejó {cobro.Excedente} {cobro.MonedaRecibida} de saldo a favor y ese crédito "
-                    + "ya se gastó en otro cobro. Hay que anular antes "
-                    + (gastadores.Count > 0
-                        ? "el cobro " + string.Join(", ", gastadores.Select(g => $"'{g:D}'"))
-                        : "el cobro que consumió ese crédito")
-                    + ".");
-        }
+        await ExigirCreditoSinGastarAsync(contexto, cobro, saldo, ct);
 
         await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -1648,6 +1625,41 @@ public sealed class ServicioCobros(
             Math.Max(0m, saldo.Importe - plan.Cobro.SaldoFavorUsado + plan.Cobro.Excedente));
         saldo.UpdatedAt = reloj.GetUtcNow();
         saldo.UpdatedBy = usuario;
+    }
+
+    /// <summary>
+    /// BUG-032: anular un cobro saca del saldo el excedente que dejó y devuelve el crédito que gastó. Si el
+    /// saldo ya no llega, ese excedente financió otro cobro: no se esconde con un clamp a cero, se pide
+    /// anular antes el cobro que lo gastó. Lo comparten la anulación de cobro y la de factura (que anula
+    /// el cobro entero cuando se queda sin asignaciones).
+    /// </summary>
+    internal static async Task ExigirCreditoSinGastarAsync(
+        AtlasRentDbContext contexto, Cobro cobro, SaldoAFavor? saldo, CancellationToken ct)
+    {
+        if (saldo is null
+            || Redondeo.Importe(saldo.Importe + cobro.SaldoFavorUsado - cobro.Excedente) >= 0m)
+        {
+            return;
+        }
+
+        var gastadores = await contexto.Cobro.AsNoTracking()
+            .Where(c => c.ContratoId == cobro.ContratoId
+                && c.MonedaRecibida == cobro.MonedaRecibida
+                && c.Estado == EstadoCobro.Registrado
+                && c.SaldoFavorUsado > 0m
+                && c.Id != cobro.Id
+                && c.CreatedAt >= cobro.CreatedAt)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => c.Id)
+            .ToListAsync(ct);
+
+        throw new InvalidOperationException(
+            $"El cobro '{cobro.Id:D}' dejó {cobro.Excedente} {cobro.MonedaRecibida} de saldo a favor y ese crédito "
+                + "ya se gastó en otro cobro. Hay que anular antes "
+                + (gastadores.Count > 0
+                    ? "el cobro " + string.Join(", ", gastadores.Select(g => $"'{g:D}'"))
+                    : "el cobro que consumió ese crédito")
+                + ".");
     }
 
     // ---------------------------------------------------------------- cargas y permisos

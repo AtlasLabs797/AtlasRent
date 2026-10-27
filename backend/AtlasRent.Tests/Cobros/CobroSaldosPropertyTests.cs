@@ -567,6 +567,7 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
         var anulaciones409 = 0;
         var anulaciones200 = 0;
         var concurrentes = 0;
+        var facturasAnuladas = 0;
 
         for (var paso = 1; paso <= pasos; paso++)
         {
@@ -603,7 +604,7 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
                     await contexto.SaveChangesAsync(ct);
                 }
 
-                var accion = paso == 1 ? -1 : paso % 7 == 0 ? 9 : aleatorio.Next(9);
+                var accion = paso == 1 ? -1 : paso % 7 == 0 ? 9 : paso % 11 == 0 ? 10 : aleatorio.Next(9);
                 if (accion < 0)
                 {
                     // Paso fijo: A cobra de más (crédito), B gasta 100 de ese crédito, y anular A tiene que dar 409.
@@ -666,6 +667,51 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
                         }
                     }
                 }
+                else if (accion == 10)
+                {
+                    // Anulación de factura: anula sus asignaciones (devuelto) y, si deja el cobro vacío, lo anula
+                    // entero; 409 si eso sacaría un crédito que ya se gastó.
+                    await using var lectura = bd.CrearContexto(bd.CadenaApp);
+                    var conCobro = await lectura.CobroAsignacion.AsNoTracking()
+                        .Where(a => a.Vigente && a.Cobro!.ContratoId == contratoId && a.Factura!.Estado == EstadoFactura.Emitida)
+                        .Select(a => a.FacturaId)
+                        .Distinct()
+                        .ToListAsync(ct);
+
+                    if (conCobro.Count > 0)
+                    {
+                        var elegida = conCobro[aleatorio.Next(conCobro.Count)];
+
+                        // Las facturas del generador se insertan sin pasar por la serie: se registra su número
+                        // como emitido para que la anulación del número (que sí es real) lo encuentre.
+                        await using (var alta = bd.CrearContexto(bd.CadenaApp))
+                        {
+                            var f = await alta.Factura.AsNoTracking().SingleAsync(x => x.Id == elegida, ct);
+                            alta.NumeroSerie.Add(new NumeroSerie
+                            {
+                                Id = Guid.NewGuid(),
+                                SerieId = f.SerieId,
+                                Numero = f.Numero!.Value,
+                                Estado = EstadoNumeroSerie.Emitido,
+                                EmitidoAt = DateTimeOffset.UtcNow,
+                                EmitidoPor = Guid.NewGuid(),
+                            });
+                            await alta.SaveChangesAsync(ct);
+                        }
+
+                        var anulada = await sesion.PostAsync(
+                            $"/api/v1/facturas/{elegida:D}/anular",
+                            new { motivo = $"Paso {paso}" },
+                            ct);
+
+                        anulada.StatusCode.Should().BeOneOf(
+                            [HttpStatusCode.OK, HttpStatusCode.Conflict], await anulada.Cuerpo());
+                        if (anulada.StatusCode == HttpStatusCode.OK)
+                        {
+                            facturasAnuladas++;
+                        }
+                    }
+                }
                 else
                 {
                     // Fase concurrente: dos cobros en dólares a la vez sobre la misma cartera.
@@ -705,6 +751,7 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
         anulaciones200.Should().BeGreaterThan(0);
         anulaciones409.Should().BeGreaterThan(0, "tiene que haberse ejercitado la anulación de un cobro cuyo crédito se gastó");
         concurrentes.Should().BeGreaterThan(0);
+        facturasAnuladas.Should().BeGreaterThan(0, "tiene que haberse ejercitado la anulación de facturas con cobros");
 
         async Task<Guid> RegistrarHttpAsync(Moneda moneda, decimal importe, decimal usarCredito)
         {
@@ -748,7 +795,7 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
                 .Where(c => c.ContratoId == contratoId)
                 .Select(c => new
                 {
-                    c.Id, c.Estado, c.MonedaRecibida, c.ImporteRecibido, c.SaldoFavorUsado, c.Excedente,
+                    c.Id, c.Estado, c.MonedaRecibida, c.ImporteRecibido, c.SaldoFavorUsado, c.Excedente, c.ImporteDevuelto,
                 })
                 .ToListAsync(ct);
             var asignaciones = await contexto.CobroAsignacion.AsNoTracking()
@@ -780,7 +827,7 @@ public sealed class CobroSaldosPropertyTests(ContenedorBdFixture bd, ApiTestFact
                 var consumido = asignaciones
                     .Where(a => a.CobroId == cobro.Id && a.Vigente)
                     .Sum(a => a.ImporteRecibido ?? a.Importe);
-                (consumido + cobro.Excedente).Should().Be(
+                (consumido + cobro.Excedente + cobro.ImporteDevuelto).Should().Be(
                     cobro.ImporteRecibido + cobro.SaldoFavorUsado, $"cobro {cobro.Id}: el dinero no cuadra");
                 cobro.Excedente.Should().BeGreaterThanOrEqualTo(0m);
             }
