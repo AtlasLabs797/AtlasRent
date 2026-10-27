@@ -26,6 +26,11 @@ namespace AtlasRent.Api.Services;
 /// </list>
 /// </para>
 /// <para>
+/// <b>Ventanas, no igualdades (BUG-028).</b> Cada barrido busca lo que cae en [hoy, hoy + N]: un aviso
+/// nace el primer día que la fecha entra en la ventana (aunque sea el mismo día de darla) y sigue vivo
+/// hasta que la fecha pasa o la causa desaparece; un día sin que el trabajo corra no pierde ninguno.
+/// </para>
+/// <para>
 /// <b>Ninguna lleva fecha en la clave, y esa es la decisión.</b> El aviso es una vez y para siempre
 /// por entidad: una baja programada es un hecho, no un estado que se reavise cada día, y treinta filas
 /// de "este contrato se libera pronto" son ruido que nadie mira. Además, con la fecha en la clave el
@@ -50,12 +55,12 @@ public sealed class ServicioAvisosOperacion(
     private const string TipoReserva = "reserva";
     private const string TipoSeguridad = "seguridad";
 
-    /// <summary>Cuántos días antes de la fecha efectiva se avisa de una baja programada.</summary>
+    /// <summary>Ventana, en días, en la que se avisa de una baja programada (de hoy a hoy + 7).</summary>
     public const int DiasDeAvisoBaja = 7;
 
     /// <summary>
-    /// Cuántos días antes de que termine el contrato se avisa de que la unidad se libera (§3.16 lo
-    /// dice literal: "unidades que se liberan en 30 días").
+    /// Ventana, en días, en la que se avisa de que una unidad se libera (§3.16 dice literal:
+    /// "unidades que se liberan en 30 días").
     /// </summary>
     public const int DiasDeAvisoLiberacion = 30;
 
@@ -82,12 +87,15 @@ public sealed class ServicioAvisosOperacion(
     {
         var hoy = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
 
-        // 1. Bajas programadas que están a punto de llegar a su fecha efectiva. Se mira
-        // FechaBajaProgramada y no FechaFinVigente porque es la fecha que eligió la persona que dio
-        // la baja (§3.5) y es la que el trabajo de las 07:00 va a respetar.
+        // 1. Bajas programadas cuya fecha efectiva cae en [hoy, hoy + 7]. Es una ventana y no una
+        // igualdad (BUG-028): una baja dada con menos de 7 días avisa el mismo día, y si el trabajo
+        // falla un día el siguiente sigue avisando. Se mira FechaBajaProgramada y no FechaFinVigente
+        // porque es la fecha que eligió la persona que dio la baja (§3.5) y es la que el trabajo de
+        // las 07:00 va a respetar.
         var bajas = await contexto.Contrato.AsNoTracking()
             .Where(c => c.Estado == EstadoContrato.BajaProgramada
-                && c.FechaBajaProgramada == hoy.AddDays(DiasDeAvisoBaja))
+                && c.FechaBajaProgramada >= hoy
+                && c.FechaBajaProgramada <= hoy.AddDays(DiasDeAvisoBaja))
             .Select(c => new { c.Id, c.UnidadId, c.FechaBajaProgramada })
             .ToListAsync(ct);
 
@@ -96,19 +104,26 @@ public sealed class ServicioAvisosOperacion(
             await alertas.RegistrarAsync(
                 TipoContrato,
                 ClaveBajaProgramada(baja.Id),
-                $"Contrato {baja.Id:D}: baja programada el {baja.FechaBajaProgramada:dd/MM/yyyy}, dentro "
-                    + $"de {DiasDeAvisoBaja} días. La unidad {baja.UnidadId:D} sigue bloqueada hasta esa "
+                $"Contrato {baja.Id:D}: baja programada el {baja.FechaBajaProgramada:dd/MM/yyyy}, en "
+                    + $"{baja.FechaBajaProgramada!.Value.DayNumber - hoy.DayNumber} día(s). La unidad {baja.UnidadId:D} sigue bloqueada hasta esa "
                     + "fecha, y al llegar el trabajo la libera.",
                 ct);
         }
 
-        // 2. Unidades que se liberan en 30 días. Solo contratos VIGENTES: uno en baja ya tiene su
-        // propio aviso, y uno finalizado ya está fuera. Avisar de los dos sería duplicar el mismo
-        // hecho con dos claves, que es justo lo que el criterio de aceptación prohíbe.
+        // 2. Unidades que se liberan en [hoy, hoy + 30]. Solo las que se liberan de verdad: las bajas
+        // programadas. Un contrato Activo se renueva solo por bloques hasta que alguien da la baja
+        // (§3.5), así que su fin de bloque no libera nada y avisar de él sería ruido. Ventana y no
+        // igualdad, por el mismo motivo que la baja (BUG-028).
+        // TODO(A1): §3.16 también habla de "fines sin renovación automática", pero el contrato no
+        // tiene ningún campo que diga "no se renueva": la baja es la única forma de que termine. Si
+        // se añade ese campo, sumar aquí esos contratos. Y una baja a menos de 7 días da dos avisos
+        // (baja programada y liberación en 30) con claves distintas porque §3.16 los lista como dos
+        // alertas; confirmar si debe ser uno solo.
         var liberaciones = await contexto.Contrato.AsNoTracking()
-            .Where(c => c.Estado == EstadoContrato.Activo
-                && c.FechaFinVigente == hoy.AddDays(DiasDeAvisoLiberacion))
-            .Select(c => new { c.Id, c.UnidadId, c.FechaFinVigente, c.Renta })
+            .Where(c => c.Estado == EstadoContrato.BajaProgramada
+                && c.FechaBajaProgramada >= hoy
+                && c.FechaBajaProgramada <= hoy.AddDays(DiasDeAvisoLiberacion))
+            .Select(c => new { c.Id, c.UnidadId, c.FechaBajaProgramada })
             .ToListAsync(ct);
 
         foreach (var liberacion in liberaciones)
@@ -116,10 +131,9 @@ public sealed class ServicioAvisosOperacion(
             await alertas.RegistrarAsync(
                 TipoContrato,
                 ClaveLiberacion30(liberacion.Id),
-                $"Contrato {liberacion.Id:D}: termina el {liberacion.FechaFinVigente:dd/MM/yyyy}, dentro de "
-                    + $"{DiasDeAvisoLiberacion} días. La unidad {liberacion.UnidadId:D} queda libre a partir de "
-                    + $"esa fecha; la renta que está pactada hoy es {liberacion.Renta:N2}. Hay que decidir si "
-                    + "renueva o se anuncia.",
+                $"Contrato {liberacion.Id:D}: termina el {liberacion.FechaBajaProgramada:dd/MM/yyyy}, dentro "
+                    + $"de {DiasDeAvisoLiberacion} días como máximo. La unidad {liberacion.UnidadId:D} queda "
+                    + "libre a partir de esa fecha: hay que anunciarla.",
                 ct);
         }
 
@@ -227,31 +241,19 @@ public sealed class ServicioAvisosOperacion(
 
     // ---------------------------------------------------------------- lo que falta
 
-    // TODO(A#) F3: "facturas vencidas" de §3.16. Sale de `factura` (vencida y sin cobrar) y, para el
-    // importe, de `cobro`. Las dos son de F3: hoy no hay forma de escribir una alerta que diga qué
-    // se debe sin inventar el modelo de la facturación entera.
-    // TODO(A#) F3: "periodos sin facturar". Sale de la comparación entre el calendario de alquiler
-    // del contrato y las facturas emitidas: necesita `factura` y el periodo de facturación.
-    // TODO(A#) F3: "comprobantes por agotarse o por vencer". Sale de `comprobante` (serie y numérico
-    // disponible), tabla de F3.
-    // TODO(A#) F3: "retenciones sin comprobante". Sale de `retencion`, tabla de F3.
-    // TODO(A#) F3: "fianzas pendientes de devolver". Sale de `fianza` y `fianza_devolucion`, tablas de
-    // F3. El importe pactado sí está (`contrato.fianza`), pero lo que hay que devolver y si ya se
-    // devolvió no.
-    // TODO(A#) F3: "envíos fallidos". Sale del outbox y de la cola de envío de la cadena de
-    // notificación (email y aviso in-app de §3.16). No hay ninguna de las dos tablas.
-    // TODO(A#) F3: "fallo del tipo de cambio". Sale de la consulta al proveedor de cambio y de
-    // `tipo_cambio` con su historial, que es F3 con la facturación.
     // TODO(A#) F2/F3: "entradas desde IP nueva". La tabla `sesion` sí existe y trae la IP, así que
     // falta poco, pero no se implementa aquí porque falta una decisión de negocio que no es del
     // implementador: qué cuenta como IP nueva (global en el sistema, por usuario, o por red), porque
     // las tres dan números muy distintos y un aviso que sale cada día por una IP que no es sospechosa
     // entrena a ignorar el panel.
+    //
+    // Las demás alertas de §3.16 (facturas vencidas, periodos sin facturar, comprobantes, retenciones,
+    // fianzas, envíos fallidos, tipo de cambio) viven en sus propios servicios y trabajos.
 }
 
 /// <summary>Qué ha hecho una pasada de los avisos de operación. Sirve para el log y para los tests.</summary>
 /// <param name="BajasProgramadas">Contratos en baja cuya fecha efectiva entra en la ventana de aviso.</param>
-/// <param name="Liberaciones">Contratos vigentes cuya unidad queda libre en la ventana de aviso.</param>
+/// <param name="Liberaciones">Contratos en baja cuya unidad queda libre dentro de la ventana de aviso.</param>
 /// <param name="Conflictos">Reservas que siguen chocando con un contrato.</param>
 /// <param name="IpsBloqueadas">Direcciones con el bloqueo de login vigente.</param>
 /// <param name="AlertasCerradas">Avisos cerrados porque la entidad dejó de estar en la condición.</param>

@@ -49,20 +49,18 @@ public sealed class AlertasSinDuplicarTests(ContenedorBdFixture bd, ApiTestFacto
         // comprueba es que el trabajo entero, con sus cuatro barridos, no se pisa a sí mismo.
         var conBaja = await ContratoActivoAsync(empleado, gerente, bd, 40, ct);
         var conLiberacion = await ContratoActivoAsync(empleado, gerente, bd, 41, ct);
+        var sinAviso = await ContratoActivoAsync(empleado, gerente, bd, 43, ct);
         var conConflicto = await ContratoActivoAsync(empleado, gerente, bd, 42, ct);
 
         // 1. Baja programada: el aviso es a 7 días de la fecha efectiva (§3.5 da 30 de preaviso, así
         // que a 7 días todavía hay margen de reacción).
         await DarDeBajaEnLaVentanaAsync(bd, gerente, conBaja, ct);
 
-        // 2. Unidad que se libera en 30 días (§3.16 lo dice literal). Es un contrato <i>vigente</i>:
-        // uno en baja ya tiene su propio aviso y no puede tener también este, que sería el mismo
-        // hecho con dos claves.
-        await AyudaBandeja.PonerFinVigenteAsync(
-            bd,
-            conLiberacion,
-            AyudaContrato.Dia(ServicioAvisosOperacion.DiasDeAvisoLiberacion),
-            ct);
+        // 2. Unidad que se libera en 30 días (§3.16): una baja programada a 20 días, fuera de la
+        // ventana de 7 de la baja pero dentro de la de 30 de la liberación. Un contrato Activo que
+        // se renueva solo, con el fin de bloque a 20 días, no avisa de nada.
+        await DarDeBajaAsync(bd, gerente, conLiberacion, 20, ct);
+        await AyudaBandeja.PonerFinVigenteAsync(bd, sinAviso, AyudaContrato.Dia(20), ct);
 
         // 3. Reserva en conflicto con un contrato vigente.
         var clienteId = await AyudaReserva.ClienteAsync(empleado, ct);
@@ -98,6 +96,8 @@ public sealed class AlertasSinDuplicarTests(ContenedorBdFixture bd, ApiTestFacto
         await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveLiberacion30(conLiberacion), ct);
         await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveReservaConflicto(reservaId), ct);
         await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveIpBloqueada(bloqueoId), ct);
+        (await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveLiberacion30(sinAviso), ct))
+            .Should().BeEmpty("un contrato Activo que se renueva solo no libera la unidad");
     }
 
     /// <summary>
@@ -158,7 +158,7 @@ public sealed class AlertasSinDuplicarTests(ContenedorBdFixture bd, ApiTestFacto
         await AyudaContrato.AceptarAsync(gerente, contratoId, "anular-baja", null, ct);
 
         var resumen = await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
-        resumen.AlertasCerradas.Should().Be(1, "el aviso de una baja anulada es ruido, no información");
+        resumen.AlertasCerradas.Should().Be(2, "los avisos de baja y de liberación de una baja anulada son ruido");
 
         var cerrada = await AyudaBandeja.AlertasDeAsync(bd, clave, ct);
         cerrada.Should().ContainSingle("cerrar no es borrar: la fila sigue ahí");
@@ -242,6 +242,148 @@ public sealed class AlertasSinDuplicarTests(ContenedorBdFixture bd, ApiTestFacto
         var cerrada = await AyudaBandeja.AlertasDeAsync(bd, clave, ct);
         cerrada.Should().ContainSingle();
         cerrada[0].ResueltaAt.Should().NotBeNull("un bloqueo vencido no bloquea a nadie");
+    }
+
+    /// <summary>BUG-028: una baja dada con 5 días de antelación avisa el mismo día, no nunca.</summary>
+    [Fact]
+    public async Task UnaBajaConMenosDeSieteDiasAvisaElMismoDia()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var contratoId = await ContratoActivoAsync(empleado, gerente, bd, 80, ct);
+        await DarDeBajaAsync(bd, gerente, contratoId, 5, ct);
+
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
+
+        await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveBajaProgramada(contratoId), ct);
+    }
+
+    /// <summary>
+    /// BUG-028: el trabajo no corrió el día en que la baja entró en la ventana (a 7 días); al día
+    /// siguiente, con la baja a 6, tiene que avisar igual. Una baja a 9 días todavía no avisa, y
+    /// avisa cuando le quedan 7.
+    /// </summary>
+    [Fact]
+    public async Task SiElTrabajoNoCorreUnDiaAlSiguienteSigueAvisando()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var lejana = await ContratoActivoAsync(empleado, gerente, bd, 81, ct);
+        await DarDeBajaAsync(bd, gerente, lejana, 9, ct);
+        var enSiete = await ContratoActivoAsync(empleado, gerente, bd, 82, ct);
+        await DarDeBajaAsync(bd, gerente, enSiete, 7, ct);
+
+        // El día 0 no corrió nada. El trabajo corre por primera vez un día después.
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct, TimeSpan.FromDays(1));
+
+        // La baja a 7 días ahora está a 6: avisa. La de 9 está a 8: aún no.
+        await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveBajaProgramada(enSiete), ct);
+        (await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveBajaProgramada(lejana), ct))
+            .Should().BeEmpty("a 8 días todavía no entra en la ventana de 7");
+
+        // Dos días después de hoy la de 9 días queda a 7: entra.
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct, TimeSpan.FromDays(2));
+        await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveBajaProgramada(lejana), ct);
+    }
+
+    /// <summary>Tres ejecuciones en tres días, una fila viva, con el contador a 3.</summary>
+    [Fact]
+    public async Task ElAvisoDeBajaNoSeDuplicaEnTresEjecuciones()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var contratoId = await ContratoActivoAsync(empleado, gerente, bd, 83, ct);
+        await DarDeBajaAsync(bd, gerente, contratoId, 4, ct);
+
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct, TimeSpan.FromDays(1));
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct, TimeSpan.FromDays(2));
+
+        var filas = await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveBajaProgramada(contratoId), ct);
+        filas.Should().ContainSingle();
+        filas[0].ResueltaAt.Should().BeNull();
+        filas[0].Repeticiones.Should().Be(3);
+    }
+
+    /// <summary>Pasada la fecha efectiva de la baja el aviso se cierra, no se queda vivo.</summary>
+    [Fact]
+    public async Task ElAvisoSeCierraCuandoPasaLaFechaDeLaBaja()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var contratoId = await ContratoActivoAsync(empleado, gerente, bd, 84, ct);
+        await DarDeBajaAsync(bd, gerente, contratoId, 3, ct);
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
+        await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveBajaProgramada(contratoId), ct);
+
+        // Cuatro días después la fecha (hoy + 3) ya pasó. El contrato sigue en BajaProgramada en la
+        // base porque aquí no corre el trabajo de fines.
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct, TimeSpan.FromDays(4));
+
+        var filas = await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveBajaProgramada(contratoId), ct);
+        filas.Should().ContainSingle();
+        filas[0].ResueltaAt.Should().NotBeNull("la fecha de la baja ya pasó");
+    }
+
+    /// <summary>
+    /// BUG-028: «liberación en 30 días» avisa de las bajas reales dentro de 30 días y no de los
+    /// contratos Activos, que se renuevan solos.
+    /// </summary>
+    [Fact]
+    public async Task LaLiberacionAvisaDeLasBajasYNoDeLosContratosQueSeRenuevan()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var empleado = await AyudaBandeja.SesionAsync(api, bd, Roles.Empleado, ct);
+        using var gerente = await AyudaBandeja.SesionAsync(api, bd, Roles.Gerente, ct);
+
+        var renovable = await ContratoActivoAsync(empleado, gerente, bd, 85, ct);
+        await AyudaBandeja.PonerFinVigenteAsync(bd, renovable, AyudaContrato.Dia(10), ct);
+        var enBaja = await ContratoActivoAsync(empleado, gerente, bd, 86, ct);
+        await DarDeBajaAsync(bd, gerente, enBaja, 25, ct);
+        var bajaLejana = await ContratoActivoAsync(empleado, gerente, bd, 87, ct);
+        await DarDeBajaAsync(bd, gerente, bajaLejana, 45, ct);
+
+        await AyudaBandeja.EjecutarAvisosAsync(bd, ct);
+
+        (await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveLiberacion30(renovable), ct))
+            .Should().BeEmpty("un contrato Activo se renueva solo: no libera la unidad");
+        (await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveBajaProgramada(renovable), ct))
+            .Should().BeEmpty();
+        await UnaFilaConLaClaveAsync(ServicioAvisosOperacion.ClaveLiberacion30(enBaja), ct);
+        (await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveBajaProgramada(enBaja), ct))
+            .Should().BeEmpty("a 25 días todavía no entra en la ventana de 7 de la baja");
+        (await AyudaBandeja.AlertasDeAsync(bd, ServicioAvisosOperacion.ClaveLiberacion30(bajaLejana), ct))
+            .Should().BeEmpty("a 45 días queda fuera de la ventana de 30");
+    }
+
+    /// <summary>
+    /// Da de baja el contrato con la fecha efectiva a <paramref name="dias"/> días de hoy. Antes
+    /// mueve el fin del bloque en curso a hoy, por la misma razón que
+    /// <see cref="DarDeBajaEnLaVentanaAsync"/>.
+    /// </summary>
+    private static async Task DarDeBajaAsync(
+        ContenedorBdFixture bd,
+        SesionCliente gerente,
+        Guid contratoId,
+        int dias,
+        CancellationToken ct)
+    {
+        await AyudaBandeja.PonerFinVigenteAsync(bd, contratoId, AyudaContrato.Dia(), ct);
+
+        await AyudaContrato.AceptarAsync(
+            gerente,
+            contratoId,
+            "baja",
+            new { fechaFin = AyudaContrato.Dia(dias).ToString("yyyy-MM-dd") },
+            ct);
     }
 
     // ---------------------------------------------------------------- atajos
