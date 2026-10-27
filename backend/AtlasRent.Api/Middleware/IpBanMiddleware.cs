@@ -24,7 +24,7 @@ public sealed class IpBanMiddleware(RequestDelegate siguiente)
         {
             bloqueada = await bloqueos.IpBloqueadaAsync(ip, http.RequestAborted);
         }
-        catch (DbException excepcion)
+        catch (Exception excepcion) when (EsFalloDeBaseDeDatos(excepcion))
         {
             // Si no se puede consultar la base de datos no se bloquea a nadie: /health/live tiene que
             // seguir respondiendo sin base de datos y, en cualquier caso, toda ruta real necesita la
@@ -45,5 +45,22 @@ public sealed class IpBanMiddleware(RequestDelegate siguiente)
         }
 
         await siguiente(http);
+    }
+
+    /// <summary>
+    /// EF envuelve el fallo de conexión de Npgsql en una <see cref="InvalidOperationException"/> ("transient
+    /// failure"), así que no basta con capturar <see cref="DbException"/>: se mira también la causa.
+    /// </summary>
+    private static bool EsFalloDeBaseDeDatos(Exception excepcion)
+    {
+        for (var e = excepcion; e is not null; e = e.InnerException)
+        {
+            if (e is DbException)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
