@@ -1868,7 +1868,7 @@ public sealed class ServicioFacturas(
         }
     }
 
-    private static FacturaLinea ConstruirLinea(
+    private FacturaLinea ConstruirLinea(
         Factura factura,
         FacturaLineaPeticion peticion,
         TipoItbis? tipoItbis,
@@ -1882,7 +1882,7 @@ public sealed class ServicioFacturas(
             Posicion = factura.Lineas.Count == 0
                 ? 1
                 : factura.Lineas.Max(l => l.Posicion) + 1,
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = reloj.GetUtcNow(),
             CreatedBy = usuario,
         };
 
