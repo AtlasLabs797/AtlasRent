@@ -84,6 +84,12 @@ public sealed class ServicioDocumentosInmueble(
         string ip,
         CancellationToken ct)
     {
+        // Antes de tocar el disco: un inmueble que no existe no debe dejar ni un archivo (BUG-052).
+        if (!await contexto.Inmueble.AsNoTracking().AnyAsync(i => i.Id == inmuebleId, ct))
+        {
+            throw new KeyNotFoundException($"No existe el inmueble '{inmuebleId:D}'.");
+        }
+
         var nombreArchivo = await almacen.ValidarYGuardarAsync(archivo, ct);
 
         try
@@ -181,11 +187,18 @@ public sealed class ServicioDocumentosInmueble(
 
     /// <summary>
     /// Versión siguiente dentro de la categoría. Se calcula dentro de la misma transacción que
-    /// inserta la fila; si dos subidas cogieran la misma, el índice único
-    /// <c>(inmueble_id, categoria, version)</c> rechaza la segunda con un 409.
+    /// inserta la fila, con un cerrojo por (inmueble, categoría) para que dos subidas simultáneas no
+    /// cojan la misma; el índice único <c>(inmueble_id, categoria, version)</c> es la red.
     /// </summary>
     private async Task FijarVersionAsync(DocumentoInmueble documento, CancellationToken ct)
     {
+        // Cerrojo de transacción por (inmueble, categoría): dos subidas simultáneas se ponen en fila
+        // en vez de calcular la misma versión y dar un 409 al segundo (BUG-052). El índice único
+        // sigue siendo la red.
+        await contexto.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtext({"documento_inmueble:" + documento.InmuebleId.ToString("D") + ":" + (int)documento.Categoria}))",
+            ct);
+
         var ultima = await contexto.DocumentoInmueble
             .Where(d => d.InmuebleId == documento.InmuebleId && d.Categoria == documento.Categoria)
             .MaxAsync(d => (int?)d.Version, ct);
