@@ -137,7 +137,41 @@ public sealed class ServicioSesiones(
                 Problemas.SesionExpirada, "La sesión superó los 30 minutos de inactividad.");
         }
 
+        // La actividad se anota DESPUES de comprobar la inactividad: si se anotara al leer, la
+        // comparacion de arriba nunca podria fallar (BUG-044).
+        if (ahora - estado.UltimaActividad > TimeSpan.FromSeconds(CacheSegundos))
+        {
+            await MarcarActividadAsync(sesionId, estado, ahora, ct);
+        }
+
         return new ResultadoValidacionSesion(true, DebeCambiarPassword: estado.DebeCambiarPassword);
+    }
+
+    /// <summary>
+    /// Anota la ultima actividad con un UPDATE condicional y sin token de concurrencia: peticiones
+    /// simultaneas de la misma sesion no se pisan ni lanzan <c>DbUpdateConcurrencyException</c>; las
+    /// que llegan tarde simplemente no actualizan ninguna fila. Solo toca sesiones sin revocar.
+    /// </summary>
+    private async Task MarcarActividadAsync(
+        Guid sesionId,
+        EstadoSesion estado,
+        DateTimeOffset ahora,
+        CancellationToken ct)
+    {
+        var umbral = ahora - TimeSpan.FromSeconds(CacheSegundos);
+        var filas = await contexto.Sesion
+            .Where(s => s.Id == sesionId && s.RevocadaAt == null && s.UltimaActividad < umbral)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.UltimaActividad, ahora), ct);
+
+        // La entrada en cache lleva la hora anotada: con la antigua, una peticion posterior dentro
+        // de la ventana vería una inactividad que ya no existe.
+        if (filas > 0)
+        {
+            cache.Set(
+                ClaveCache(sesionId),
+                (EstadoSesion?)(estado with { UltimaActividad = ahora }),
+                new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(CacheSegundos) });
+        }
     }
 
     /// <summary>Busca la fila de sesión de un token de refresco (por el hash SHA-256 del token).</summary>
@@ -192,18 +226,15 @@ public sealed class ServicioSesiones(
         var ahora = reloj.GetUtcNow();
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
-        var deLaFamilia = await contexto.Sesion
-            .Where(s => s.FamiliaId == familiaId && s.RevocadaAt == null)
-            .ToListAsync(ct);
-
-        foreach (var sesion in deLaFamilia)
+        var vivas = contexto.Sesion.Where(s => s.FamiliaId == familiaId && s.RevocadaAt == null);
+        foreach (var id in await vivas.Select(s => s.Id).ToListAsync(ct))
         {
-            sesion.RevocadaAt = ahora;
-            sesion.MotivoRevocacion = motivo;
-            cache.Remove(ClaveCache(sesion.Id));
+            cache.Remove(ClaveCache(id));
         }
 
-        await contexto.SaveChangesAsync(ct);
+        // UPDATE directo: dos revocaciones simultaneas de la misma familia no chocan por xmin.
+        var revocadas = await vivas.ExecuteUpdateAsync(
+            s => s.SetProperty(x => x.RevocadaAt, ahora).SetProperty(x => x.MotivoRevocacion, motivo), ct);
         await auditoria.RegistrarAsync(new RegistroAuditoria
         {
             Accion = $"sesion.revocada.{motivo}",
@@ -211,7 +242,7 @@ public sealed class ServicioSesiones(
             UsuarioId = usuarioId,
             Entidad = "sesion",
             EntidadId = familiaId.ToString("D"),
-            DatosJson = $$"""{"sesiones_revocadas":{{deLaFamilia.Count}}}""",
+            DatosJson = $$"""{"sesiones_revocadas":{{revocadas}}}""",
             Resultado = "permitido",
             Origen = "api",
         }, ct);
@@ -238,9 +269,11 @@ public sealed class ServicioSesiones(
 
         if (sesion.RevocadaAt is null)
         {
-            sesion.RevocadaAt = ahora;
-            sesion.MotivoRevocacion = motivo;
-            await contexto.SaveChangesAsync(ct);
+            // Condicional y sin xmin: si otra peticion la revoco antes, no se pisa ni falla.
+            await contexto.Sesion
+                .Where(s => s.Id == sesionId && s.RevocadaAt == null)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(x => x.RevocadaAt, ahora).SetProperty(x => x.MotivoRevocacion, motivo), ct);
         }
 
         await auditoria.RegistrarAsync(new RegistroAuditoria
@@ -258,7 +291,8 @@ public sealed class ServicioSesiones(
 
     private async Task<EstadoSesion?> LeerAsync(Guid sesionId, CancellationToken ct)
     {
-        var sesion = await BuscarAsync(sesionId, ct);
+        var sesion = await contexto.Sesion.AsNoTracking().Include(s => s.Usuario)
+            .SingleOrDefaultAsync(s => s.Id == sesionId, ct);
         if (sesion is null)
         {
             return null;
@@ -266,18 +300,6 @@ public sealed class ServicioSesiones(
 
         var usuario = sesion.Usuario;
         var activo = usuario is not null && usuario.Activo && usuario.DeletedAt is null;
-
-        // La escritura de última actividad va aquí y no en cada petición: la caché la limita a una
-        // vez cada 30 segundos por sesión.
-        if (sesion.RevocadaAt is null && activo)
-        {
-            var ahora = reloj.GetUtcNow();
-            if (ahora - sesion.UltimaActividad > TimeSpan.FromSeconds(CacheSegundos))
-            {
-                sesion.UltimaActividad = ahora;
-                await contexto.SaveChangesAsync(ct);
-            }
-        }
 
         return new EstadoSesion(
             sesion.UsuarioId,

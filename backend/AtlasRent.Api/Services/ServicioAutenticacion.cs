@@ -178,9 +178,22 @@ public sealed class ServicioAutenticacion(
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
         // Rotar invalida el token anterior, y esa marca es la que permite detectar su reutilización.
-        anterior.RevocadaAt = ahora;
-        anterior.MotivoRevocacion = MotivosRevocacion.Rotacion;
-        await contexto.SaveChangesAsync(ct);
+        // El UPDATE condicional es el que decide quien gana si dos refrescos llegan a la vez: el
+        // segundo espera el bloqueo de fila, ve la sesion ya revocada y no actualiza nada. Perdedor
+        // = 401 igual que un token ya rotado (BUG-044). No se revoca la familia: el ganador
+        // conserva la unica sesion valida, y reutilizar el token despues del commit si la revoca.
+        var reclamada = await contexto.Sesion
+            .Where(s => s.Id == anterior.Id && s.RevocadaAt == null)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(x => x.RevocadaAt, ahora)
+                    .SetProperty(x => x.MotivoRevocacion, MotivosRevocacion.Rotacion),
+                ct);
+        if (reclamada == 0)
+        {
+            await transaccion.RollbackAsync(ct);
+            return null;
+        }
+
         sesiones.InvalidarCache(anterior.Id);
 
         // El máximo absoluto lo hereda la sesión rotada: refrescar no alarga los 12 horas.
