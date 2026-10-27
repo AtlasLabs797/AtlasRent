@@ -248,13 +248,12 @@ public sealed class CalendarioDisponibilidadTests(
     // ---------------------------------------------------------------- liberar
 
     /// <summary>
-    /// Un contrato terminado suelta el candado y sus días salen libres. Este es el test que importa:
-    /// si el calendario leyera la ocupación sin filtrar por <c>bloquea</c>, enseñaría una unidad
-    /// ocupada que ya no lo está, que es la forma más cara de equivocarse en una pantalla de
-    /// disponibilidad.
+    /// Un contrato terminado conserva su pasado en el calendario (el candado se recorta a
+    /// <c>[inicio, fin)</c>) y la unidad sale libre desde el día de su fecha de fin (BUG-025). Antes se
+    /// apagaba todo el rango y el calendario borraba el historial de ocupación.
     /// </summary>
     [Fact]
-    public async Task UnaOcupacionLiberadaNoAparece()
+    public async Task UnContratoFinalizadoConservaSuPasadoYLiberaDesdeLaFechaDeFin()
     {
         var ct = TestContext.Current.CancellationToken;
         using var empleado = await SesionAsync(ct, Roles.Empleado);
@@ -263,7 +262,8 @@ public sealed class CalendarioDisponibilidadTests(
         var clienteId = await AyudaReserva.ClienteAsync(empleado, ct);
         var unidadId = await AyudaReserva.UnidadAsync(empleado, ct);
         var facturadoraId = await AyudaContrato.SubempresaAsync(bd, ct);
-        var inicio = AyudaCalendario.Dia(220);
+        var inicio = AyudaCalendario.Dia(-10);
+        var fin = AyudaCalendario.Dia(0);
 
         var contratoId = await AyudaContrato.CrearAsync(
             empleado, AyudaContrato.Peticion(clienteId, unidadId, facturadoraId, inicio), ct);
@@ -272,24 +272,27 @@ public sealed class CalendarioDisponibilidadTests(
         await AyudaContrato.AceptarAsync(gerente, contratoId, "activacion", null, ct);
 
         var durante = AyudaCalendario.PrimeraUnidad(
-            await AyudaCalendario.DeUnidadAsync(empleado, unidadId, inicio, inicio.AddDays(2), ct));
-        AyudaCalendario.Tipo(AyudaCalendario.Dia(durante, inicio)).Should().Be("Contrato");
+            await AyudaCalendario.DeUnidadAsync(empleado, unidadId, inicio, fin.AddDays(1), ct));
+        AyudaCalendario.Tipo(AyudaCalendario.Dia(durante, fin)).Should().Be("Contrato");
 
         await AyudaContrato.AceptarAsync(
-            gerente, contratoId, "baja",
-            new { fechaFin = inicio.AddMonths(12).ToString("yyyy-MM-dd") }, ct);
+            gerente, contratoId, "baja", new { fechaFin = fin.ToString("yyyy-MM-dd") }, ct);
         await AyudaContrato.AceptarAsync(gerente, contratoId, "finalizacion", null, ct);
 
         var despues = AyudaCalendario.PrimeraUnidad(
-            await AyudaCalendario.DeUnidadAsync(empleado, unidadId, inicio, inicio.AddDays(2), ct));
+            await AyudaCalendario.DeUnidadAsync(empleado, unidadId, inicio, fin.AddDays(1), ct));
 
-        var dias = despues.GetProperty("dias").EnumerateArray().ToList();
-        dias.Should().HaveCount(3);
-        foreach (var dia in dias)
+        for (var dia = inicio; dia < fin; dia = dia.AddDays(1))
         {
-            AyudaCalendario.Tipo(dia).Should().Be("Libre", "el contrato está finalizado y su candado, apagado");
-            dia.GetProperty("disponible").GetBoolean().Should().BeTrue();
-            dia.GetProperty("ocupaciones").GetArrayLength().Should().Be(0);
+            AyudaCalendario.Tipo(AyudaCalendario.Dia(despues, dia)).Should().Be("Contrato", $"{dia:yyyy-MM-dd} es pasado del contrato");
+        }
+
+        foreach (var dia in new[] { fin, fin.AddDays(1) })
+        {
+            var libre = AyudaCalendario.Dia(despues, dia);
+            AyudaCalendario.Tipo(libre).Should().Be("Libre", "el contrato terminó ese día");
+            libre.GetProperty("disponible").GetBoolean().Should().BeTrue();
+            libre.GetProperty("ocupaciones").GetArrayLength().Should().Be(0);
         }
     }
 

@@ -169,14 +169,15 @@ public sealed class ServicioFines(
         // hace tres días y escribir la fecha de ejecución falsearía el histórico del contrato.
         contrato.FechaFinReal = contrato.FechaBajaProgramada;
 
-        await disponibilidad.LiberarRangoAsync(OrigenOcupacion.Contrato, contrato.Id, ct);
+        await disponibilidad.RecortarRangoAsync(OrigenOcupacion.Contrato, contrato.Id, contrato.FechaFinReal!.Value, ct);
 
         ServicioContratos.CambiarEstado(
             contrato,
             EstadoContrato.Finalizado,
             usuario: null,
             "Fin por fecha efectiva. El cliente se va el día de la fecha de baja y la unidad queda "
-                + "libre desde ese día (F2-09).");
+                + "libre desde ese día (F2-09).",
+            hoy);
 
         await RefrescarAlertaFirmezaAsync(
             alertas,

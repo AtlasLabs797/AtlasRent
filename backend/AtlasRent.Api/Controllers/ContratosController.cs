@@ -292,9 +292,23 @@ public sealed class ContratosController(
     /// </summary>
     [HttpPost("solicitudes/{id:guid}/aprobacion")]
     [Accion(Acciones.ContratoEstado)]
-    public async Task<IActionResult> AprobarDesdeLaBandeja(Guid id, CancellationToken ct) =>
-        await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/aprobacion", ct,
-            m => contratos.AprobarAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+    public async Task<IActionResult> AprobarDesdeLaBandeja(Guid id, CancellationToken ct)
+    {
+        // BUG-042: {id} es la solicitud de la fila; se resuelve su contrato y el servicio comprueba que
+        // siga siendo la vigente. La idempotencia usa la ruta del contrato para compartirla con la ficha.
+        Guid contratoId;
+        try
+        {
+            contratoId = await aprobaciones.ContratoDeLaSolicitudAsync(id, ct);
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+
+        return await ConIdempotenciaAsync(new { id = contratoId }, $"/api/v1/contratos/{contratoId:D}/aprobacion", ct,
+            m => contratos.AprobarAsync(contratoId, UsuarioDeLaPeticion(), Ip(), m, ct, id));
+    }
 
     /// <summary>
     /// Rechazar desde la bandeja. Mismo servicio y mismo motivo que la aprobación: la bandeja no
@@ -305,9 +319,21 @@ public sealed class ContratosController(
     public async Task<IActionResult> RechazarDesdeLaBandeja(
         Guid id,
         ContratoRechazoPeticion peticion,
-        CancellationToken ct) =>
-        await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{id:D}/rechazo", ct,
-            m => contratos.RechazarAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), m, ct));
+        CancellationToken ct)
+    {
+        Guid contratoId;
+        try
+        {
+            contratoId = await aprobaciones.ContratoDeLaSolicitudAsync(id, ct);
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+
+        return await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{contratoId:D}/rechazo", ct,
+            m => contratos.RechazarAsync(contratoId, peticion, UsuarioDeLaPeticion(), Ip(), m, ct, id));
+    }
 
     /// <summary>Activación: el contrato toma la unidad y copia su inventario (F2-08).</summary>
     [HttpPost("{id:guid}/activacion")]

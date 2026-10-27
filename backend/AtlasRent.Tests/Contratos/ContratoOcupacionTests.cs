@@ -49,7 +49,7 @@ public sealed class ContratoOcupacionTests(ContenedorBdFixture bd, ApiTestFactor
         var clienteId = await AyudaReserva.ClienteAsync(empleado, ct);
         var unidadId = await AyudaReserva.UnidadAsync(empleado, ct);
         var facturadoraId = await AyudaContrato.SubempresaAsync(bd, ct);
-        var inicio = AyudaContrato.Dia(300);
+        var inicio = AyudaContrato.Dia(-10);
 
         var contratoId = await AyudaContrato.CrearAsync(
             empleado, AyudaContrato.Peticion(clienteId, unidadId, facturadoraId, inicio), ct);
@@ -76,7 +76,7 @@ public sealed class ContratoOcupacionTests(ContenedorBdFixture bd, ApiTestFactor
         // Baja programada y fin: la unidad queda libre.
         await AyudaContrato.AceptarAsync(
             gerente, contratoId, "baja",
-            new { fechaFin = inicio.AddMonths(12).ToString("yyyy-MM-dd") }, ct);
+            new { fechaFin = AyudaContrato.Dia().ToString("yyyy-MM-dd") }, ct);
         (await AyudaContrato.EstadoAsync(bd, contratoId, ct)).ToString().Should().Be("BajaProgramada");
 
         await AyudaContrato.AceptarAsync(gerente, contratoId, "finalizacion", null, ct);
@@ -85,11 +85,11 @@ public sealed class ContratoOcupacionTests(ContenedorBdFixture bd, ApiTestFactor
         await using var verificacion = bd.CrearContexto(bd.CadenaApp);
         var liberado = await verificacion.OcupacionRango.AsNoTracking()
             .SingleAsync(r => r.Origen == OrigenOcupacion.Contrato && r.OrigenId == contratoId, ct);
-        liberado.Bloquea.Should().BeFalse("el fin libera la unidad (§3.5)");
+        liberado.FechaFin.Should().Be(AyudaContrato.Dia(), "el fin recorta el candado a [inicio, fin): la unidad queda libre desde ese día (§3.5)");
 
         // Y ahora la reserva sí entra.
         var despues = await AyudaReserva.CrearRawAsync(
-            empleado, AyudaReserva.Corta(clienteId, unidadId, inicio.AddDays(3)), ct);
+            empleado, AyudaReserva.Corta(clienteId, unidadId, AyudaContrato.Dia()), ct);
         despues.StatusCode.Should().Be(HttpStatusCode.Created, await despues.Cuerpo());
 
         await AyudaContrato.AceptarAsync(gerente, contratoId, "liquidacion", null, ct);
