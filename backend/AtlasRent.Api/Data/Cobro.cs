@@ -114,6 +114,19 @@ public sealed class Cobro : IEntidadTrazada
     /// </summary>
     public decimal Excedente { get; set; }
 
+    /// <summary>
+    /// Parte del cobro que se da por devuelta porque la factura que pagaba se anuló (BUG-020), en la
+    /// moneda recibida. Decisión del responsable (26/10/2026): nada de saldo a favor, algo simple; si
+    /// se anula A, A se cancela y su parte queda marcada como devuelta.
+    /// <para>
+    /// Invariante: <c>ImporteRecibido + SaldoFavorUsado = asignado vigente + Excedente +
+    /// ImporteDevuelto</c>. El detalle (fecha, quién y motivo) vive en la asignación anulada
+    /// (<see cref="CobroAsignacion.AnuladaAt"/>, <see cref="CobroAsignacion.AnuladaPor"/>,
+    /// <see cref="CobroAsignacion.MotivoAnulacion"/>), así que el cobro solo guarda el total.
+    /// </para>
+    /// </summary>
+    public decimal ImporteDevuelto { get; set; }
+
     public EstadoCobro Estado { get; set; }
 
     /// <summary>Cuándo se anuló. Nulo mientras el cobro está registrado.</summary>

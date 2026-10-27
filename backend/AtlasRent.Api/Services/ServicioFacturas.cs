@@ -694,6 +694,23 @@ public sealed class ServicioFacturas(
         // documento que no cuadra contra sí mismo.
         RecalcularTotales(factura);
 
+        // BUG-021: lo ya cobrado (y ajustado por diferencia de cambio) no se puede quedar por encima
+        // del neto: el exceso sería un sobrecobro sin reflejo en ningún sitio.
+        var cobrado = (await cobros.CobradoPorFacturaAsync([id], ct)).GetValueOrDefault(id);
+        var ajustado = (await cobros.AjustadoPorFacturaAsync([id], ct)).GetValueOrDefault(id);
+        var yaCubierto = Redondeo.Importe(cobrado + ajustado);
+
+        if (factura.NetoACobrar < yaCubierto)
+        {
+            throw new InvalidOperationException(
+                $"La factura '{id:D}' ya tiene cobrados {yaCubierto} {factura.Moneda} y el neto a cobrar "
+                    + $"quedaría en {factura.NetoACobrar}: no se puede bajar por debajo de lo cobrado. "
+                    + "Para corregirla, anula el cobro o la factura.");
+        }
+
+        // BUG-036: el comprobante de retención sigue a la factura mientras no se haya recibido.
+        await retenciones.ActualizarEnModificacionAsync(factura, usuario, ct);
+
         // ModificadaAt se escribe una sola vez (la primera), porque es la marca que va a filtrar
         // «modificadas tras envío» de F4-02 y para eso vale la primera vez y no la última.
         factura.ModificadaAt ??= reloj.GetUtcNow();
@@ -755,6 +772,8 @@ public sealed class ServicioFacturas(
         var factura = await CargarAsync(id, ct);
         ExigirAnulable(factura);
 
+        var devueltos = new List<object>();
+
         var respuesta = await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
             contexto.Factura, factura,
@@ -775,8 +794,9 @@ public sealed class ServicioFacturas(
                 Estado = c.Estado.ToString(),
                 Motivo = motivo,
                 TotalAnulado = c.Total,
+                Devuelto = devueltos,
             },
-            antesDeGuardar: async () => await AnularEnTransaccionAsync(factura, motivo, usuario, ip, ct),
+            antesDeGuardar: async () => await AnularEnTransaccionAsync(factura, motivo, usuario, ip, devueltos, ct),
             enTransaccionDelLlamador: true,
             ct: ct);
 
@@ -1201,6 +1221,8 @@ public sealed class ServicioFacturas(
 
         await using var transaccion = await contexto.Database.BeginTransactionAsync(ct);
 
+        var devueltos = new List<object>();
+
         await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
             contexto.Factura, original,
@@ -1217,8 +1239,9 @@ public sealed class ServicioFacturas(
                 Numero = c.Numero,
                 Motivo = motivo,
                 Rehecha = true,
+                Devuelto = devueltos,
             },
-            antesDeGuardar: async () => await AnularEnTransaccionAsync(original, motivo, usuario, ip, ct),
+            antesDeGuardar: async () => await AnularEnTransaccionAsync(original, motivo, usuario, ip, devueltos, ct),
             enTransaccionDelLlamador: true,
             ct: ct);
 
@@ -1232,6 +1255,9 @@ public sealed class ServicioFacturas(
             Moneda = peticion.Moneda,
             FechaVencimiento = original.FechaVencimiento,
             Concepto = original.Concepto,
+            // BUG-033: el periodo se hereda para que ix_factura_periodo_unico siga protegiendo ese mes.
+            PeriodoInicio = original.PeriodoInicio,
+            PeriodoFin = original.PeriodoFin,
             Cliente = original.Cliente,
             Unidad = original.Unidad,
             Serie = serie,
@@ -1291,6 +1317,7 @@ public sealed class ServicioFacturas(
         string motivo,
         Guid usuario,
         string ip,
+        List<object> devueltos,
         CancellationToken ct)
     {
         var ahora = reloj.GetUtcNow();
@@ -1327,7 +1354,7 @@ public sealed class ServicioFacturas(
             comprobante.UpdatedBy = usuario;
         }
 
-        await AnularCobrosDeFacturaAsync(factura, motivo, usuario, ahora, ct);
+        await AnularCobrosDeFacturaAsync(factura, motivo, usuario, ahora, devueltos, ct);
     }
 
     /// <summary>
@@ -1344,6 +1371,7 @@ public sealed class ServicioFacturas(
         string motivo,
         Guid usuario,
         DateTimeOffset ahora,
+        List<object> devueltos,
         CancellationToken ct)
     {
         var asignaciones = await contexto.CobroAsignacion
@@ -1366,6 +1394,19 @@ public sealed class ServicioFacturas(
             asignacion.MotivoAnulacion = motivo;
             asignacion.UpdatedAt = ahora;
             asignacion.UpdatedBy = usuario;
+
+            // BUG-020: lo que esa asignación pagaba no desaparece, queda devuelto en el cobro, en la
+            // moneda recibida. Sin saldo a favor (decisión del responsable, 26/10/2026).
+            var devuelto = Redondeo.Importe(asignacion.ImporteRecibido ?? asignacion.Importe);
+            asignacion.Cobro!.ImporteDevuelto = Redondeo.Importe(asignacion.Cobro.ImporteDevuelto + devuelto);
+            asignacion.Cobro.UpdatedAt = ahora;
+            asignacion.Cobro.UpdatedBy = usuario;
+            devueltos.Add(new
+            {
+                Cobro = asignacion.CobroId.ToString("D"),
+                Moneda = asignacion.Cobro.MonedaRecibida.ToString(),
+                Importe = devuelto,
+            });
         }
 
         // Las asignaciones de esos mismos cobros, incluidas las que no son de esta factura: el filtro

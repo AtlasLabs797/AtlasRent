@@ -64,6 +64,52 @@ public sealed class ServicioRetenciones(
             return;
         }
 
+        var comprobante = await ConstruirAsync(factura, usuario, ct);
+        contexto.ComprobanteRetencion.Add(comprobante);
+    }
+
+    /// <summary>
+    /// BUG-036: al modificar una factura emitida, el comprobante de retención pendiente se pone al día
+    /// (tipo, base, porcentaje e importe). Si ya se recibió, el cliente entregó un papel con el importe
+    /// anterior y cambiarlo debajo lo dejaría contradiciendo al documento: la modificación se rechaza.
+    /// </summary>
+    public async Task ActualizarEnModificacionAsync(Factura factura, Guid usuario, CancellationToken ct)
+    {
+        var comprobante = await contexto.ComprobanteRetencion
+            .SingleOrDefaultAsync(c => c.FacturaId == factura.Id, ct);
+
+        if (comprobante is null)
+        {
+            return;
+        }
+
+        var nuevo = await ConstruirAsync(factura, usuario, ct);
+
+        if (comprobante.Tipo == nuevo.Tipo
+            && comprobante.Base == nuevo.Base
+            && comprobante.Porcentaje == nuevo.Porcentaje
+            && comprobante.Importe == nuevo.Importe)
+        {
+            return;
+        }
+
+        if (comprobante.Estado != EstadoComprobanteRetencion.Pendiente)
+        {
+            throw new InvalidOperationException(
+                $"La factura '{factura.Id:D}' tiene un comprobante de retención ya recibido y la "
+                    + "modificación cambiaría la retención: anula la factura y emite otra.");
+        }
+
+        comprobante.Tipo = nuevo.Tipo;
+        comprobante.Base = nuevo.Base;
+        comprobante.Porcentaje = nuevo.Porcentaje;
+        comprobante.Importe = nuevo.Importe;
+        comprobante.UpdatedAt = reloj.GetUtcNow();
+        comprobante.UpdatedBy = usuario;
+    }
+
+    private async Task<ComprobanteRetencion> ConstruirAsync(Factura factura, Guid usuario, CancellationToken ct)
+    {
         var lineas = factura.Lineas
             .Where(l => l.Tipo == TipoLineaFactura.Retencion)
             .OrderBy(l => l.Posicion)
@@ -90,7 +136,7 @@ public sealed class ServicioRetenciones(
                 ? nombre
                 : "Retención"));
 
-        var comprobante = new ComprobanteRetencion
+        return new ComprobanteRetencion
         {
             Id = Guid.NewGuid(),
             FacturaId = factura.Id,
@@ -102,8 +148,6 @@ public sealed class ServicioRetenciones(
             CreatedAt = reloj.GetUtcNow(),
             CreatedBy = usuario,
         };
-
-        contexto.ComprobanteRetencion.Add(comprobante);
     }
 
     /// <summary>

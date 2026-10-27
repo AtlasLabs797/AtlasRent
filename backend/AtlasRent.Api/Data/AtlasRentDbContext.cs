@@ -1379,6 +1379,10 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
                 // Ni el crédito aplicado ni el excedente pueden ser negativos: un importe negativo
                 // es una devolución, y eso se registra con su propio motivo y su propia fecha.
                 tabla.HasCheckConstraint("ck_cobro_no_negativos", "saldo_favor_usado >= 0 AND excedente >= 0");
+                // BUG-020: lo devuelto no es negativo ni supera lo que el cobro trajo.
+                tabla.HasCheckConstraint(
+                    "ck_cobro_devuelto_acotado",
+                    "importe_devuelto >= 0 AND importe_devuelto <= importe_recibido + saldo_favor_usado");
                 // Anulado significa anulado con motivo y con fecha, y no al revés. Sin esta regla,
                 // la única forma de saber si una anulación está completa es mirando tres columnas
                 // a la vez, y la respuesta puede ser que sí y que no.

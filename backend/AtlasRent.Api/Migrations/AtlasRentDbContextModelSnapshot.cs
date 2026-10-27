@@ -634,6 +634,10 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("forma_pago_id");
 
+                    b.Property<decimal>("ImporteDevuelto")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("importe_devuelto");
+
                     b.Property<decimal>("ImporteRecibido")
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("importe_recibido");
@@ -709,6 +713,8 @@ namespace AtlasRent.Api.Migrations
                     b.ToTable("cobro", null, t =>
                         {
                             t.HasCheckConstraint("ck_cobro_anulado_completo", "(estado = 2) = (anulado_at IS NOT NULL AND motivo_anulacion IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_cobro_devuelto_acotado", "importe_devuelto >= 0 AND importe_devuelto <= importe_recibido + saldo_favor_usado");
 
                             t.HasCheckConstraint("ck_cobro_importe_positivo", "importe_recibido > 0");
 
