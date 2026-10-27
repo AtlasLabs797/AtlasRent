@@ -563,6 +563,12 @@ public sealed class ServicioBackup(
 
             var linea = copia.AsSpan(inicio, fin - inicio);
 
+            // Un volcado con fin de línea CRLF deja un \r al final de cada línea.
+            if (!linea.IsEmpty && linea[^1] == (byte)'\r')
+            {
+                linea = linea[..^1];
+            }
+
             if (!dentroDeCopia && EsCabeceraCopy(linea))
             {
                 dentroDeCopia = true;
