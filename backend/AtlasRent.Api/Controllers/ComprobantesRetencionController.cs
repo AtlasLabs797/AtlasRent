@@ -32,6 +32,28 @@ public sealed class ComprobantesRetencionController(
     : ControladorApiBase(idempotencia, contextoSesion, resolutorIp)
 {
     /// <summary>
+    /// Lista de comprobantes, más nuevos primero. Filtros: <c>facturaId</c> y <c>pendiente</c>
+    /// (true = sin recibir). Es lo que permite a la interfaz saber el id del comprobante de una factura.
+    /// </summary>
+    [HttpGet]
+    [Accion(Acciones.FacturaVer)]
+    public async Task<IActionResult> Listar(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortDir,
+        [FromQuery] Guid? facturaId,
+        [FromQuery] bool? pendiente,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(retenciones.ListarAsync(
+            Paginacion(page, pageSize, sortBy, sortDir), facturaId, pendiente, ct));
+
+    [HttpGet("{id:guid}")]
+    [Accion(Acciones.FacturaVer)]
+    public async Task<IActionResult> Leer(Guid id, CancellationToken ct) =>
+        await GuardarAsync(() => retenciones.LeerAsync(id, ct));
+
+    /// <summary>
     /// Marca el comprobante como recibido con su número y su fecha, y resuelve el aviso que estaba
     /// vivo. Un 409 si ya se había recibido: lo que llegó no se reescribe, y un número distinto es
     /// otro documento, que es lo que se resuelve anulando la factura (F3-08).

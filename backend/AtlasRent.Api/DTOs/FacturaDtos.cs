@@ -268,6 +268,24 @@ public sealed record FacturaRespuesta(
     /// solo la lleva la que alguien ha enlazado a una e-factura emitida fuera.
     /// </summary>
     public string? ReferenciaEfactura { get; init; }
+
+    /// <summary>
+    /// Comprobante fiscal asignado al emitir (tipo y número, como en el PDF). Nulo si la serie no lo
+    /// genera. Se rellena en el detalle y en todas las respuestas de escritura.
+    /// </summary>
+    public string? ComprobanteFiscal { get; init; }
+
+    /// <summary>Id del comprobante fiscal, si hay.</summary>
+    public Guid? ComprobanteFiscalId { get; init; }
+
+    /// <summary>
+    /// Alguien tocó la factura después del último envío que salió (mismo criterio que la vista de
+    /// cuentas). Se rellena en el detalle y en las respuestas de escritura.
+    /// </summary>
+    public bool ModificadaTrasEnvio { get; init; }
+
+    /// <summary>Id del comprobante de retención de la factura, si retiene. Se rellena en el detalle y en las respuestas de escritura.</summary>
+    public Guid? ComprobanteRetencionId { get; init; }
 }
 
 /// <summary>

@@ -357,6 +357,9 @@ builder.Services.AddScoped<ServicioCobros>();
 // pendientes. Los porcentajes y la base salen de tipo_retencion, no de aquí: este servicio solo
 // copia lo que la factura ya decidió.
 builder.Services.AddScoped<ServicioRetenciones>();
+
+// Catálogos de solo lectura para elegir al facturar y cobrar (api/v1/catalogos).
+builder.Services.AddScoped<ServicioCatalogos>();
 builder.Services.AddScoped<TrabajoRetenciones>();
 
 // F3-05: la facturación periódica del mes natural y la factura de la reserva corta. Va después de

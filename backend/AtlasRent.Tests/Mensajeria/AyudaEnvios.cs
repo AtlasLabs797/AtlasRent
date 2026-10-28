@@ -178,7 +178,7 @@ internal static class AyudaEnvios
     /// <c>modificada_at</c> y por tanto lo que hace que una factura enviada aparezca en
     /// <c>modificadasTrasEnvio</c>.
     /// </summary>
-    public static async Task ModificarFacturaAsync(
+    public static async Task<JsonElement> ModificarFacturaAsync(
         SesionCliente sesion,
         Guid facturaId,
         CancellationToken ct)
@@ -204,6 +204,8 @@ internal static class AyudaEnvios
             ct);
 
         modificada.StatusCode.Should().Be(HttpStatusCode.OK, await modificada.Cuerpo());
+
+        return await modificada.Content.ReadFromJsonAsync<JsonElement>(ct);
     }
 
     /// <summary>

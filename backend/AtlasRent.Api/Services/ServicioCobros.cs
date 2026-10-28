@@ -1819,7 +1819,10 @@ public sealed class ServicioCobros(
                 a.ImporteRecibido,
                 a.TipoCambioValor,
                 a.Vigente,
-                a.CreatedAt))]);
+                a.CreatedAt))])
+    {
+        ImporteDevuelto = c.ImporteDevuelto,
+    };
 
     /// <summary>Ajuste por diferencia de cambio tal y como sale por la API.</summary>
     private static AjusteDiferenciaCambioRespuesta AAjusteRespuesta(AjusteDiferenciaCambio a) => new(

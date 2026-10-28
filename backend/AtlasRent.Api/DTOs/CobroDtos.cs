@@ -274,7 +274,14 @@ public sealed record CobroRespuesta(
     Guid? AnuladoPor,
     string? MotivoAnulacion,
     DateTimeOffset CreatedAt,
-    IReadOnlyList<CobroAsignacionRespuesta> Asignaciones);
+    IReadOnlyList<CobroAsignacionRespuesta> Asignaciones)
+{
+    /// <summary>
+    /// Parte del cobro devuelta al anular facturas de un cobro repartido (en la moneda recibida).
+    /// Queda como devuelta en el cobro y no genera saldo a favor. Cero si no se ha anulado ninguna.
+    /// </summary>
+    public decimal ImporteDevuelto { get; init; }
+}
 
 /// <summary>
 /// Asignación tal y como queda guardada, vigente o no.
