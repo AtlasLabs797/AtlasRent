@@ -283,6 +283,9 @@ builder.Services.AddScoped<ServicioBackup>();
 // F1-12: el "fallo → alerta" del criterio de aceptación. Scoped porque usa el DbContext, que es
 // scoped; el backup es scoped también y por eso lo puede recibir.
 builder.Services.AddScoped<IRegistroAlertas, ServicioAlertas>();
+// F2-10: lectura y cierre de la bandeja de alertas, y lectura de la auditoría.
+builder.Services.AddScoped<ServicioBandejaAlertas>();
+builder.Services.AddScoped<ServicioLecturaAuditoria>();
 // La vigilancia de la copia solo lee disco y escribe la alerta; no necesita la cadena de volcado,
 // que es la que casi siempre falta cuando esto se ejecuta a mano.
 builder.Services.AddScoped<TrabajoVigilanciaCopia>();
