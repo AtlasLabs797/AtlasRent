@@ -46,10 +46,6 @@ const ORDEN: Record<GrupoMenuId, Clave[]> = {
 
 /** Módulos sin pantalla todavía: acción del backend que los habilitará y qué falta. */
 const PENDIENTES: Partial<Record<Clave, [Accion, string]>> = {
-  // TODO(A#): la API de clientes es de F1-09, pero la pantalla todavía no existe.
-  clientes: [ACCIONES.clienteVer, 'pantalla de clientes'],
-  // TODO(A#): `cliente.ver` es la acción que cubre ver unidades (Acciones.cs).
-  unidades: [ACCIONES.clienteVer, 'pantalla de unidades e inmuebles'],
   contratos: [ACCIONES.clienteVer, 'pantalla de contratos'],
   facturas: [ACCIONES.facturaVer, 'pantalla de facturas'],
   cobros: [ACCIONES.cobroRegistrar, 'pantalla de cobros'],
