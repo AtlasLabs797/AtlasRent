@@ -104,7 +104,7 @@ export default function ClienteFicha() {
   return (
     <>
       <PageHeader
-        eyebrow={`${t.ficha.eyebrow} nº ${c.numero}`}
+        eyebrow={`${t.ficha.eyebrow} · ${c.numero}`}
         title={c.nombre}
         breadcrumbs={[{ label: t.ficha.migas, onClick: () => navegar('/clientes') }, { label: c.nombre }]}
       >
