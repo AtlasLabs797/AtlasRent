@@ -51,7 +51,15 @@ public sealed class ServicioUsuarios(
 
         var permisos = await politica.PermisosDeAsync(usuarioId, ct);
 
-        return new UsuarioPermisosRespuesta(usuarioId, rol, [.. permisos.Order(StringComparer.Ordinal)]);
+        // Misma fuente que PolicyService: la tabla permiso_rol.
+        var techo = await contexto.PermisoRol
+            .AsNoTracking()
+            .Where(p => p.RolClave == rol)
+            .Select(p => p.Accion)
+            .ToListAsync(ct);
+
+        return new UsuarioPermisosRespuesta(
+            usuarioId, rol, [.. permisos.Order(StringComparer.Ordinal)], [.. techo.Order(StringComparer.Ordinal)]);
     }
 
     public async Task<UsuarioCreadoRespuesta> CrearAsync(

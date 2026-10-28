@@ -73,7 +73,35 @@ public sealed record UsuarioResumen(
     string Rol);
 
 /// <summary>Rol y permisos efectivos (techo del rol menos lo que este usuario tiene recortado).</summary>
-public sealed record UsuarioPermisosRespuesta(Guid Id, string Rol, IReadOnlyList<string> Permisos);
+public sealed record UsuarioPermisosRespuesta(
+    Guid Id,
+    string Rol,
+    IReadOnlyList<string> Permisos,
+    IReadOnlyList<string> Techo);
+
+/// <summary>IP con bloqueo vigente. <c>Hasta</c> nulo e <c>Indefinido</c> verdadero: solo la levanta un administrador.</summary>
+public sealed record IpBloqueadaResumen(
+    string Ip, int Nivel, int Fallos, DateTimeOffset Desde, DateTimeOffset? Hasta, bool Indefinido);
+
+/// <summary>Cuenta con bloqueo vigente. Sin datos de credenciales.</summary>
+public sealed record CuentaBloqueadaResumen(
+    Guid UsuarioId, string NombreAcceso, string Nombre, DateTimeOffset Desde, DateTimeOffset Hasta);
+
+/// <summary>Solicitud de acceso de emergencia. Nunca lleva el código ni su hash.</summary>
+public sealed record SolicitudEmergenciaResumen(
+    Guid Id,
+    Guid UsuarioId,
+    string UsuarioNombreAcceso,
+    Guid SolicitanteId,
+    string SolicitanteNombreAcceso,
+    string Motivo,
+    DateTimeOffset CreadoAt,
+    Guid? AprobadoPorId,
+    string? AprobadoPorNombreAcceso,
+    DateTimeOffset? AprobadoAt,
+    DateTimeOffset? CaducaAt,
+    DateTimeOffset? UsadoAt,
+    string Estado);
 
 /// <summary>Respuesta del alta de usuario.</summary>
 /// <param name="ContrasenaComprobada">

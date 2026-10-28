@@ -21,6 +21,24 @@ public sealed class BloqueosController(
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp) : ControllerBase
 {
+    [HttpGet("ips")]
+    [Accion(Acciones.IpDesbloquear)]
+    public async Task<IActionResult> IpsBloqueadas(CancellationToken ct) =>
+        Ok(Lista(await bloqueos.ListarIpsBloqueadasAsync(ct)));
+
+    [HttpGet("cuentas")]
+    [Accion(Acciones.CuentaDesbloquear)]
+    public async Task<IActionResult> CuentasBloqueadas(CancellationToken ct) =>
+        Ok(Lista(await bloqueos.ListarCuentasBloqueadasAsync(ct)));
+
+    /// <summary>Lista blanca de la configuración. Solo lectura.</summary>
+    [HttpGet("lista-blanca")]
+    [Accion(Acciones.IpDesbloquear)]
+    public IActionResult ListaBlanca() => Ok(Lista(bloqueos.ListaBlanca()));
+
+    private static object Lista<T>(IReadOnlyList<T> datos) =>
+        new { data = datos, total = datos.Count, page = 1, pageSize = datos.Count, totalPages = 1 };
+
     [HttpPost("ip/desbloquear")]
     [Accion(Acciones.IpDesbloquear)]
     public async Task<IActionResult> DesbloquearIp([FromBody] IpDesbloquearPeticion peticion, CancellationToken ct)
