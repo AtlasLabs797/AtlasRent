@@ -178,7 +178,181 @@ public sealed class ServicioInmuebles(
             ct: ct);
     }
 
+    /// <summary>Deshace la baja lógica. Reactivar un inmueble activo no cambia nada ni audita.</summary>
+    public async Task<InmuebleResumen> ReactivarAsync(
+        Guid id,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var inmueble = await CargarInmuebleAsync(id, ct);
+        if (inmueble.Activo)
+        {
+            return AResumen(inmueble);
+        }
+
+        inmueble.Activo = true;
+
+        return await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Inmueble, inmueble,
+            esAlta: false,
+            accion: "inmueble.reactivado",
+            entidad: "inmueble",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: AResumen,
+            datosAuditoria: DatosAuditoria,
+            ct: ct);
+    }
+
     // ---------------------------------------------------------------- unidades
+
+    /// <summary>
+    /// Listado global de unidades. <paramref name="activa"/> en null devuelve activas e inactivas.
+    /// </summary>
+    public Task<Pagina<UnidadRespuesta>> ListarTodasUnidadesAsync(
+        ConsultaLista paginacion,
+        string? busqueda,
+        Guid? inmuebleId,
+        bool? activa,
+        ModalidadAlquiler? modalidad,
+        CancellationToken ct)
+    {
+        var consulta = contexto.Unidad
+            .AsNoTracking()
+            .Include(u => u.Modalidades)
+            .Include(u => u.Tarifas)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(busqueda))
+        {
+            var termino = busqueda.Trim().ToLowerInvariant();
+            consulta = consulta.Where(u => u.Nombre.ToLower().Contains(termino));
+        }
+
+        if (inmuebleId is { } inmueble)
+        {
+            consulta = consulta.Where(u => u.InmuebleId == inmueble);
+        }
+
+        if (activa is { } estaActiva)
+        {
+            consulta = consulta.Where(u => u.Activo == estaActiva);
+        }
+
+        if (modalidad is { } m)
+        {
+            consulta = consulta.Where(u => u.Modalidades.Any(x => x.Modalidad == m));
+        }
+
+        return ConsultaPaginada.PaginarAsync(
+            consulta, OrdenesUnidad, "nombre", paginacion, AUnidad, ct);
+    }
+
+    public async Task<UnidadRespuesta> LeerUnidadAsync(Guid id, CancellationToken ct) =>
+        AUnidad(await CargarUnidadAsync(id, ct, rastrear: false));
+
+    /// <summary>
+    /// Baja lógica de la unidad. Se rechaza (409) si tiene contratos sin finalizar o reservas vivas:
+    /// dejarían de apuntar a algo alquilable.
+    /// <para>
+    /// TODO(A#): la unidad implícita de un inmueble que se alquila completo todavía no existe en el
+    /// modelo (no hay marca que la distinga). Cuando exista, ¿se puede desactivar por separado o
+    /// solo junto con el inmueble?
+    /// </para>
+    /// </summary>
+    public async Task<UnidadRespuesta> DesactivarUnidadAsync(
+        Guid id,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var unidad = await CargarUnidadAsync(id, ct, rastrear: true);
+        if (!unidad.Activo)
+        {
+            return AUnidad(unidad);
+        }
+
+        var contratoVivo = await contexto.Contrato.AnyAsync(
+            c => c.UnidadId == id && c.Estado != EstadoContrato.Finalizado && c.Estado != EstadoContrato.Liquidado,
+            ct);
+        var reservaViva = await contexto.Reserva.AnyAsync(
+            r => r.UnidadId == id && r.Activo
+                && (r.Estado == EstadoReserva.Activa || r.Estado == EstadoReserva.EnConflicto),
+            ct);
+        if (contratoVivo || reservaViva)
+        {
+            throw new InvalidOperationException(
+                "La unidad tiene contratos o reservas vivos: no se puede desactivar.");
+        }
+
+        unidad.Activo = false;
+
+        return await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Unidad, unidad,
+            esAlta: false,
+            accion: "unidad.desactivada",
+            entidad: "unidad",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: AUnidad,
+            datosAuditoria: DatosAuditoriaUnidad,
+            ct: ct);
+    }
+
+    /// <summary>Deshace la baja de la unidad. Si su inmueble está de baja, 409.</summary>
+    public async Task<UnidadRespuesta> ReactivarUnidadAsync(
+        Guid id,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var unidad = await CargarUnidadAsync(id, ct, rastrear: true);
+        if (unidad.Activo)
+        {
+            return AUnidad(unidad);
+        }
+
+        if (!await contexto.Inmueble.AnyAsync(i => i.Id == unidad.InmuebleId && i.Activo, ct))
+        {
+            throw new InvalidOperationException(
+                "El inmueble de la unidad está desactivado: reactívalo primero.");
+        }
+
+        unidad.Activo = true;
+
+        return await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Unidad, unidad,
+            esAlta: false,
+            accion: "unidad.reactivada",
+            entidad: "unidad",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: AUnidad,
+            datosAuditoria: DatosAuditoriaUnidad,
+            ct: ct);
+    }
+
+    private async Task<Unidad> CargarUnidadAsync(Guid id, CancellationToken ct, bool rastrear)
+    {
+        var consulta = contexto.Unidad.Include(u => u.Modalidades).Include(u => u.Tarifas).AsQueryable();
+        if (!rastrear)
+        {
+            consulta = consulta.AsNoTracking();
+        }
+
+        return await consulta.SingleOrDefaultAsync(u => u.Id == id, ct)
+            ?? throw new KeyNotFoundException($"No existe la unidad '{id:D}'.");
+    }
 
     /// <summary>
     /// Unidades de un inmueble. El filtro por estado manual es el que usa la pantalla de

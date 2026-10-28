@@ -3639,6 +3639,14 @@ namespace AtlasRent.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("activo");
 
+                    b.Property<Guid?>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTimeOffset?>("ConvertidoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("convertido_at");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -3697,6 +3705,9 @@ namespace AtlasRent.Api.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_prospecto");
+
+                    b.HasIndex("ClienteId")
+                        .HasDatabaseName("ix_prospecto_cliente_id");
 
                     b.HasIndex("DocumentoHmac")
                         .IsUnique()
@@ -5583,6 +5594,17 @@ namespace AtlasRent.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_permiso_rol_rol_rol_clave");
+                });
+
+            modelBuilder.Entity("AtlasRent.Api.Data.Prospecto", b =>
+                {
+                    b.HasOne("AtlasRent.Api.Data.Cliente", "Cliente")
+                        .WithMany()
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_prospecto_cliente_cliente_id");
+
+                    b.Navigation("Cliente");
                 });
 
             modelBuilder.Entity("AtlasRent.Api.Data.Recordatorio", b =>

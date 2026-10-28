@@ -96,7 +96,75 @@ public sealed class InmueblesController(
         });
     }
 
+    /// <summary>Deshace la baja lógica del inmueble (200 sin cambios si ya está activo).</summary>
+    [HttpPost("{id:guid}/reactivar")]
+    [Accion(Acciones.ClienteEditar)]
+    public async Task<IActionResult> Reactivar(Guid id, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { id }, $"/api/v1/inmuebles/{id:D}/reactivar");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => inmuebles.ReactivarAsync(id, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
     // ---------------------------------------------------------------- unidades
+
+    /// <summary>Listado global de unidades; <c>activa</c> sin indicar devuelve todas.</summary>
+    [HttpGet("unidades")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> ListarTodasUnidades(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortDir,
+        [FromQuery] string? q,
+        [FromQuery] Guid? inmuebleId,
+        [FromQuery] bool? activa,
+        [FromQuery] ModalidadAlquiler? modalidad,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(inmuebles.ListarTodasUnidadesAsync(
+            Paginacion(page, pageSize, sortBy, sortDir), q, inmuebleId, activa, modalidad, ct));
+
+    [HttpGet("unidades/{unidadId:guid}")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> LeerUnidad(Guid unidadId, CancellationToken ct) =>
+        await ResponderAsync(() => inmuebles.LeerUnidadAsync(unidadId, ct));
+
+    /// <summary>Baja lógica; 409 si tiene contratos o reservas vivos.</summary>
+    [HttpDelete("unidades/{unidadId:guid}")]
+    [Accion(Acciones.ClienteEditar)]
+    public async Task<IActionResult> DesactivarUnidad(Guid unidadId, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { unidadId }, $"/api/v1/inmuebles/unidades/{unidadId:D}");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => inmuebles.DesactivarUnidadAsync(unidadId, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    [HttpPost("unidades/{unidadId:guid}/reactivar")]
+    [Accion(Acciones.ClienteEditar)]
+    public async Task<IActionResult> ReactivarUnidad(Guid unidadId, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { unidadId }, $"/api/v1/inmuebles/unidades/{unidadId:D}/reactivar");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => inmuebles.ReactivarUnidadAsync(unidadId, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
 
     [HttpGet("{id:guid}/unidades")]
     [Accion(Acciones.ClienteVer)]

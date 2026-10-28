@@ -95,6 +95,51 @@ public sealed class ProspectosController(
         });
     }
 
+    /// <summary>Deshace la baja lógica; 409 si el prospecto ya se convirtió.</summary>
+    [HttpPost("{id:guid}/reactivar")]
+    [Accion(Acciones.ClienteEditar)]
+    public async Task<IActionResult> Reactivar(Guid id, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { id }, $"/api/v1/prospectos/{id:D}/reactivar");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => prospectos.ReactivarAsync(id, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Convierte el prospecto en cliente: el cuerpo son los datos de alta del cliente. 409 si ya se
+    /// convirtió o si el documento ya es de otro cliente.
+    /// </summary>
+    [HttpPost("{id:guid}/convertir")]
+    [Accion(Acciones.ClienteEditar)]
+    public async Task<IActionResult> Convertir(Guid id, ClientePeticion peticion, CancellationToken ct)
+    {
+        // El número lo fija la secuencia; fijarlo es de la importación y no de esta pantalla.
+        if (peticion.Numero is not null)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status400BadRequest,
+                Problemas.Validacion,
+                "Datos no válidos",
+                "El número de cliente lo asigna la secuencia: no se puede indicar al convertir.");
+        }
+
+        var mutacion = Mutar(peticion, $"/api/v1/prospectos/{id:D}/convertir");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => prospectos.ConvertirAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
     private async Task<IActionResult> GuardarAsync<TResultado>(Func<Task<TResultado>> operacion)
     {
         try

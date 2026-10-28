@@ -691,6 +691,11 @@ public sealed class AtlasRentDbContext(DbContextOptions<AtlasRentDbContext> opci
             entidad.Property(e => e.CreatedAt).IsRequired();
             entidad.HasIndex(e => e.DocumentoHmac).IsUnique();
             entidad.HasIndex(e => e.Nombre);
+            entidad.HasIndex(e => e.ClienteId);
+            entidad.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ContactoCliente>(entidad =>
