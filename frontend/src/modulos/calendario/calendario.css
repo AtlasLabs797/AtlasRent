@@ -1,0 +1,32 @@
+/* Cuadrícula del calendario: solo tokens del design system (sin hex), así funciona en claro y oscuro. */
+.ar-cal { --cal-nombre: 176px; --cal-dia: 34px; --cal-alto: 40px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-card); overflow: auto; position: relative; }
+.ar-cal__cabecera { display: grid; grid-template-columns: var(--cal-nombre) repeat(var(--cal-dias), var(--cal-dia)); position: sticky; top: 0; z-index: 3; background: var(--surface-card); border-bottom: 1px solid var(--border-default); width: max-content; }
+.ar-cal__fila { display: grid; grid-template-columns: var(--cal-nombre) repeat(var(--cal-dias), var(--cal-dia)); position: absolute; left: 0; width: max-content; height: var(--cal-alto); border-bottom: 1px solid var(--border-subtle); }
+.ar-cal__nombre { position: sticky; left: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center; padding: 0 var(--space-6); background: var(--surface-card); border-right: 1px solid var(--border-default); min-width: 0; }
+.ar-cal__nombre b { font: var(--type-label); color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-cal__nombre span { font: var(--type-fine); color: var(--text-subtle); }
+.ar-cal__titulo-dia { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 44px; font: var(--type-fine); font-family: var(--font-mono); color: var(--text-muted); }
+.ar-cal__titulo-dia b { color: var(--text-strong); font-weight: 600; }
+.ar-cal__titulo-dia[data-hoy='true'] b { color: var(--accent-text); }
+.ar-cal__titulo-dia[data-finde='true'] { background: var(--surface-sunken); }
+.ar-cal__celda { appearance: none; border: 0; border-right: 1px solid var(--border-subtle); margin: 0; padding: 0; height: var(--cal-alto); display: flex; align-items: center; justify-content: center; font: var(--type-fine); font-family: var(--font-mono); font-weight: 600; cursor: pointer; background: var(--success-soft); color: var(--success); }
+.ar-cal__celda:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ar-cal__celda:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: -3px; }
+.ar-cal__celda[data-tipo='Contrato'] { background: var(--unit-ocupado); color: var(--surface-card); }
+.ar-cal__celda[data-tipo='ReservaMensual'],
+.ar-cal__celda[data-tipo='ReservaCorta'] { background: var(--unit-reservado); color: var(--surface-card); }
+.ar-cal__celda[data-tipo='ReservaCorta'][data-medio='true'] { background: linear-gradient(90deg, var(--unit-reservado) 50%, var(--success-soft) 50%); color: var(--text-strong); }
+.ar-cal__celda[data-tipo='Mantenimiento'] { background: var(--unit-mantenimiento); color: var(--surface-inverse); }
+.ar-cal__celda[data-tipo='EstadoManual'] { background: var(--surface-sunken); color: var(--text-muted); box-shadow: inset 0 0 0 2px var(--unit-fuera); }
+.ar-cal__leyenda { display: flex; flex-wrap: wrap; gap: var(--space-9); align-items: center; font: var(--type-caption); color: var(--text-muted); }
+.ar-cal__leyenda span { display: inline-flex; align-items: center; gap: var(--space-4); }
+.ar-cal__muestra { width: 16px; height: 16px; border-radius: var(--radius-xs); display: inline-block; border: 1px solid var(--border-default); }
+.ar-cal__muestra[data-tipo='Libre'] { background: var(--success-soft); }
+.ar-cal__muestra[data-tipo='Contrato'] { background: var(--unit-ocupado); }
+.ar-cal__muestra[data-tipo='ReservaMensual'],
+.ar-cal__muestra[data-tipo='ReservaCorta'] { background: var(--unit-reservado); }
+.ar-cal__muestra[data-tipo='Medio'] { background: linear-gradient(90deg, var(--unit-reservado) 50%, var(--success-soft) 50%); }
+.ar-cal__muestra[data-tipo='Mantenimiento'] { background: var(--unit-mantenimiento); }
+.ar-cal__muestra[data-tipo='EstadoManual'] { background: var(--surface-sunken); box-shadow: inset 0 0 0 2px var(--unit-fuera); }
+.ar-cal__barra { display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: center; }
+.ar-cal__mes { font: var(--type-label); color: var(--text-strong); min-width: 150px; text-align: center; text-transform: capitalize; }

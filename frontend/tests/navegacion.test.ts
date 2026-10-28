@@ -99,7 +99,7 @@ test('un módulo sin pantalla no aparece en la barra lateral', () => {
       `${clave} no tiene pantalla y no debe ser pulsable`,
     );
   }
-  assert.deepEqual(conPantalla, ['panel', 'informes', 'asistente', 'componentes']);
+  assert.deepEqual(conPantalla, ['panel', 'calendario', 'informes', 'asistente', 'componentes']);
 });
 
 test('los permisos de la API filtran el menú: el empleado no ve Informes y el admin sí', () => {
