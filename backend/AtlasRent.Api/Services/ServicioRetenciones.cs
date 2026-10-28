@@ -191,6 +191,50 @@ public sealed class ServicioRetenciones(
     /// haciendo el mismo tipo de gestión sobre un documento ya emitido.
     /// </para>
     /// </summary>
+    private static readonly Dictionary<string, Func<IQueryable<ComprobanteRetencion>, bool, IOrderedQueryable<ComprobanteRetencion>>>
+        Ordenes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["createdAt"] = (q, desc) => desc ? q.OrderByDescending(c => c.CreatedAt) : q.OrderBy(c => c.CreatedAt),
+        };
+
+    /// <summary>Lista de comprobantes, por factura y/o solo los pendientes de recibir. Lo más nuevo primero.</summary>
+    public Task<Pagina<ComprobanteRetencionRespuesta>> ListarAsync(
+        ConsultaLista paginacion,
+        Guid? facturaId,
+        bool? pendiente,
+        CancellationToken ct)
+    {
+        var consulta = contexto.ComprobanteRetencion.AsNoTracking().AsQueryable();
+
+        if (facturaId is { } factura)
+        {
+            consulta = consulta.Where(c => c.FacturaId == factura);
+        }
+
+        if (pendiente is { } soloPendientes)
+        {
+            consulta = soloPendientes
+                ? consulta.Where(c => c.Estado == EstadoComprobanteRetencion.Pendiente)
+                : consulta.Where(c => c.Estado != EstadoComprobanteRetencion.Pendiente);
+        }
+
+        // Orden por defecto descendente salvo que el cliente pida otro sentido.
+        var pag = paginacion.SortBy is null && paginacion.SortDir == ConsultaLista.OrdenAscendente
+            ? paginacion with { SortDir = ConsultaLista.OrdenDescendente }
+            : paginacion;
+
+        return ConsultaPaginada.PaginarAsync(consulta, Ordenes, "createdAt", pag, ARespuesta, ct);
+    }
+
+    public async Task<ComprobanteRetencionRespuesta> LeerAsync(Guid id, CancellationToken ct)
+    {
+        var comprobante = await contexto.ComprobanteRetencion.AsNoTracking()
+            .SingleOrDefaultAsync(c => c.Id == id, ct)
+            ?? throw new KeyNotFoundException($"El comprobante de retención '{id:D}' no existe.");
+
+        return ARespuesta(comprobante);
+    }
+
     public async Task<ComprobanteRetencionRespuesta> RecibirAsync(
         Guid id,
         ComprobanteRetencionPeticion peticion,

@@ -168,11 +168,39 @@ public sealed class ServicioFacturas(
         var ajustados = await cobros.AjustadoPorFacturaAsync([factura.Id], ct);
         var sinComprobante = await retenciones.SinComprobanteAsync([factura.Id], ct);
 
+        var comprobanteFiscal = await contexto.ComprobanteFiscal.AsNoTracking()
+            .Where(c => c.FacturaId == factura.Id)
+            .Select(c => new { c.Id, c.Tipo, c.Numero })
+            .FirstOrDefaultAsync(ct);
+
+        var comprobanteRetencionId = await contexto.ComprobanteRetencion.AsNoTracking()
+            .Where(c => c.FacturaId == factura.Id)
+            .Select(c => (Guid?)c.Id)
+            .FirstOrDefaultAsync(ct);
+
+        // Mismo criterio que la vista de cuentas: un envío fallido o pendiente no cuenta.
+        var modificadaAt = factura.ModificadaAt;
+        var modificadaTrasEnvio = modificadaAt != null
+            && await contexto.Envio.AsNoTracking().AnyAsync(e =>
+                e.TipoDocumento == TipoDocumentoEnvio.Factura
+                && e.DocumentoId == factura.Id
+                && e.Estado != EstadoEnvio.Fallido
+                && e.Estado != EstadoEnvio.Pendiente
+                && (e.DocumentoModificadoAt == null || modificadaAt > e.DocumentoModificadoAt), ct);
+
         return ConCobro(
             ARespuesta(factura),
             cobrados.GetValueOrDefault(factura.Id),
             ajustados.GetValueOrDefault(factura.Id),
-            sinComprobante.Contains(factura.Id));
+            sinComprobante.Contains(factura.Id)) with
+        {
+            ComprobanteFiscal = comprobanteFiscal is null
+                ? null
+                : $"{comprobanteFiscal.Tipo} {comprobanteFiscal.Numero.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            ComprobanteFiscalId = comprobanteFiscal?.Id,
+            ModificadaTrasEnvio = modificadaTrasEnvio,
+            ComprobanteRetencionId = comprobanteRetencionId,
+        };
     }
 
     // ---------------------------------------------------------------- PDF (F4-01)

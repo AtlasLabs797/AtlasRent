@@ -24,6 +24,7 @@ namespace AtlasRent.Api.Controllers;
 [Route("api/v1/recordatorios")]
 public sealed class RecordatoriosController(
     ServicioRecordatorios recordatorios,
+    ServicioCatalogos catalogos,
     ServicioIdempotencia idempotencia,
     ContextoSesion contextoSesion,
     IResolutorIpPeticion resolutorIp)
@@ -47,6 +48,12 @@ public sealed class RecordatoriosController(
         CancellationToken ct) =>
         await EnvoltorioAsync(recordatorios.ListarAsync(
             Paginacion(page, pageSize, sortBy, sortDir), fecha, clienteId, unidadId, estado, ct));
+
+    /// <summary>Modo vigente de los recordatorios (apagado, manual o automático), para la pantalla de avisos.</summary>
+    [HttpGet("modo")]
+    [Accion(Acciones.MensajeriaMasivo)]
+    public async Task<IActionResult> Modo(CancellationToken ct) =>
+        Ok(await catalogos.ModoRecordatoriosAsync(ct));
 
     /// <summary>Un aviso con el envío al que dio lugar.</summary>
     [HttpGet("{id:guid}")]
