@@ -73,7 +73,7 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
         // vive en la reserva y no en otro sitio.
         var reserva = await AyudaReserva.Json(
             await sesion.GetAsync($"/api/v1/reservas/{id:D}", ct), ct);
-        reserva.GetProperty("anticipoImporte").GetDecimal().Should().Be(2500m);
+        reserva.GetProperty("anticipoImporte").LeerDecimal().Should().Be(2500m);
         reserva.GetProperty("anticipoNota").GetString().Should().Contain("devuelve");
 
         var despues = await ContarAsync(contexto, economicas, ct);
@@ -140,7 +140,13 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
             switch (e.ValueKind)
             {
                 case System.Text.Json.JsonValueKind.Number:
-                    numeros.Add(e.GetDecimal());
+                    numeros.Add(e.LeerDecimal());
+                    break;
+                case System.Text.Json.JsonValueKind.String
+                    when decimal.TryParse(e.GetString(), System.Globalization.NumberStyles.Number,
+                        System.Globalization.CultureInfo.InvariantCulture, out var importe):
+                    // Los importes de la API son strings decimales (AGENTS.md §6).
+                    numeros.Add(importe);
                     break;
                 case System.Text.Json.JsonValueKind.Array:
                     foreach (var hijo in e.EnumerateArray())

@@ -208,7 +208,7 @@ public sealed class FacturaEmisionTests(ContenedorBdFixture bd, ApiTestFactory a
         cuerpoSegundo.GetProperty("id").GetGuid().Should().Be(cuerpoPrimero.GetProperty("id").GetGuid());
         cuerpoSegundo.GetProperty("numero").GetInt32().Should().Be(cuerpoPrimero.GetProperty("numero").GetInt32());
         cuerpoSegundo.GetProperty("estado").GetString().Should().Be(cuerpoPrimero.GetProperty("estado").GetString());
-        cuerpoSegundo.GetProperty("total").GetDecimal().Should().Be(cuerpoPrimero.GetProperty("total").GetDecimal());
+        cuerpoSegundo.GetProperty("total").LeerDecimal().Should().Be(cuerpoPrimero.GetProperty("total").LeerDecimal());
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
 

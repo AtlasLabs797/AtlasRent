@@ -78,7 +78,7 @@ public sealed class CuentaTotalesTests(ContenedorBdFixture bd, ApiTestFactoryBlo
 
             var porMoneda = totales.EnumerateArray().ToArray();
             porMoneda.Should().ContainSingle(t => t.GetProperty("moneda").GetString() == nameof(Moneda.USD));
-            porMoneda[0].GetProperty("total").GetDecimal().Should().Be(300m);
+            porMoneda[0].GetProperty("total").LeerDecimal().Should().Be(300m);
         }
     }
 
@@ -109,15 +109,15 @@ public sealed class CuentaTotalesTests(ContenedorBdFixture bd, ApiTestFactoryBlo
         totales.Should().ContainSingle();
 
         totales[0].GetProperty("moneda").GetString().Should().Be(nameof(Moneda.USD));
-        totales[0].GetProperty("total").GetDecimal()
+        totales[0].GetProperty("total").LeerDecimal()
             .Should().Be(AyudaCuentas.SumaDeFilas(filas, "total"), "300 de factura más 500 exigidos");
-        totales[0].GetProperty("retencion").GetDecimal()
+        totales[0].GetProperty("retencion").LeerDecimal()
             .Should().Be(AyudaCuentas.SumaDeFilas(filas, "retencion"))
             .And.Be(0m, "una fianza no retiene");
-        totales[0].GetProperty("cobrado").GetDecimal()
+        totales[0].GetProperty("cobrado").LeerDecimal()
             .Should().Be(AyudaCuentas.SumaDeFilas(filas, "cobrado"))
             .And.Be(120m, "solo hay dinero cobrado de verdad");
-        totales[0].GetProperty("pendiente").GetDecimal()
+        totales[0].GetProperty("pendiente").LeerDecimal()
             .Should().Be(AyudaCuentas.SumaDeFilas(filas, "pendiente"))
             .And.Be(680m, "180 de la factura y los 500 que se le exigen a la fianza");
     }
@@ -149,8 +149,8 @@ public sealed class CuentaTotalesTests(ContenedorBdFixture bd, ApiTestFactoryBlo
         var usd = totales.Single(t => t.GetProperty("moneda").GetString() == nameof(Moneda.USD));
         var dop = totales.Single(t => t.GetProperty("moneda").GetString() == nameof(Moneda.DOP));
 
-        usd.GetProperty("total").GetDecimal().Should().Be(300m);
-        dop.GetProperty("total").GetDecimal().Should().Be(9_000m);
+        usd.GetProperty("total").LeerDecimal().Should().Be(300m);
+        dop.GetProperty("total").LeerDecimal().Should().Be(9_000m);
     }
 
     /// <summary>
@@ -171,10 +171,10 @@ public sealed class CuentaTotalesTests(ContenedorBdFixture bd, ApiTestFactoryBlo
             await AyudaCuentas.VistaAsync(admin, $"clienteId={escenario.ClienteId:D}", ct), "Fianza");
 
         fila.GetProperty("id").GetGuid().Should().Be(fianzaId);
-        fila.GetProperty("total").GetDecimal().Should().Be(500m, "el total de una fianza es lo exigido");
-        fila.GetProperty("cobrado").GetDecimal().Should().Be(0m);
-        fila.GetProperty("pendiente").GetDecimal().Should().Be(500m, "lo que falta por exigir");
-        fila.GetProperty("saldoADevolver").GetDecimal().Should().Be(0m, "no se ha cobrado nada que devolver");
+        fila.GetProperty("total").LeerDecimal().Should().Be(500m, "el total de una fianza es lo exigido");
+        fila.GetProperty("cobrado").LeerDecimal().Should().Be(0m);
+        fila.GetProperty("pendiente").LeerDecimal().Should().Be(500m, "lo que falta por exigir");
+        fila.GetProperty("saldoADevolver").LeerDecimal().Should().Be(0m, "no se ha cobrado nada que devolver");
         fila.GetProperty("estado").GetString().Should().Be(nameof(EstadoFianza.Pendiente));
         fila.GetProperty("contratoId").GetGuid().Should().Be(escenario.ContratoId);
 

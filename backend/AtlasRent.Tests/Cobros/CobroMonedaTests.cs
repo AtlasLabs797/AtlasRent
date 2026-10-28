@@ -163,7 +163,7 @@ public sealed class CobroMonedaTests(ContenedorBdFixture bd, ApiTestFactory api)
         var deudaAjena = cuerpoPropuesta.GetProperty("deudaEnOtraMoneda").EnumerateArray().ToList();
         deudaAjena.Should().HaveCount(1);
         deudaAjena[0].GetProperty("moneda").GetString().Should().Be("DOP");
-        deudaAjena[0].GetProperty("pendiente").GetDecimal().Should().Be(2_000m);
+        deudaAjena[0].GetProperty("pendiente").LeerDecimal().Should().Be(2_000m);
         deudaAjena[0].GetProperty("facturas").GetInt32().Should().Be(1);
     }
 

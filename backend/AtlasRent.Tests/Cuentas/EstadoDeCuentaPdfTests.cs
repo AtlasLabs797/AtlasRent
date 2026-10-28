@@ -127,7 +127,7 @@ public sealed class EstadoDeCuentaPdfTests(ContenedorBdFixture bd, ApiTestFactor
         // cuenta que hace una persona al pie de la tabla, hecha con los números de la vista.
         var vencidoDeLaVista = filas
             .Where(f => f.GetProperty("vencida").ValueKind != JsonValueKind.Null && f.GetProperty("vencida").GetBoolean())
-            .Sum(f => f.GetProperty("pendiente").GetDecimal());
+            .Sum(f => f.GetProperty("pendiente").LeerDecimal());
 
         total.Vencido.Should().Be(FormatoDocumentoPdf.Importe(vencidoDeLaVista, Moneda.USD));
         vencidoDeLaVista.Should().Be(500m, "la factura vencida sigue debiendo 500 dólares");
@@ -198,5 +198,5 @@ public sealed class EstadoDeCuentaPdfTests(ContenedorBdFixture bd, ApiTestFactor
     private static string? Importe(JsonElement fila, string columna, Moneda moneda) =>
         fila.GetProperty(columna).ValueKind == JsonValueKind.Null
             ? null
-            : FormatoDocumentoPdf.Importe(fila.GetProperty(columna).GetDecimal(), moneda);
+            : FormatoDocumentoPdf.Importe(fila.GetProperty(columna).LeerDecimal(), moneda);
 }

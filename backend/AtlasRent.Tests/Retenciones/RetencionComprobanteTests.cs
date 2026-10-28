@@ -209,7 +209,7 @@ public sealed class RetencionComprobanteTests(ContenedorBdFixture bd, ApiTestFac
         cuerpo.GetProperty("fechaRecepcion").GetString().Should().Be("2026-10-15");
         cuerpo.GetProperty("recibidoAt").GetString().Should().NotBeNullOrWhiteSpace(
             "el instante lo pone el reloj de la aplicación, no quien teclea");
-        cuerpo.GetProperty("importe").GetDecimal().Should().Be(100m, "lo congelado no cambia al recibirse");
+        cuerpo.GetProperty("importe").LeerDecimal().Should().Be(100m, "lo congelado no cambia al recibirse");
 
         var leida = await sesion.GetAsync($"/api/v1/facturas/{facturaId:D}", ct);
         var factura = await leida.Content.ReadFromJsonAsync<JsonElement>(ct);
@@ -316,11 +316,11 @@ public sealed class RetencionComprobanteTests(ContenedorBdFixture bd, ApiTestFac
         leida.StatusCode.Should().Be(HttpStatusCode.OK);
         var factura = await leida.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        factura.GetProperty("retencion").GetDecimal().Should().Be(1_000m);
-        factura.GetProperty("netoACobrar").GetDecimal().Should().Be(0m);
+        factura.GetProperty("retencion").LeerDecimal().Should().Be(1_000m);
+        factura.GetProperty("netoACobrar").LeerDecimal().Should().Be(0m);
         factura.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
-        factura.GetProperty("pendiente").GetDecimal().Should().Be(0m);
-        factura.GetProperty("cobrado").GetDecimal()
+        factura.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
+        factura.GetProperty("cobrado").LeerDecimal()
             .Should().Be(0m, "nada ha entrado en caja: la factura está cerrada por retención, no por cobro");
     }
 
@@ -347,9 +347,9 @@ public sealed class RetencionComprobanteTests(ContenedorBdFixture bd, ApiTestFac
 
         var emitida = await AyudaRetenciones.EmitirAsync(sesion, facturaId, ct);
 
-        var total = emitida.GetProperty("total").GetDecimal();
-        var retencion = emitida.GetProperty("retencion").GetDecimal();
-        var neto = emitida.GetProperty("netoACobrar").GetDecimal();
+        var total = emitida.GetProperty("total").LeerDecimal();
+        var retencion = emitida.GetProperty("retencion").LeerDecimal();
+        var neto = emitida.GetProperty("netoACobrar").LeerDecimal();
 
         neto.Should().Be(total - retencion);
 
@@ -357,8 +357,8 @@ public sealed class RetencionComprobanteTests(ContenedorBdFixture bd, ApiTestFac
         var sinCobros = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
 
         sinCobros.GetProperty("estadoCobro").GetString().Should().Be("Pendiente");
-        sinCobros.GetProperty("pendiente").GetDecimal().Should().Be(neto, "lo que queda es el neto, sin un céntimo cobrado");
-        sinCobros.GetProperty("cobrado").GetDecimal().Should().Be(0m);
+        sinCobros.GetProperty("pendiente").LeerDecimal().Should().Be(neto, "lo que queda es el neto, sin un céntimo cobrado");
+        sinCobros.GetProperty("cobrado").LeerDecimal().Should().Be(0m);
 
         // Con un cobro justo del neto, el cobro y la retención juntos cierran la factura: este es el
         // criterio de aceptación literal, «cobro + retención = total ⇒ Pagada». Y lo retenido no se
@@ -383,8 +383,8 @@ public sealed class RetencionComprobanteTests(ContenedorBdFixture bd, ApiTestFac
         var conCobro = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
 
         conCobro.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
-        conCobro.GetProperty("pendiente").GetDecimal().Should().Be(0m);
-        conCobro.GetProperty("cobrado").GetDecimal().Should().Be(neto, "lo cobrado es solo el dinero del cobro");
+        conCobro.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
+        conCobro.GetProperty("cobrado").LeerDecimal().Should().Be(neto, "lo cobrado es solo el dinero del cobro");
     }
 
     // ---------------------------------------------------------------- apoyo

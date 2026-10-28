@@ -15,7 +15,14 @@ public sealed class ServicioIdempotencia(AtlasRentDbContext contexto, TimeProvid
     /// Mismas opciones que usa la API para responder (camelCase): el cuerpo guardado se devuelve
     /// tal cual en el reintento y tiene que ser indistinguible del de la primera vez.
     /// </summary>
-    private static readonly JsonSerializerOptions OpcionesRespuesta = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions OpcionesRespuesta = new(JsonSerializerDefaults.Web)
+    {
+        Converters =
+        {
+            new AtlasRent.Api.DTOs.ImporteJsonConverter(),
+            new System.Text.Json.Serialization.JsonStringEnumConverter(),
+        },
+    };
     /// <summary>
     /// Respuesta ya guardada para esta clave, o <c>null</c> si es la primera vez.
     /// <para>

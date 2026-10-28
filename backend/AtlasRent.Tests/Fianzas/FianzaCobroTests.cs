@@ -46,9 +46,9 @@ public sealed class FianzaCobroTests(ContenedorBdFixture bd, ApiTestFactory api)
         var fianzaId = await AyudaFianzas.AltaAsync(admin, contratoId, 1_000m, Moneda.USD, 2, ct);
 
         var antesDeCobrar = await AyudaFianzas.LeerAsync(admin, fianzaId, ct);
-        antesDeCobrar.GetProperty("cobrado").GetDecimal()
+        antesDeCobrar.GetProperty("cobrado").LeerDecimal()
             .Should().Be(0m, "una fianza recién dada de alta no tiene nada cobrado");
-        antesDeCobrar.GetProperty("saldo").GetDecimal()
+        antesDeCobrar.GetProperty("saldo").LeerDecimal()
             .Should().Be(0m, "§3.11: el saldo es lo cobrado menos lo devuelto, y aún no se ha cobrado");
 
         await AyudaFianzas.CobradaAsync(admin, clienteId, contratoId, fianzaId, 1_000m, Moneda.USD, ct);
@@ -58,9 +58,9 @@ public sealed class FianzaCobroTests(ContenedorBdFixture bd, ApiTestFactory api)
         cifras.Saldo.Should().Be(1_000m, "cobrada entera y sin devolver, queda todo por devolver");
 
         var leida = await AyudaFianzas.LeerAsync(admin, fianzaId, ct);
-        leida.GetProperty("cobrado").GetDecimal().Should().Be(1_000m);
-        leida.GetProperty("saldo").GetDecimal().Should().Be(1_000m);
-        leida.GetProperty("importeExigido").GetDecimal().Should().Be(1_000m);
+        leida.GetProperty("cobrado").LeerDecimal().Should().Be(1_000m);
+        leida.GetProperty("saldo").LeerDecimal().Should().Be(1_000m);
+        leida.GetProperty("importeExigido").LeerDecimal().Should().Be(1_000m);
         leida.GetProperty("numeroFianzas").GetInt32().Should().Be(2);
     }
 
@@ -82,7 +82,7 @@ public sealed class FianzaCobroTests(ContenedorBdFixture bd, ApiTestFactory api)
             admin, clienteId, contratoId, serieId, Moneda.USD, hoy.AddDays(10), 300m, ct);
 
         var antes = await AyudaCobros.FacturaAsync(admin, facturaId, ct);
-        var pendienteAntes = antes.GetProperty("pendiente").GetDecimal();
+        var pendienteAntes = antes.GetProperty("pendiente").LeerDecimal();
         var estadoCobroAntes = antes.GetProperty("estadoCobro").GetString();
 
         pendienteAntes.Should().Be(300m, "la factura está emitida y sin cobrar");
@@ -91,7 +91,7 @@ public sealed class FianzaCobroTests(ContenedorBdFixture bd, ApiTestFactory api)
         await AyudaFianzas.CobradaAsync(admin, clienteId, contratoId, fianzaId, 500m, Moneda.USD, ct);
 
         var despues = await AyudaCobros.FacturaAsync(admin, facturaId, ct);
-        despues.GetProperty("pendiente").GetDecimal()
+        despues.GetProperty("pendiente").LeerDecimal()
             .Should().Be(pendienteAntes, "cobrar una fianza no es pagar una factura");
         despues.GetProperty("estadoCobro").GetString().Should().Be(estadoCobroAntes);
 
@@ -131,13 +131,13 @@ public sealed class FianzaCobroTests(ContenedorBdFixture bd, ApiTestFactory api)
         var fila = pagina.GetProperty("data")[0];
         fila.GetProperty("id").GetGuid().Should().Be(fianzaId);
         fila.GetProperty("contratoId").GetGuid().Should().Be(contratoId, "la fianza es la cuenta de su contrato");
-        fila.GetProperty("importeExigido").GetDecimal().Should().Be(1_200m);
+        fila.GetProperty("importeExigido").LeerDecimal().Should().Be(1_200m);
         fila.GetProperty("numeroFianzas").GetInt32().Should().Be(3);
         fila.GetProperty("moneda").GetString().Should().Be(nameof(Moneda.USD));
-        fila.GetProperty("cobrado").GetDecimal().Should().Be(1_200m);
-        fila.GetProperty("devuelto").GetDecimal().Should().Be(0m);
-        fila.GetProperty("descontado").GetDecimal().Should().Be(0m);
-        fila.GetProperty("saldo").GetDecimal().Should().Be(1_200m);
+        fila.GetProperty("cobrado").LeerDecimal().Should().Be(1_200m);
+        fila.GetProperty("devuelto").LeerDecimal().Should().Be(0m);
+        fila.GetProperty("descontado").LeerDecimal().Should().Be(0m);
+        fila.GetProperty("saldo").LeerDecimal().Should().Be(1_200m);
         fila.GetProperty("estado").GetString().Should().Be(nameof(EstadoFianza.Parcial));
     }
 
@@ -163,9 +163,9 @@ public sealed class FianzaCobroTests(ContenedorBdFixture bd, ApiTestFactory api)
         var leida = await AyudaFianzas.LeerAsync(admin, fianzaId, ct);
         leida.GetProperty("estado").GetString()
             .Should().Be(nameof(EstadoFianza.Parcial), "con dinero cobrado y sin decisión, la fianza está en curso");
-        leida.GetProperty("cobrado").GetDecimal().Should().Be(400m);
+        leida.GetProperty("cobrado").LeerDecimal().Should().Be(400m);
 
-        (await AyudaFianzas.LeerAsync(admin, fianzaId, ct)).GetProperty("saldo").GetDecimal()
+        (await AyudaFianzas.LeerAsync(admin, fianzaId, ct)).GetProperty("saldo").LeerDecimal()
             .Should().Be(400m, "el saldo es lo cobrado: 400 cobrados y nada devuelto todavía");
     }
 
@@ -295,7 +295,7 @@ public sealed class FianzaCobroTests(ContenedorBdFixture bd, ApiTestFactory api)
         var cuerpo = await simulacion.Content.ReadFromJsonAsync<JsonElement>(ct);
         cuerpo.GetProperty("asignaciones").GetArrayLength()
             .Should().Be(0, "el contrato no tiene facturas y la FIFO no propone fianzas");
-        cuerpo.GetProperty("excedente").GetDecimal()
+        cuerpo.GetProperty("excedente").LeerDecimal()
             .Should().Be(200m, "lo que no se aplica es excedente, que va a saldo a favor (§3.10.1)");
     }
 }

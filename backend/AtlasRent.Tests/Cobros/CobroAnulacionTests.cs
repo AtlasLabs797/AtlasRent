@@ -84,7 +84,7 @@ public sealed class CobroAnulacionTests(ContenedorBdFixture bd, ApiTestFactory a
         var cuerpo = await anulado.Content.ReadFromJsonAsync<JsonElement>(ct);
         cuerpo.GetProperty("estado").GetString().Should().Be("Anulado");
         cuerpo.GetProperty("motivoAnulacion").GetString().Should().Be("Se recibió un cheque de otra empresa");
-        cuerpo.GetProperty("totalAsignado").GetDecimal().Should().Be(0m, "lo anulado ya no cuenta");
+        cuerpo.GetProperty("totalAsignado").LeerDecimal().Should().Be(0m, "lo anulado ya no cuenta");
         cuerpo.GetProperty("asignaciones").GetArrayLength().Should().Be(1, "pero la fila sigue ahí");
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);
@@ -107,8 +107,8 @@ public sealed class CobroAnulacionTests(ContenedorBdFixture bd, ApiTestFactory a
             .Should().Be(1, "el cobro tampoco se borra");
 
         var factura = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
-        factura.GetProperty("cobrado").GetDecimal().Should().Be(0m);
-        factura.GetProperty("pendiente").GetDecimal().Should().Be(300m, "la factura vuelve a su pendiente anterior");
+        factura.GetProperty("cobrado").LeerDecimal().Should().Be(0m);
+        factura.GetProperty("pendiente").LeerDecimal().Should().Be(300m, "la factura vuelve a su pendiente anterior");
         factura.GetProperty("estadoCobro").GetString().Should().Be("Pendiente");
     }
 
@@ -171,8 +171,8 @@ public sealed class CobroAnulacionTests(ContenedorBdFixture bd, ApiTestFactory a
         conCredito.StatusCode.Should().Be(HttpStatusCode.OK, await conCredito.Cuerpo());
         var cuerpo = await conCredito.Content.ReadFromJsonAsync<JsonElement>(ct);
         var cobroId = cuerpo.GetProperty("id").GetGuid();
-        cuerpo.GetProperty("totalAsignado").GetDecimal().Should().Be(250m, "el crédito pagó la factura entera");
-        cuerpo.GetProperty("excedente").GetDecimal().Should().Be(100m);
+        cuerpo.GetProperty("totalAsignado").LeerDecimal().Should().Be(250m, "el crédito pagó la factura entera");
+        cuerpo.GetProperty("excedente").LeerDecimal().Should().Be(100m);
 
         (await AyudaCobros.SaldoAsync(bd, contratoId, Moneda.USD, ct))
             .Should().Be(100m, "salen 300 de crédito y entran 100 de los 350");

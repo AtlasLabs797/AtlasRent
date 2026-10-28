@@ -300,14 +300,14 @@ public sealed class ConfiguracionCrudTests(ContenedorBdFixture bd, ApiTestFactor
 
         cambio.StatusCode.Should().Be(HttpStatusCode.OK);
         var guardado = await cambio.Content.ReadFromJsonAsync<JsonElement>(ct);
-        guardado.GetProperty("toleranciaCambioUsd").GetDecimal().Should().Be(2.35m, "tolerancia de importe: 2 decimales");
-        guardado.GetProperty("toleranciaCambioDop").GetDecimal().Should().Be(60m);
+        guardado.GetProperty("toleranciaCambioUsd").LeerDecimal().Should().Be(2.35m, "tolerancia de importe: 2 decimales");
+        guardado.GetProperty("toleranciaCambioDop").LeerDecimal().Should().Be(60m);
         guardado.GetProperty("modoRecordatorios").GetString().Should().Be("Manual");
 
         var releido = await (await sesion.GetAsync("/api/v1/config/ajustes", ct))
             .Content.ReadFromJsonAsync<JsonElement>(ct);
-        releido.GetProperty("toleranciaCambioUsd").GetDecimal().Should().Be(2.35m);
-        releido.GetProperty("toleranciaCambioDop").GetDecimal().Should().Be(60m);
+        releido.GetProperty("toleranciaCambioUsd").LeerDecimal().Should().Be(2.35m);
+        releido.GetProperty("toleranciaCambioDop").LeerDecimal().Should().Be(60m);
         releido.GetProperty("modoRecordatorios").GetString().Should().Be("Manual");
     }
 

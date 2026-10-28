@@ -78,7 +78,7 @@ public sealed class PeriodicaBajaEIncrementoTests(ContenedorBdFixture bd, ApiTes
 
         // Baja el día 15 (exclusivo): días 1..14 = 14 días x 100 = 1400,00.
         item.GetProperty("diasFacturables").GetInt32().Should().Be(14);
-        item.GetProperty("importe").GetDecimal().Should().Be(1_400.00m);
+        item.GetProperty("importe").LeerDecimal().Should().Be(1_400.00m);
 
         // El mes siguiente ya no es candidato.
         var siguiente = await AyudaPeriodicas.SimularAsync(
@@ -103,7 +103,7 @@ public sealed class PeriodicaBajaEIncrementoTests(ContenedorBdFixture bd, ApiTes
             admin, AyudaPeriodicas.Peticion(mes, serie, [contrato]), ct));
 
         item.GetProperty("diasFacturables").GetInt32().Should().Be(14);
-        item.GetProperty("importe").GetDecimal().Should().Be(1_400.00m);
+        item.GetProperty("importe").LeerDecimal().Should().Be(1_400.00m);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public sealed class PeriodicaBajaEIncrementoTests(ContenedorBdFixture bd, ApiTes
             admin, AyudaPeriodicas.Peticion(mes, serie, [contrato]), ct));
 
         item.GetProperty("diasFacturables").GetInt32().Should().Be(14);
-        item.GetProperty("importe").GetDecimal().Should().Be(1_400.00m);
+        item.GetProperty("importe").LeerDecimal().Should().Be(1_400.00m);
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class PeriodicaBajaEIncrementoTests(ContenedorBdFixture bd, ApiTes
         // Días 1..9 a 3000: 9 x 100 = 900,00. Días 10..30 a 3300: 21 x 110 = 2310,00. Total 3210,00.
         item.GetProperty("diasFacturables").GetInt32().Should().Be(30);
         item.GetProperty("prorrateado").GetBoolean().Should().BeTrue();
-        item.GetProperty("importe").GetDecimal().Should().Be(3_210.00m);
+        item.GetProperty("importe").LeerDecimal().Should().Be(3_210.00m);
 
         await AyudaPeriodicas.GenerarAsync(admin, AyudaPeriodicas.Peticion(mes, serie, [contrato]), ct);
         var factura = (await AyudaPeriodicas.FacturasDelPeriodoAsync(bd, contrato, mes, ct)).Should().ContainSingle().Subject;

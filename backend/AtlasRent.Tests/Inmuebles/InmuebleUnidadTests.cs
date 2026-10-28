@@ -59,7 +59,7 @@ public sealed class InmuebleUnidadTests(ContenedorBdFixture bd, ApiTestFactory a
         var tarifas = unidad.GetProperty("tarifas").EnumerateArray()
             .ToDictionary(
                 t => $"{t.GetProperty("modalidad").GetString()}/{t.GetProperty("moneda").GetString()}",
-                t => t.GetProperty("importe").GetDecimal());
+                t => t.GetProperty("importe").LeerDecimal());
         tarifas["Mensual/USD"].Should().Be(1200.00m);
         tarifas["Mensual/DOP"].Should().Be(70000.00m);
         tarifas["MedioDia/USD"].Should().Be(250.50m);
@@ -209,7 +209,7 @@ public sealed class InmuebleUnidadTests(ContenedorBdFixture bd, ApiTestFactory a
         unidad.StatusCode.Should().Be(HttpStatusCode.OK, await DocumentoInmueblePermisosTests.textoDe(unidad, ct));
 
         var creada = await unidad.Content.ReadFromJsonAsync<JsonElement>(ct);
-        creada.GetProperty("banos").GetDecimal().Should().Be(1.5m, "los baños van con medios");
+        creada.GetProperty("banos").LeerDecimal().Should().Be(1.5m, "los baños van con medios");
 
         // La baja del inmueble es lógica: desaparece de la lista y no aparece en la ficha.
         (await empleado.DeleteAsync($"/api/v1/inmuebles/{inmueble:D}", ct))

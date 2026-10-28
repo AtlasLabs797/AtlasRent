@@ -48,9 +48,9 @@ public sealed class FacturaCalculoYLineasTests(ContenedorBdFixture bd, ApiTestFa
         var factura = await AyudaFacturas.AgregarLineaAsync(
             sesion, facturaId, TipoLineaFactura.Suministro, 1m, 0.30m, tipoItbis, ct);
 
-        factura.GetProperty("subtotal").GetDecimal().Should().Be(100.31m);
-        factura.GetProperty("itbis").GetDecimal().Should().Be(18.05m);
-        factura.GetProperty("total").GetDecimal().Should().Be(118.36m);
+        factura.GetProperty("subtotal").LeerDecimal().Should().Be(100.31m);
+        factura.GetProperty("itbis").LeerDecimal().Should().Be(18.05m);
+        factura.GetProperty("total").LeerDecimal().Should().Be(118.36m);
 
         // Lo que habría dado calcular el impuesto sobre el subtotal entero. Se escribe para que se
         // vea la diferencia: si algún día el total sale 18,06, el cálculo ha vuelto a la factura
@@ -96,13 +96,13 @@ public sealed class FacturaCalculoYLineasTests(ContenedorBdFixture bd, ApiTestFa
         var conDescuento = await AyudaFacturas.AgregarLineaAsync(
             sesion, facturaId, TipoLineaFactura.Descuento, 1m, -10m, null, ct);
 
-        conDescuento.GetProperty("subtotal").GetDecimal().Should().Be(90m);
-        conDescuento.GetProperty("itbis").GetDecimal().Should().Be(0m);
-        conDescuento.GetProperty("total").GetDecimal().Should().Be(90m);
+        conDescuento.GetProperty("subtotal").LeerDecimal().Should().Be(90m);
+        conDescuento.GetProperty("itbis").LeerDecimal().Should().Be(0m);
+        conDescuento.GetProperty("total").LeerDecimal().Should().Be(90m);
 
         var linea = conDescuento.GetProperty("lineas")[1];
         linea.GetProperty("tipo").GetString().Should().Be("Descuento");
-        linea.GetProperty("importe").GetDecimal().Should().Be(-10m);
+        linea.GetProperty("importe").LeerDecimal().Should().Be(-10m);
 
         var descuentoEnPositivo = await sesion.PostAsync(
             $"/api/v1/facturas/{facturaId:D}/lineas",
@@ -134,7 +134,7 @@ public sealed class FacturaCalculoYLineasTests(ContenedorBdFixture bd, ApiTestFa
             sesion, facturaId, TipoLineaFactura.Renta, 1m, 100m, null, ct);
         conDosLineas = await AyudaFacturas.AgregarLineaAsync(
             sesion, facturaId, TipoLineaFactura.Servicio, 2m, 25m, null, ct);
-        conDosLineas.GetProperty("total").GetDecimal().Should().Be(150m);
+        conDosLineas.GetProperty("total").LeerDecimal().Should().Be(150m);
 
         var primera = conDosLineas.GetProperty("lineas")[0].GetProperty("id").GetGuid();
 
@@ -145,7 +145,7 @@ public sealed class FacturaCalculoYLineasTests(ContenedorBdFixture bd, ApiTestFa
 
         editada.StatusCode.Should().Be(HttpStatusCode.OK);
         var cuerpoEditado = await editada.Content.ReadFromJsonAsync<JsonElement>(ct);
-        cuerpoEditado.GetProperty("total").GetDecimal().Should().Be(250m);
+        cuerpoEditado.GetProperty("total").LeerDecimal().Should().Be(250m);
 
         var borrada = await sesion.DeleteAsync(
             $"/api/v1/facturas/{facturaId:D}/lineas/{primera:D}", ct);
@@ -153,7 +153,7 @@ public sealed class FacturaCalculoYLineasTests(ContenedorBdFixture bd, ApiTestFa
         borrada.StatusCode.Should().Be(HttpStatusCode.OK);
         var cuerpoBorrado = await borrada.Content.ReadFromJsonAsync<JsonElement>(ct);
         cuerpoBorrado.GetProperty("lineas").GetArrayLength().Should().Be(1);
-        cuerpoBorrado.GetProperty("total").GetDecimal().Should().Be(50m);
+        cuerpoBorrado.GetProperty("total").LeerDecimal().Should().Be(50m);
 
         var emitida = await sesion.PostAsync($"/api/v1/facturas/{facturaId:D}/emitir", new { }, ct);
         emitida.StatusCode.Should().Be(HttpStatusCode.OK);

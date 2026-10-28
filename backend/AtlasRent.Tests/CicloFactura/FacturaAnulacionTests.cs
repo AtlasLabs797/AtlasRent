@@ -76,8 +76,8 @@ public sealed class FacturaAnulacionTests(ContenedorBdFixture bd, ApiTestFactory
         // que sigue contando.
         var quieta = await AyudaCobros.FacturaAsync(sesion, quietaId, ct);
         quieta.GetProperty("estadoCobro").GetString().Should().Be(nameof(EstadoCobroFactura.Pagada));
-        quieta.GetProperty("cobrado").GetDecimal().Should().Be(200m);
-        quieta.GetProperty("pendiente").GetDecimal().Should().Be(0m);
+        quieta.GetProperty("cobrado").LeerDecimal().Should().Be(200m);
+        quieta.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
     }
 
     /// <summary>
@@ -125,8 +125,8 @@ public sealed class FacturaAnulacionTests(ContenedorBdFixture bd, ApiTestFactory
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         leida.GetProperty("estado").GetString().Should().Be(nameof(EstadoFactura.Anulada));
         leida.GetProperty("estadoCobro").GetString().Should().Be(nameof(EstadoCobroFactura.Anulada));
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(0m);
-        leida.GetProperty("cobrado").GetDecimal().Should().Be(0m);
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
+        leida.GetProperty("cobrado").LeerDecimal().Should().Be(0m);
     }
 
     /// <summary>
@@ -270,14 +270,14 @@ public sealed class FacturaAnulacionTests(ContenedorBdFixture bd, ApiTestFactory
 
         cuerpo.GetProperty("numeroSeConserva").GetBoolean().Should().BeTrue("D28");
         cuerpo.GetProperty("numero").GetInt32().Should().BePositive();
-        cuerpo.GetProperty("netoACobrar").GetDecimal().Should().Be(300m, "lo que estaba pendiente");
+        cuerpo.GetProperty("netoACobrar").LeerDecimal().Should().Be(300m, "lo que estaba pendiente");
 
         var seAnulan = cuerpo.GetProperty("cobrosQueSeAnulan").EnumerateArray().ToList();
         seAnulan.Should().ContainSingle("este cobro solo paga esa factura");
         seAnulan[0].GetProperty("cobroId").GetGuid().Should().Be(propio);
-        seAnulan[0].GetProperty("importeDeEstaFactura").GetDecimal().Should().Be(300m);
-        seAnulan[0].GetProperty("importeQueSigueVigente").GetDecimal().Should().Be(0m);
-        seAnulan[0].GetProperty("cambioDelSaldoAFavor").GetDecimal()
+        seAnulan[0].GetProperty("importeDeEstaFactura").LeerDecimal().Should().Be(300m);
+        seAnulan[0].GetProperty("importeQueSigueVigente").LeerDecimal().Should().Be(0m);
+        seAnulan[0].GetProperty("cambioDelSaldoAFavor").LeerDecimal()
             .Should().Be(0m, "aquí no quedó excedente: todo el dinero iba a esa factura");
         seAnulan[0].GetProperty("seAnulaEntero").GetBoolean().Should().BeTrue();
 
@@ -295,8 +295,8 @@ public sealed class FacturaAnulacionTests(ContenedorBdFixture bd, ApiTestFactory
         var tocados = cuerpo2.GetProperty("cobrosQueSeToCan").EnumerateArray().ToList();
         tocados.Should().ContainSingle();
         tocados[0].GetProperty("cobroId").GetGuid().Should().Be(compartido);
-        tocados[0].GetProperty("importeDeEstaFactura").GetDecimal().Should().Be(200m);
-        tocados[0].GetProperty("importeQueSigueVigente").GetDecimal().Should().Be(150m, "la tercera sigue cubierta");
+        tocados[0].GetProperty("importeDeEstaFactura").LeerDecimal().Should().Be(200m);
+        tocados[0].GetProperty("importeQueSigueVigente").LeerDecimal().Should().Be(150m, "la tercera sigue cubierta");
         tocados[0].GetProperty("seAnulaEntero").GetBoolean().Should().BeFalse();
 
         (await AyudaCiclo.RecuentoAsync(bd, ct))

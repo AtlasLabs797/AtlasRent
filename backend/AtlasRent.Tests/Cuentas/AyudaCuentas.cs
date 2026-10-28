@@ -233,7 +233,7 @@ internal static class AyudaCuentas
 
             if (valor.ValueKind != JsonValueKind.Null)
             {
-                suma += valor.GetDecimal();
+                suma += valor.LeerDecimal();
             }
         }
 

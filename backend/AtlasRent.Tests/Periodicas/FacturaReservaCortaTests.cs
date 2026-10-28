@@ -94,8 +94,8 @@ public sealed class FacturaReservaCortaTests(ContenedorBdFixture bd, ApiTestFact
         lectura.StatusCode.Should().Be(HttpStatusCode.OK);
         var cuerpo = await lectura.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        cuerpo.GetProperty("cobrado").GetDecimal().Should().Be(0m, "el anticipo no se ha convertido en cobro");
-        cuerpo.GetProperty("pendiente").GetDecimal().Should().Be(500m);
+        cuerpo.GetProperty("cobrado").LeerDecimal().Should().Be(0m, "el anticipo no se ha convertido en cobro");
+        cuerpo.GetProperty("pendiente").LeerDecimal().Should().Be(500m);
         cuerpo.GetProperty("estadoCobro").GetString().Should().Be(nameof(EstadoCobroFactura.Pendiente));
     }
 

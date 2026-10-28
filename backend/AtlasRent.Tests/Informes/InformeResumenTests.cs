@@ -79,7 +79,7 @@ public sealed class InformeResumenTests(ContenedorBdFixture bd, ApiTestFactoryBl
 
         // El pie primero: que la vista se cuadre consigo misma es lo que hace que la comparación de
         // abajo signifique algo.
-        totales.GetProperty("total").GetDecimal()
+        totales.GetProperty("total").LeerDecimal()
             .Should().Be(AyudaCuentas.SumaDeFilas(filas, "total"))
             .And.Be(1_000m, "300 de factura, 500 exigidos de fianza y los 200 de la proforma");
 
@@ -94,11 +94,11 @@ public sealed class InformeResumenTests(ContenedorBdFixture bd, ApiTestFactoryBl
         resumen.Bloque("cobrado").GetProperty("saldoAFavor").Usd().Should().Be(0m);
 
         resumen.Bloque("cobrado").GetProperty("total").Usd()
-            .Should().Be(totales.GetProperty("cobrado").GetDecimal())
+            .Should().Be(totales.GetProperty("cobrado").LeerDecimal())
             .And.Be(320m, "el mismo dinero de verdad que cuenta el pie de la vista");
 
         resumen.Bloque("pendiente").GetProperty("total").Usd()
-            .Should().Be(totales.GetProperty("pendiente").GetDecimal())
+            .Should().Be(totales.GetProperty("pendiente").LeerDecimal())
             .And.Be(480m, "180 de la factura y los 500 − 200 que faltan por exigir de la fianza");
 
         resumen.GetProperty("documentosSinTipoCambioCongelado").GetInt32()
@@ -132,18 +132,18 @@ public sealed class InformeResumenTests(ContenedorBdFixture bd, ApiTestFactoryBl
         var resumen = await AyudaInformes.ResumenAsync(admin, consulta, ct);
 
         filas.Should().HaveCount(2, "con filtro de serie las fianzas quedan fuera, que es su regla");
-        totales.GetProperty("total").GetDecimal().Should().Be(AyudaCuentas.SumaDeFilas(filas, "total"));
+        totales.GetProperty("total").LeerDecimal().Should().Be(AyudaCuentas.SumaDeFilas(filas, "total"));
 
         resumen.Bloque("facturado").Usd()
             .Should().Be(AyudaCuentas.SumaDeFilas(filas, "total"))
-            .And.Be(totales.GetProperty("total").GetDecimal(), "sin fianzas, facturado y total son lo mismo");
+            .And.Be(totales.GetProperty("total").LeerDecimal(), "sin fianzas, facturado y total son lo mismo");
 
         resumen.Bloque("cobrado").GetProperty("total").Usd()
-            .Should().Be(totales.GetProperty("cobrado").GetDecimal())
+            .Should().Be(totales.GetProperty("cobrado").LeerDecimal())
             .And.Be(820m);
 
         resumen.Bloque("pendiente").GetProperty("total").Usd()
-            .Should().Be(totales.GetProperty("pendiente").GetDecimal())
+            .Should().Be(totales.GetProperty("pendiente").LeerDecimal())
             .And.Be(180m, "solo la primera factura se quedó a medias");
 
         resumen.Bloque("pendiente").GetProperty("fianzas").Usd()

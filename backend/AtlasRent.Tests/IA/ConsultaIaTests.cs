@@ -698,10 +698,10 @@ public sealed class ConsultaIaTests(ContenedorBdFixture bd, ApiTestFactoryIaAnth
         [.. totales.EnumerateArray()
             .Select(t => (
                 t.GetProperty("moneda").GetString()!,
-                t.GetProperty("total").GetDecimal(),
-                t.GetProperty("retencion").GetDecimal(),
-                t.GetProperty("cobrado").GetDecimal(),
-                t.GetProperty("pendiente").GetDecimal()))];
+                t.GetProperty("total").LeerDecimal(),
+                t.GetProperty("retencion").LeerDecimal(),
+                t.GetProperty("cobrado").LeerDecimal(),
+                t.GetProperty("pendiente").LeerDecimal()))];
 
     private sealed record FilaAuditada(string Accion, string? Resultado, Guid? UsuarioId, string Ip, string? Origen, string? Datos);
 

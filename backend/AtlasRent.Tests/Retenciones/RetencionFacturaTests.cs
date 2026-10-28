@@ -69,11 +69,11 @@ public sealed class RetencionFacturaTests(ContenedorBdFixture bd, ApiTestFactory
         leida.StatusCode.Should().Be(HttpStatusCode.OK);
         var factura = await leida.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        var subtotal = factura.GetProperty("subtotal").GetDecimal();
-        var itbis = factura.GetProperty("itbis").GetDecimal();
-        var total = factura.GetProperty("total").GetDecimal();
-        var retencion = factura.GetProperty("retencion").GetDecimal();
-        var neto = factura.GetProperty("netoACobrar").GetDecimal();
+        var subtotal = factura.GetProperty("subtotal").LeerDecimal();
+        var itbis = factura.GetProperty("itbis").LeerDecimal();
+        var total = factura.GetProperty("total").LeerDecimal();
+        var retencion = factura.GetProperty("retencion").LeerDecimal();
+        var neto = factura.GetProperty("netoACobrar").LeerDecimal();
 
         total.Should().Be(subtotal + itbis, "el total es la factura entera");
         total.Should().Be(1_000m, "retener no baja el total: eso es lo que se le descuenta al cliente después");
@@ -113,10 +113,10 @@ public sealed class RetencionFacturaTests(ContenedorBdFixture bd, ApiTestFactory
             .GetProperty("lineas").EnumerateArray().Single(l => l.GetProperty("tipo").GetString() == nameof(TipoLineaFactura.Retencion));
 
         linea.GetProperty("tipoRetencionId").GetGuid().Should().Be(tipoRetencion);
-        linea.GetProperty("porcentajeRetencion").GetDecimal().Should().Be(3m, "el porcentaje queda congelado en la línea");
+        linea.GetProperty("porcentajeRetencion").LeerDecimal().Should().Be(3m, "el porcentaje queda congelado en la línea");
         linea.GetProperty("baseRetencion").GetString().Should().Be(nameof(BaseRetencion.Itbis));
-        linea.GetProperty("importe").GetDecimal().Should().Be(-1.5m, "1,50 de ITBIS por el 3%, y en negativo");
-        linea.GetProperty("itbisImporte").GetDecimal().Should().Be(0m, "una retención no lleva ITBIS encima");
+        linea.GetProperty("importe").LeerDecimal().Should().Be(-1.5m, "1,50 de ITBIS por el 3%, y en negativo");
+        linea.GetProperty("itbisImporte").LeerDecimal().Should().Be(0m, "una retención no lleva ITBIS encima");
     }
 
     /// <summary>
@@ -145,10 +145,10 @@ public sealed class RetencionFacturaTests(ContenedorBdFixture bd, ApiTestFactory
         var conMasRenta = await AyudaFacturas.AgregarLineaAsync(
             sesion, facturaId, TipoLineaFactura.Renta, 1m, 1_000m, null, ct);
 
-        conMasRenta.GetProperty("subtotal").GetDecimal().Should().Be(2_000m);
-        conMasRenta.GetProperty("retencion").GetDecimal()
+        conMasRenta.GetProperty("subtotal").LeerDecimal().Should().Be(2_000m);
+        conMasRenta.GetProperty("retencion").LeerDecimal()
             .Should().Be(200m, "la retención se recalcula sobre el subtotal nuevo, no sobre el de antes");
-        conMasRenta.GetProperty("netoACobrar").GetDecimal().Should().Be(1_800m);
+        conMasRenta.GetProperty("netoACobrar").LeerDecimal().Should().Be(1_800m);
     }
 
     /// <summary>
@@ -236,8 +236,8 @@ public sealed class RetencionFacturaTests(ContenedorBdFixture bd, ApiTestFactory
 
         var emitida = await AyudaRetenciones.EmitirAsync(sesion, facturaId, ct);
 
-        emitida.GetProperty("retencion").GetDecimal().Should().Be(0m);
-        emitida.GetProperty("netoACobrar").GetDecimal().Should().Be(100m, "sin retención, el neto es el total");
+        emitida.GetProperty("retencion").LeerDecimal().Should().Be(0m);
+        emitida.GetProperty("netoACobrar").LeerDecimal().Should().Be(100m, "sin retención, el neto es el total");
         emitida.GetProperty("retencionSinComprobante")
             .GetBoolean().Should().BeFalse("no hay retención, así que no hay comprobante que falte");
 
@@ -252,8 +252,8 @@ public sealed class RetencionFacturaTests(ContenedorBdFixture bd, ApiTestFactory
             .GetProperty("data").EnumerateArray()
             .Single(f => f.GetProperty("id").GetGuid() == facturaId);
 
-        fila.GetProperty("retencion").GetDecimal().Should().Be(0m);
-        fila.GetProperty("netoACobrar").GetDecimal().Should().Be(100m);
+        fila.GetProperty("retencion").LeerDecimal().Should().Be(0m);
+        fila.GetProperty("netoACobrar").LeerDecimal().Should().Be(100m);
         fila.GetProperty("retencionSinComprobante").GetBoolean().Should().BeFalse();
     }
 
@@ -273,7 +273,7 @@ public sealed class RetencionFacturaTests(ContenedorBdFixture bd, ApiTestFactory
         var leida = await sesion.GetAsync($"/api/v1/facturas/{facturaId:D}", ct);
         var factura = await leida.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        factura.GetProperty("retencion").GetDecimal().Should().Be(100m);
+        factura.GetProperty("retencion").LeerDecimal().Should().Be(100m);
         factura.GetProperty("retencionSinComprobante").GetBoolean().Should().BeFalse();
     }
 
@@ -297,9 +297,9 @@ public sealed class RetencionFacturaTests(ContenedorBdFixture bd, ApiTestFactory
 
         var cuerpo = await leida.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        cuerpo.GetProperty("itbis").GetDecimal()
+        cuerpo.GetProperty("itbis").LeerDecimal()
             .Should().Be(180m, "la misma línea con ITBIS en las tres facturas, para que solo cambie la base");
 
-        return cuerpo.GetProperty("retencion").GetDecimal();
+        return cuerpo.GetProperty("retencion").LeerDecimal();
     }
 }

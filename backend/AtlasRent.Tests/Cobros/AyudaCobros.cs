@@ -321,10 +321,10 @@ internal static class AyudaCobros
 
         return (actuales.GetProperty("toleranciaCambioUsd").ValueKind == System.Text.Json.JsonValueKind.Null
             ? null
-            : actuales.GetProperty("toleranciaCambioUsd").GetDecimal(),
+            : actuales.GetProperty("toleranciaCambioUsd").LeerDecimal(),
             actuales.GetProperty("toleranciaCambioDop").ValueKind == System.Text.Json.JsonValueKind.Null
                 ? null
-                : actuales.GetProperty("toleranciaCambioDop").GetDecimal());
+                : actuales.GetProperty("toleranciaCambioDop").LeerDecimal());
     }
 
     /// <summary>

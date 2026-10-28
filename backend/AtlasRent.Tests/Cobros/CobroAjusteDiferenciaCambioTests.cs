@@ -89,8 +89,8 @@ public sealed class CobroAjusteDiferenciaCambioTests(ContenedorBdFixture bd, Api
             .Should().BeEmpty("sin tolerancia no se crea el ajuste, ni a medias");
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
-        leida.GetProperty("ajustado").GetDecimal().Should().Be(0m);
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(0.76m, "el pendiente sigue ahí, sin tocar");
+        leida.GetProperty("ajustado").LeerDecimal().Should().Be(0m);
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(0.76m, "el pendiente sigue ahí, sin tocar");
         leida.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
 
         // Y con la tolerancia configurada, el mismo ajuste entra. Es el mismo caso que la primera
@@ -105,7 +105,7 @@ public sealed class CobroAjusteDiferenciaCambioTests(ContenedorBdFixture bd, Api
 
         var cerrada = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         cerrada.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
-        cerrada.GetProperty("ajustado").GetDecimal().Should().Be(0.76m);
+        cerrada.GetProperty("ajustado").LeerDecimal().Should().Be(0.76m);
     }
     /// <summary>
     /// Pendiente dentro de la tolerancia: el ajuste lo cierra, la factura queda Pagada, la fila existe
@@ -142,7 +142,7 @@ public sealed class CobroAjusteDiferenciaCambioTests(ContenedorBdFixture bd, Api
         cobro.StatusCode.Should().Be(HttpStatusCode.OK, await cobro.Cuerpo());
 
         var antesDeAjustar = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
-        antesDeAjustar.GetProperty("pendiente").GetDecimal().Should().Be(0.76m);
+        antesDeAjustar.GetProperty("pendiente").LeerDecimal().Should().Be(0.76m);
         antesDeAjustar.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
 
         var ajuste = await sesion.PostAsync(
@@ -157,7 +157,7 @@ public sealed class CobroAjusteDiferenciaCambioTests(ContenedorBdFixture bd, Api
         ajuste.StatusCode.Should().Be(HttpStatusCode.OK, await ajuste.Cuerpo());
 
         var cuerpoAjuste = await ajuste.Content.ReadFromJsonAsync<JsonElement>(ct);
-        cuerpoAjuste.GetProperty("importe").GetDecimal().Should().Be(0.76m, "el importe es el pendiente real, no uno elegido");
+        cuerpoAjuste.GetProperty("importe").LeerDecimal().Should().Be(0.76m, "el importe es el pendiente real, no uno elegido");
         cuerpoAjuste.GetProperty("vigente").GetBoolean().Should().BeTrue();
 
         // La fila, leída de la base: existe, con su motivo y con la IP desde la que se corrigió.
@@ -172,11 +172,11 @@ public sealed class CobroAjusteDiferenciaCambioTests(ContenedorBdFixture bd, Api
 
         var despues = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         despues.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
-        despues.GetProperty("pendiente").GetDecimal().Should().Be(0m);
-        despues.GetProperty("ajustado").GetDecimal().Should().Be(0.76m);
+        despues.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
+        despues.GetProperty("ajustado").LeerDecimal().Should().Be(0.76m);
 
         // Y lo ajustado va aparte de lo cobrado: el informe de caja no tiene que engordar.
-        despues.GetProperty("cobrado").GetDecimal()
+        despues.GetProperty("cobrado").LeerDecimal()
             .Should().Be(999.24m, "cobrado es el dinero que entró en la caja, y el ajuste no lo es");
     }
 
@@ -234,7 +234,7 @@ public sealed class CobroAjusteDiferenciaCambioTests(ContenedorBdFixture bd, Api
             .Should().BeEmpty("un 409 no deja el ajuste a medias");
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(1.68m, "el pendiente sigue igual");
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(1.68m, "el pendiente sigue igual");
         leida.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
     }
 
@@ -336,8 +336,8 @@ public sealed class CobroAjusteDiferenciaCambioTests(ContenedorBdFixture bd, Api
         guardada.MotivoAnulacion.Should().Contain("no hacía falta");
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
-        leida.GetProperty("ajustado").GetDecimal().Should().Be(0m, "un ajuste anulado no cuenta");
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(0.76m, "y la factura vuelve a tener lo que le faltaba");
+        leida.GetProperty("ajustado").LeerDecimal().Should().Be(0m, "un ajuste anulado no cuenta");
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(0.76m, "y la factura vuelve a tener lo que le faltaba");
         leida.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
     }
 

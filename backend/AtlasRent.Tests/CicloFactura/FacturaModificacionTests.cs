@@ -76,10 +76,10 @@ public sealed class FacturaModificacionTests(ContenedorBdFixture bd, ApiTestFact
         modificada.StatusCode.Should().Be(HttpStatusCode.OK, await modificada.Cuerpo());
 
         var cuerpo = await modificada.Content.ReadFromJsonAsync<JsonElement>(ct);
-        cuerpo.GetProperty("total").GetDecimal().Should().Be(120m, "los totales se recalculan con la línea nueva");
-        cuerpo.GetProperty("netoACobrar").GetDecimal().Should().Be(120m);
+        cuerpo.GetProperty("total").LeerDecimal().Should().Be(120m, "los totales se recalculan con la línea nueva");
+        cuerpo.GetProperty("netoACobrar").LeerDecimal().Should().Be(120m);
         cuerpo.GetProperty("lineas")[0].GetProperty("concepto").GetString().Should().Be("Renta del mes corregida");
-        cuerpo.GetProperty("lineas")[0].GetProperty("importe").GetDecimal().Should().Be(120m);
+        cuerpo.GetProperty("lineas")[0].GetProperty("importe").LeerDecimal().Should().Be(120m);
 
         var fila = await AyudaCiclo.FilaAsync(bd, facturaId, ct);
         fila.Numero.Should().Be(numero, "el número emitido no se toca jamás");
@@ -89,8 +89,8 @@ public sealed class FacturaModificacionTests(ContenedorBdFixture bd, ApiTestFact
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         leida.GetProperty("fechaEmision").GetString()
             .Should().Be(fechaEmision, "la fecha de emisión es de la emisión");
-        leida.GetProperty("tipoCambioValor").GetDecimal()
-            .Should().Be(antes.GetProperty("tipoCambioValor").GetDecimal(), "el cambio congelado es de la emisión");
+        leida.GetProperty("tipoCambioValor").LeerDecimal()
+            .Should().Be(antes.GetProperty("tipoCambioValor").LeerDecimal(), "el cambio congelado es de la emisión");
 
         // La marca de «modificada tras envío» que van a filtrar F3-10 y F4-02.
         fila.ModificadaAt.Should().NotBeNull();
