@@ -12,6 +12,7 @@ import { EmptyState } from '../design-system/components/feedback/EmptyState';
 import { Input } from '../design-system/components/forms/Input';
 import { PageHeader } from '../design-system/components/navigation/PageHeader';
 import { textos } from '../i18n/textos';
+import { MuestraAmpliada } from './DesignSystemMuestras';
 import { useTema } from '../tema/store';
 
 const ESTADOS_UNIDAD: EstadoBadge[] = ['disponible', 'reservado', 'ocupado', 'mantenimiento', 'fuera'];
@@ -68,6 +69,9 @@ export default function PaginaDesignSystem(): JSX.Element {
             {ds.temaActivo} · {tema === 'dark' ? ds.temaOscuro : ds.temaClaro}
           </div>
           <MuestraComponentes />
+          <div style={{ marginTop: 'var(--space-9)' }}>
+            <MuestraAmpliada />
+          </div>
         </div>
         <div
           data-theme="dark"
