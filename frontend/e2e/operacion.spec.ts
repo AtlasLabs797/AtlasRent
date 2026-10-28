@@ -186,6 +186,7 @@ test('reservas: corta con hora orientativa libre y anticipo como nota; el cuerpo
   await page.getByLabel('Anticipo anotado').fill('30');
   await page.getByLabel('Nota del anticipo').fill('Se devuelve si cancela con 48 h');
   await expect(page.getByText('El anticipo es una nota: no crea ningún cobro')).toBeVisible();
+  await page.getByText('Tipo de reserva').click(); // cierra el calendario desplegable antes de capturar
   await capturarClaroOscuro(page, 'reservas-form');
 
   await page.getByRole('button', { name: 'Guardar reserva' }).click();

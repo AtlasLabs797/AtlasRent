@@ -150,6 +150,10 @@ Paridad completa (D31 de la especificación). Los tokens del tema oscuro están 
 
 ---
 
+### Patrón: calendario de disponibilidad (`frontend/src/modulos/calendario/`)
+
+Cuadrícula unidad × día (no es un componente del DS). Filas virtualizadas con TanStack Virtual, primera columna y cabecera fijas. Una casilla por día, solo con tokens de estado de unidad: libre `--success-soft`, contrato `--unit-ocupado`, reserva `--unit-reservado`, mantenimiento `--unit-mantenimiento`, fuera de servicio `--surface-sunken` con borde `--unit-fuera`. El estado no depende solo del color: lleva letra (C, R, D, M). Un único medio día reservado se pinta a medias. Cada casilla es un botón con `aria-label` "unidad, fecha: estado" y abre un `Drawer` con el detalle.
+
 ## 5. Contenido
 
 - Español dominicano, registro neutro con infinitivo/imperativo: "Registrar cobro", "Convertir a contrato".

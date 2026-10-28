@@ -56,7 +56,7 @@ export function pintarDia(dia: DiaCalendario): PintadoDia {
   const medios = dia.ocupaciones.filter((o) => o.tipoDia === 'MedioDia').length;
   const completos = dia.ocupaciones.filter((o) => o.tipoDia === 'DiaCompleto' || o.tipoDia === null).length;
   const medioDia = dia.tipo === 'ReservaCorta' && medios === 1 && completos === 0;
-  const letra = dia.tipo === 'ReservaCorta' && medioDia ? '½' : LETRAS[dia.tipo];
+  const letra = medioDia ? '' : LETRAS[dia.tipo];
   return { tipo: dia.tipo, medioDia, letra };
 }
 

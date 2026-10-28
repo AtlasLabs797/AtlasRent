@@ -1,5 +1,5 @@
 /* Cuadrícula del calendario: solo tokens del design system (sin hex), así funciona en claro y oscuro. */
-.ar-cal { --cal-nombre: 176px; --cal-dia: 34px; --cal-alto: 40px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-card); overflow: auto; position: relative; }
+.ar-cal { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; --cal-nombre: 176px; --cal-dia: 34px; --cal-alto: 40px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-card); overflow: auto; position: relative; }
 .ar-cal__cabecera { display: grid; grid-template-columns: var(--cal-nombre) repeat(var(--cal-dias), var(--cal-dia)); position: sticky; top: 0; z-index: 3; background: var(--surface-card); border-bottom: 1px solid var(--border-default); width: max-content; }
 .ar-cal__fila { display: grid; grid-template-columns: var(--cal-nombre) repeat(var(--cal-dias), var(--cal-dia)); position: absolute; left: 0; width: max-content; height: var(--cal-alto); border-bottom: 1px solid var(--border-subtle); }
 .ar-cal__nombre { position: sticky; left: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center; padding: 0 var(--space-6); background: var(--surface-card); border-right: 1px solid var(--border-default); min-width: 0; }
