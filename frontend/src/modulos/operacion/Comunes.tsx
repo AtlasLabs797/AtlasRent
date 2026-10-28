@@ -29,9 +29,3 @@ export async function abrirPdf(ruta: string): Promise<void> {
   window.open(url, '_blank', 'noopener');
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
-
-/** Importe escrito a mano ("1250.5" o "1250,5") como texto decimal con punto; `null` si no es un importe (máx. 2 decimales). */
-export function importeValido(texto: string): string | null {
-  const t = texto.trim().replace(',', '.');
-  return /^\d+(\.\d{1,2})?$/.test(t) ? t : null;
-}

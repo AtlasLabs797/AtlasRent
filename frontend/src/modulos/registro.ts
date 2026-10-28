@@ -14,3 +14,4 @@ export { modulo as cotizaciones } from './cotizaciones/rutas.ts';
 export { modulo as cuenta } from './cuenta/rutas.ts';
 export { modulo as informes } from './informes/rutas.ts';
 export { modulo as panel } from './panel/rutas.ts';
+export { modulo as reservas } from './reservas/rutas.ts';
