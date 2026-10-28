@@ -87,6 +87,56 @@ public sealed class EnviosController(
         }
     }
 
+    /// <summary>
+    /// Reintenta un envío suelto que falló (misma fila, un intento más). Solo desde <c>Fallido</c>:
+    /// cualquier otro estado es 409. Acepta <c>Idempotency-Key</c>.
+    /// </summary>
+    /// <remarks>
+    /// Mismo atributo que <see cref="Enviar"/> por el mismo motivo: el tipo de documento está en la
+    /// fila y no en la ruta, así que el permiso exacto lo comprueba el servicio.
+    /// </remarks>
+    [HttpPost("{id:guid}/reintentar")]
+    [Accion(Acciones.CotizacionEnviar)]
+    public async Task<IActionResult> Reintentar(Guid id, CancellationToken ct)
+    {
+        const string ruta = "/api/v1/envios/reintentar";
+        var mutacion = Mutar(new { id }, ruta);
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        try
+        {
+            return Ok(await envios.ReintentarAsync(id, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (PermisoDenegadoException)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status403Forbidden,
+                Problemas.PermisoDenegado,
+                "Permiso denegado",
+                "Tu usuario no tiene permiso para esta operación.");
+        }
+        catch (CorreoNoConfiguradoException sinCorreo)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status409Conflict,
+                Problemas.CorreoNoConfigurado,
+                "No hay correo configurado",
+                sinCorreo.QueFalta);
+        }
+        catch (Exception e) when (e is InvalidOperationException or DbUpdateException)
+        {
+            return Conflicto(e.Message);
+        }
+    }
+
     /// <summary>Envíos, filtrables por tipo de documento, por estado y por documento.</summary>
     /// <remarks>
     /// El atributo es <c>factura.ver</c> como puerta de pelo grueso, y el motivo es que un atributo

@@ -85,6 +85,7 @@ public sealed class CuentasController(
         [FromQuery] Guid? inmuebleId,
         [FromQuery] Guid? propietariaId,
         [FromQuery] Guid? facturadoraId,
+        [FromQuery] Guid? contratoId,
         CancellationToken ct)
     {
         try
@@ -110,7 +111,8 @@ public sealed class CuentasController(
                 hasta,
                 inmuebleId,
                 propietariaId,
-                facturadoraId));
+                facturadoraId,
+                contratoId));
         }
         catch (ArgumentException peticionInvalida)
         {
