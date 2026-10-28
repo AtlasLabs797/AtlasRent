@@ -134,7 +134,9 @@ public sealed class EnvioMasivoResumenTests(ContenedorBdFixture bd, ApiTestFacto
 
         asunto.Should().NotBeNullOrWhiteSpace().And.NotContain("{cliente}").And.NotContain("{numero}");
         cuerpo.Should().NotBeNullOrWhiteSpace().And.NotContain("{cliente}").And.NotContain("{numero}");
-        cuerpo.Should().NotBeNullOrWhiteSpace().And.Contain("Le adjuntamos la factura");
+        // No se compara con el texto de la plantilla por defecto: la base de pruebas es compartida y
+        // EnvioPlantillasTests guarda plantillas propias. Lo que importa es que no quede ninguna variable.
+        cuerpo.Should().NotBeNullOrWhiteSpace().And.NotContain("{");
         cuerpo.Should().NotBeNullOrWhiteSpace().And.NotContain("{total}").And.Contain("300", "el total va sustituido");
         documento.GetProperty("nombreArchivo").GetString().Should().EndWith(".pdf");
 
