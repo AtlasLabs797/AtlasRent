@@ -75,7 +75,8 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - Se renueva solo hasta que se cancele. Las subidas de renta programadas se aplican solas.
 - **Baja:** el gerente pone la fecha de fin, **en cualquier fecha** (hoy o posterior), aunque sea antes de que acabe el periodo en curso. La fecha de baja ya no se factura: si la baja es el día 15, se factura hasta el 14, prorrateando ese último mes. En esa fecha el contrato **se finalizará solo** y la unidad queda libre. Después hay que **liquidar**: se revisa el inventario de salida y se decide qué pasa con la fianza. **Los cobros y los saldos todavía no existen** (fase de finanzas), así que por ahora la liquidación deja constancia de qué falta y de la decisión, pero no mueve dinero.
 
-## 9. Facturas ⬜
+## 9. Facturas 🟡
+**Qué hay en pantalla:** *Facturas* (listado con filtros y ficha), *Facturación periódica* (simular y generar), emitir un borrador, modificar líneas, anular con motivo, duplicar, convertir una proforma, rehacer en otra moneda, cerrar una diferencia de cambio, la referencia de e-factura y el PDF. **Falta:** crear un borrador desde cero y registrar el comprobante de retención recibido.
 - **Del mes:** el gerente pulsa *Generar facturas periódicas*, revisa la simulación y confirma.
 - **Manual:** *Nueva factura* desde la unidad o el cliente. Queda en **borrador** hasta que el gerente la emite.
 - **Emitir** pone el número definitivo y, en la serie 3, el **número de comprobante fiscal** automáticamente. Si quedan pocos comprobantes, la app avisa; si se acaban o vencen, no deja emitir hasta cargar un rango nuevo.
@@ -86,11 +87,11 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - **Duplicar:** crea un borrador igual, sin número ni cobros.
 - **Anular** (gerente): pide motivo. **Los cobros de esa factura también se anulan.** Si un cobro pagaba varias facturas, solo se anula la parte de esta. La pantalla te muestra qué cobros se verán afectados antes de confirmar. El dinero de la parte anulada queda marcado como **devuelto** en el cobro (no se convierte en saldo a favor). Si el cobro ya financió otro cobro, la app no deja anular y te dice cuál hay que anular antes.
 
-## 10. Cuentas y cobros (pantalla principal) ⬜
+## 10. Cuentas y cobros (pantalla principal) ✅
+**Cómo se cobra:** marca una o varias filas del mismo cliente y contrato y pulsa *Registrar cobro*. En el panel eliges fecha, moneda e importe recibidos, forma de pago y cuenta. Si pagan en otra moneda, la app propone el cambio del día y puedes cambiarlo; verás la conversión aproximada. Pulsa *Simular reparto*, corrige el importe de cada línea si hace falta, vuelve a simular y *Registrar cobro*. Si cambias algo después de simular, hay que simular otra vez. El empleado ve la tabla pero no los totales ni el botón de cobrar. Los filtros quedan en la dirección de la página.
 
 Es la pantalla que sustituye a Factusol: **una sola tabla con todo lo que se debe y lo que se ha
-pagado**, y desde ahí se cobra. Todavía no hay pantalla; lo que hay es la API que la alimentará.
-
+pagado**, y desde ahí se cobra. 
 ### Qué se ve
 
 Una fila por documento, con una **insignia de tipo**: `Factura`, `Proforma` o `Fianza`. Las fianzas
@@ -163,7 +164,8 @@ queda como excedente o saldo a favor, como en cualquier otro cobro.
 Ver, duplicar, modificar (si no tiene comprobante), anular, el PDF y el envío. **Cada acción es la de su
 propio documento**: la vista no modifica nada por su cuenta, solo lleva a la pantalla que sí lo hace.
 
-## 11. Fianzas ⬜
+## 11. Fianzas 🟡
+**Qué hay en pantalla:** listado y ficha con el resumen, las devoluciones, *Retener*, *Pasar a liquidación* y *Devolver fianza* (el motivo es obligatorio si descuentas algo o no la dejas a cero). La fianza se cobra desde *Cuentas y cobros*.
 En la misma tabla de cobros. Al terminar el contrato, el gerente la devuelve entera o en parte; si descuenta algo, indica motivo e importe.
 
 ## 12. Enviar documentos (gerente y administrador) ⬜
