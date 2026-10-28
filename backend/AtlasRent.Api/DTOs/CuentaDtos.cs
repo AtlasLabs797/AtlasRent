@@ -187,4 +187,7 @@ public sealed record FiltroCuentas(
     Guid? PropietariaId,
 
     /// <summary>Facturadora por defecto de la unidad de la factura (<c>unidad.facturadora_por_defecto_id</c>).</summary>
-    Guid? FacturadoraId);
+    Guid? FacturadoraId,
+
+    /// <summary>Contrato de la factura o de la fianza.</summary>
+    Guid? ContratoId = null);

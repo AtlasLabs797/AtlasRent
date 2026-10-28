@@ -88,7 +88,12 @@ public sealed record FacturaItemSimulado(
     int? FacturaExistenteNumero,
     string? MotivoOmision,
     Guid? FacturaId,
-    int? FacturaNumero)
+    int? FacturaNumero,
+    string ClienteNombre,
+    string UnidadNombre,
+    Guid InmuebleId,
+    string InmuebleNombre,
+    DateOnly ContratoFechaInicio)
 {
     /// <summary>Se va a emitir: es candidato y no hay factura de este periodo.</summary>
     public bool SeEmite => MotivoOmision is null && !YaExiste;

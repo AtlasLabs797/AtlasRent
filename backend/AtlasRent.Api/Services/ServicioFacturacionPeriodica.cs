@@ -112,7 +112,23 @@ public sealed class ServicioFacturacionPeriodica(
     {
         var calculo = await CalcularAsync(peticion.Periodo, peticion.SerieId, peticion.ContratosIds, ct);
 
-        var items = calculo.Items.Select(i => AItem(calculo, i)).ToList();
+        // Una sola consulta para los nombres de unidad e inmueble de todos los items (sin N+1).
+        var unidadesIds = calculo.Items.Select(i => i.Contrato.UnidadId).Distinct().ToArray();
+        var unidades = await (
+            from u in contexto.Unidad.AsNoTracking()
+            join inm in contexto.Inmueble.AsNoTracking() on u.InmuebleId equals inm.Id
+            where unidadesIds.Contains(u.Id)
+            select new { u.Id, u.Nombre, u.InmuebleId, InmuebleNombre = inm.Nombre })
+            .ToDictionaryAsync(u => u.Id, ct);
+
+        var items = calculo.Items
+            .Select(i => AItem(
+                calculo,
+                i,
+                unidades.TryGetValue(i.Contrato.UnidadId, out var u)
+                    ? (u.Nombre, u.InmuebleId, u.InmuebleNombre)
+                    : (string.Empty, Guid.Empty, string.Empty)))
+            .ToList();
 
         return new SimulacionPeriodicaRespuesta(
             peticion.Periodo,
@@ -729,7 +745,8 @@ public sealed class ServicioFacturacionPeriodica(
 
     // ------------------------------------------------------------------ forma interna
 
-    private static FacturaItemSimulado AItem(Calculo calculo, Item item) => new(
+    private static FacturaItemSimulado AItem(
+        Calculo calculo, Item item, (string Nombre, Guid InmuebleId, string InmuebleNombre) unidad) => new(
         item.Contrato.Id,
         item.Contrato.ClienteId,
         item.Contrato.UnidadId,
@@ -750,7 +767,12 @@ public sealed class ServicioFacturacionPeriodica(
         item.FacturaExistente?.Numero,
         item.MotivoOmision,
         null,
-        null);
+        null,
+        item.Contrato.Cliente?.Nombre ?? string.Empty,
+        unidad.Nombre,
+        unidad.InmuebleId,
+        unidad.InmuebleNombre,
+        item.Contrato.FechaInicio);
 
     private sealed record FacturaExistente(Guid Id, Guid? ContratoId, int? Numero, bool EsBorrador, Moneda Moneda);
 

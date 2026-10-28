@@ -78,7 +78,8 @@ public sealed class ServicioCuentas(
         DateOnly? hasta = null,
         Guid? inmuebleId = null,
         Guid? propietariaId = null,
-        Guid? facturadoraId = null)
+        Guid? facturadoraId = null,
+        Guid? contratoId = null)
     {
         ExigirOrdenConocido(paginacion.SortBy);
 
@@ -87,7 +88,7 @@ public sealed class ServicioCuentas(
         var consultaFacturas = FacturasFiltradas(
             anio, serieId, moneda, estado, estadoCobro, clienteId, unidadId, vencidas, modificadas,
             noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas,
-            desde, hasta, inmuebleId, propietariaId, facturadoraId);
+            desde, hasta, inmuebleId, propietariaId, facturadoraId, contratoId);
 
         // Las fianzas solo están cuando ningún filtro es de factura. No es una decisión de comodidad:
         // una fianza no tiene serie ni estado de factura ni vencimiento ni documento que mandar, así
@@ -98,7 +99,7 @@ public sealed class ServicioCuentas(
         var consultaFianzas = incluirFianzas && SinFiltroDeFactura(
                 serieId, estado, estadoCobro, vencidas, modificadas, noEnviadas, envioFallido, modificadasTrasEnvio,
                 desde, hasta, inmuebleId, propietariaId, facturadoraId)
-            ? FianzasFiltradas(anio, moneda, clienteId, unidadId)
+            ? FianzasFiltradas(anio, moneda, clienteId, unidadId, contratoId)
             : null;
 
         var totalFacturas = await consultaFacturas.CountAsync(ct);
@@ -149,7 +150,7 @@ public sealed class ServicioCuentas(
             new FiltroCuentas(
                 anio, serieId, moneda, estado, estadoCobro, clienteId, unidadId, vencidas, modificadas,
                 noEnviadas, envioFallido, modificadasTrasEnvio, incluirProformas, incluirFianzas,
-                desde, hasta, inmuebleId, propietariaId, facturadoraId));
+                desde, hasta, inmuebleId, propietariaId, facturadoraId, contratoId));
     }
 
     // ---------------------------------------------------------------- estado de cuenta (F4-01)
@@ -297,7 +298,8 @@ public sealed class ServicioCuentas(
         DateOnly? hasta,
         Guid? inmuebleId,
         Guid? propietariaId,
-        Guid? facturadoraId)
+        Guid? facturadoraId,
+        Guid? contratoId)
     {
         IQueryable<Factura> consulta = contexto.Factura.AsNoTracking()
             .Include(f => f.Cliente)
@@ -339,6 +341,11 @@ public sealed class ServicioCuentas(
         if (unidadId is { } unidad)
         {
             consulta = consulta.Where(f => f.UnidadId == unidad);
+        }
+
+        if (contratoId is { } contrato)
+        {
+            consulta = consulta.Where(f => f.ContratoId == contrato);
         }
 
         if (anio is { } anyo)
@@ -617,7 +624,8 @@ public sealed class ServicioCuentas(
         int? anio,
         Moneda? moneda,
         Guid? clienteId,
-        Guid? unidadId)
+        Guid? unidadId,
+        Guid? contratoId)
     {
         IQueryable<Fianza> consulta = contexto.Fianza.AsNoTracking()
             .Include(f => f.Contrato)
@@ -639,6 +647,11 @@ public sealed class ServicioCuentas(
         if (unidadId is { } unidad)
         {
             consulta = consulta.Where(f => f.Contrato.UnidadId == unidad);
+        }
+
+        if (contratoId is { } contrato)
+        {
+            consulta = consulta.Where(f => f.ContratoId == contrato);
         }
 
         if (anio is { } anyo)

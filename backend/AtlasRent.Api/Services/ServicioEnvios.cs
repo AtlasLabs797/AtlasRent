@@ -263,6 +263,15 @@ public sealed class ServicioEnvios(
         Guid envioId,
         Guid usuario,
         string ip,
+        CancellationToken ct) =>
+        (await EnviarFilaAsync(envioId, usuario, ip, null, "envio.registrado", ct)).Estado;
+
+    private async Task<(EstadoEnvio Estado, bool Reclamada, EnvioFila Fila)> EnviarFilaAsync(
+        Guid envioId,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        string accionExito,
         CancellationToken ct)
     {
         var envio = await contexto.Envio.FirstOrDefaultAsync(e => e.Id == envioId, ct)
@@ -280,7 +289,7 @@ public sealed class ServicioEnvios(
         if (envio.Estado is EstadoEnvio.Enviado or EstadoEnvio.Entregado or EstadoEnvio.Leido
             or EstadoEnvio.Enviando)
         {
-            return envio.Estado;
+            return (envio.Estado, false, ARespuesta(envio));
         }
 
         var pdf = cifrado.DescifrarBytes(envio.PdfCopia);
@@ -325,7 +334,7 @@ public sealed class ServicioEnvios(
 
         if (reclamada == 0)
         {
-            return envio.Estado;
+            return (envio.Estado, false, ARespuesta(envio));
         }
 
         envio.DocumentoModificadoAt = modificadaAt;
@@ -363,15 +372,15 @@ public sealed class ServicioEnvios(
         envio.UltimoError = error;
         envio.EnviadoAt = estado == EstadoEnvio.Enviado ? reloj.GetUtcNow() : null;
 
-        await GuardadoAuditado.GuardarAsync(
+        var fila = await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
             contexto.Envio, envio,
             esAlta: false,
-            accion: envio.Estado == EstadoEnvio.Enviado ? "envio.registrado" : "envio.fallido",
+            accion: envio.Estado == EstadoEnvio.Enviado ? accionExito : "envio.fallido",
             entidad: "envio",
             usuario,
             ip,
-            mutacion: null,
+            mutacion,
             proyectar: ARespuesta,
             datosAuditoria: DatosAuditoria,
             ct: ct);
@@ -381,7 +390,53 @@ public sealed class ServicioEnvios(
             await AvisarFalloAsync(envio, error, ct);
         }
 
-        return estado;
+        return (estado, true, fila);
+    }
+
+    /// <summary>
+    /// Reintenta <b>un</b> envío suelto que falló. Mismo permiso que mandar ese tipo de documento
+    /// (<see cref="AccionDe"/> más <see cref="AccionesDeContenido"/>), y solo desde <c>Fallido</c>.
+    /// <para>
+    /// Reutiliza la fila (sube el contador de intentos, no crea otra) y la copia del PDF del primer
+    /// intento. La fila se reclama con el UPDATE condicional de <see cref="EnviarFilaAsync"/>: dos
+    /// reintentos a la vez compiten por él y solo uno manda; el otro es 409. Con la misma
+    /// <c>Idempotency-Key</c>, el segundo devuelve la respuesta ya guardada.
+    /// </para>
+    /// </summary>
+    public async Task<EnvioFila> ReintentarAsync(
+        Guid id,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var envio = await contexto.Envio.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException($"No hay ningún envío con identificador '{id:D}'.");
+
+        var recurso = $"{envio.TipoDocumento}/{envio.DocumentoId:D}";
+
+        await ExigirAsync(AccionDe(envio.TipoDocumento), recurso, usuario, ct);
+        await ExigirContenidoAsync(envio.TipoDocumento, recurso, usuario, ct);
+
+        if (envio.Estado != EstadoEnvio.Fallido)
+        {
+            throw new InvalidOperationException(
+                $"Solo se puede reintentar un envío fallido, y este está en estado '{envio.Estado}'.");
+        }
+
+        if (!opciones.Configurado)
+        {
+            throw new CorreoNoConfiguradoException(
+                "Falta escribir la configuración del servidor de correo del despliegue (Correo__Host, "
+                + "Correo__Puerto, Correo__Usuario, Correo__Clave, Correo__Ssl, Correo__Remitente y "
+                + "Correo__NombreRemitente; los nombres están en config/variables-entorno.example).");
+        }
+
+        var (_, reclamada, fila) = await EnviarFilaAsync(id, usuario, ip, mutacion, "envio.reintentado", ct);
+
+        return reclamada
+            ? fila
+            : throw new InvalidOperationException("Este envío ya se está reintentando o ya salió.");
     }
 
     /// <summary>
