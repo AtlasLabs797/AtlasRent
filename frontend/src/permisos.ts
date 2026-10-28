@@ -7,6 +7,7 @@ export const ACCIONES = {
   configuracionEditar: 'configuracion.editar',
   clienteVer: 'cliente.ver',
   clienteEditar: 'cliente.editar',
+  inmuebleDocumento: 'inmueble.documento',
   contratoBorrador: 'contrato.borrador',
   contratoEstado: 'contrato.estado',
   facturaVer: 'factura.ver',

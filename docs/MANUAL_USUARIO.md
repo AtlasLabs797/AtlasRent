@@ -50,11 +50,16 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - **Prospecto:** alguien a quien solo has hecho una cotización. Pasa a cliente cuando reserva o firma.
 - **Pausar recordatorios:** casilla en la ficha (gerente). **Frena los avisos automáticos y también**
   el envío manual de uno que esté pendiente.
+- **Buscar:** por nombre o número en la lista. Para buscar por documento usa su propio campo: el documento no queda en la dirección ni en el historial del navegador.
+- **Prospectos:** pestaña *Prospectos* de Clientes. Desde un prospecto puedes abrir el alta de cliente con sus datos; el prospecto no se convierte solo.
+- **Desactivar:** un cliente con facturas no se borra, se desactiva. El número de cliente solo lo puede fijar la administración.
 - La ficha tiene pestañas: datos, contratos, reservas, facturas, cobros, fianzas, documentos y mensajes recibidos.
 
 ## 5. Unidades 🟡
 - Un **inmueble** es el edificio o la villa; una **unidad** es lo que se alquila.
 - *Ocupada / Reservada* se calcula sola. Tú solo marcas *Mantenimiento* o *Fuera de servicio*.
+- **Pantalla:** Unidades e inmuebles → entra en un inmueble para ver sus unidades, cambiar el estado manual, las modalidades y las tarifas.
+- **Documentos de propiedad (gerente y administrador):** pestaña *Documentos* del inmueble. Solo PDF de hasta 25 MB; cada subida de la misma categoría crea una versión. El empleado no ve esta pestaña.
 - **Calendario:** qué está libre por día; el medio día ocupa media casilla.
 
 ## 6. Cotizaciones 🟡
