@@ -167,6 +167,9 @@ export const textos = {
       bandeja: { etiqueta: 'Bandeja', icono: 'inbox' },
       envios: { etiqueta: 'Envíos', icono: 'send' },
       cuentas: { etiqueta: 'Cuentas y cobros', icono: 'wallet' },
+      calendario: { etiqueta: 'Calendario', icono: 'calendar-days' },
+      reservas: { etiqueta: 'Reservas', icono: 'calendar-check' },
+      cotizaciones: { etiqueta: 'Cotizaciones', icono: 'file-text' },
     },
     /** Nombres de los roles de `usuario_rol` para la `SideNav`. */
     roles: {

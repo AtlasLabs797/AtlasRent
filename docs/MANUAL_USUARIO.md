@@ -60,25 +60,42 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - *Ocupada / Reservada* se calcula sola. Tú solo marcas *Mantenimiento* o *Fuera de servicio*.
 - **Pantalla:** Unidades e inmuebles → entra en un inmueble para ver sus unidades, cambiar el estado manual, las modalidades y las tarifas.
 - **Documentos de propiedad (gerente y administrador):** pestaña *Documentos* del inmueble. Solo PDF de hasta 25 MB; cada subida de la misma categoría crea una versión. El empleado no ve esta pestaña.
-- **Calendario:** qué está libre por día; el medio día ocupa media casilla.
+- **Calendario** ✅ (menú Operación → Calendario): elige el inmueble y el mes; cada fila es una unidad y cada casilla un día. Verde claro = libre, oscuro = contrato, azul = reserva (mensual **R**, corta **D**), media casilla azul = un medio día reservado (queda otro medio libre), ámbar = mantenimiento, gris con borde = fuera de servicio. Pulsa una casilla para ver qué hay ese día y abrir su contrato o reserva; en una casilla libre puedes crear la reserva con la unidad y el día ya puestos.
 
-## 6. Cotizaciones 🟡
-1. Cotizaciones → *Nueva*. Cliente o prospecto, unidad (opcional), líneas, moneda.
-2. *Enviar* (si tienes permiso) → pasa a **Enviada**.
-3. Marca **Aceptada** o **Rechazada**. Desde una aceptada puedes crear la reserva o el contrato con los datos ya puestos.
+## 6. Cotizaciones ✅
+> Pantalla construida; probada con la API simulada, todavía no contra el servidor real.
 
-## 7. Reservas 🟡
+1. Cotizaciones → *Nueva cotización*. Cliente o prospecto, unidad (opcional), líneas y moneda. El total que ves mientras escribes es una **vista previa** (cada línea se redondea a 2 decimales); el importe oficial lo calcula el servidor al guardar.
+2. *Marcar como enviada* (si tienes permiso) → pasa a **Enviada**. Una cotización enviada ya no se edita: se hace otra.
+3. Marca **Aceptada** o **Rechazada**. Desde una aceptada, *Crear reserva* o *Crear contrato* abren el formulario con los datos copiados; no se crea nada hasta que lo confirmas.
+4. *Descargar PDF* genera el documento. Solo el borrador se puede editar o dar de baja.
+
+## 7. Reservas ✅
+> Pantalla construida; probada con la API simulada, todavía no contra el servidor real.
+
 **Mensual:** cliente, unidad, fecha de entrada prevista. Bloquea la unidad. Si en 7 días no hay contrato, sale un aviso. Al activar el contrato de esa reserva, la reserva pasa sola a *Convertida*; si llega la fecha de entrada y el contrato sigue sin activar (o no existe), la reserva pasa a *En conflicto*, sigue bloqueando la unidad y sale un aviso.
 
 **Corta:** por cada día eliges **Medio día** o **Día completo** (puedes escribir una hora orientativa en texto libre, por ejemplo «mañana» o «a partir de las 3»; es opcional y no bloquea nada: lo que cuenta es medio día o día completo). En un mismo día caben dos medios días o un día completo.
 
-**Anticipo:** si el cliente adelantó dinero, anótalo en la reserva (importe, fecha). **Es solo una nota, no un cobro, y no aparece en ningún saldo ni informe económico.** El cobro se registrará en la fase de finanzas; todavía no existe, y tampoco el aviso que te lo recordará.
+**Anticipo:** si el cliente adelantó dinero, anótalo en la reserva (importe y una nota con lo acordado). **Es solo una nota, no un cobro, y no aparece en ningún saldo ni informe económico.** El cobro se registrará en la fase de finanzas; todavía no existe, y tampoco el aviso que te lo recordará.
 
-## 8. Contratos 🟡
+**Si la unidad no está libre**, la reserva no se guarda y la pantalla lo explica: hay un contrato, otra reserva, o el día ya está completo. Tampoco se puede reservar una unidad en mantenimiento o fuera de servicio, ni cambiar o cancelar una reserva que tiene una **factura vigente** (hay que anular antes la factura).
+
+**En conflicto:** la reserva sigue bloqueando la unidad hasta que el gerente decida; la salida es cancelarla y buscar otra unidad al cliente. **Facturar:** la reserva corta se factura desde su ficha (*Facturar reserva*, gerente o administrador); la mensual se factura por su contrato.
+
+## 8. Contratos ✅
+> Pantalla construida; probada con la API simulada, todavía no contra el servidor real.
+
 1. Desde la reserva o Contratos → *Nuevo*. Renta, moneda, día de pago, fianza y renovación.
-2. *Enviar a aprobación*. El gerente lo aprueba o lo devuelve con comentario.
+2. *Enviar a aprobación*. El gerente lo aprueba o lo rechaza con comentario obligatorio (el contrato vuelve a borrador). El empleado ve el contrato pero no los botones de aprobar, rechazar, activar ni dar de baja.
+3. La ficha muestra el **flujo**: borrador → solicitud de aprobación → aprobado → activo → baja programada → finalizado → liquidado. Pestañas: resumen, historial (versiones y solicitudes), incrementos e inventario y salida.
+- **Cambios en un contrato activo** (*Registrar cambio*): piden motivo y generan una versión nueva; la moneda no cambia y la renta nueva solo afecta a las facturas futuras.
+- **Incrementos:** porcentaje o importe fijo, con la fecha desde la que rigen.
+- **Inventario:** la copia se congela al activar. Para la salida, *Revisar la salida* pide el estado de cada elemento (OK, faltante o dañado), una nota en lo que falta, y el importe propuesto; se firma entera y una sola vez. No es un cobro.
+- **Plantillas y anexos** (botón en Contratos): texto de los contratos y catálogo de anexos; crear y editar con permiso de redacción, desactivar solo el gerente o administrador. *Descargar PDF* genera el contrato.
 - Se renueva solo hasta que se cancele. Las subidas de renta programadas se aplican solas.
 - **Baja:** el gerente pone la fecha de fin, **en cualquier fecha** (hoy o posterior), aunque sea antes de que acabe el periodo en curso. La fecha de baja ya no se factura: si la baja es el día 15, se factura hasta el 14, prorrateando ese último mes. En esa fecha el contrato **se finalizará solo** y la unidad queda libre. Después hay que **liquidar**: se revisa el inventario de salida y se decide qué pasa con la fianza. **Los cobros y los saldos todavía no existen** (fase de finanzas), así que por ahora la liquidación deja constancia de qué falta y de la decisión, pero no mueve dinero.
+- **Finalizar** solo se puede cuando llega la fecha de baja; antes el botón está desactivado y dice desde cuándo. **Liquidar** no se deja si queda fianza cobrada sin resolver o facturas con importe pendiente: la pantalla dice qué falta y se resuelve a mano (fianzas y cobros) antes de volver a liquidar.
 
 ## 9. Facturas 🟡
 **Qué hay en pantalla:** *Facturas* (listado con filtros y ficha), *Facturación periódica* (simular y generar), emitir un borrador, modificar líneas, anular con motivo, duplicar, convertir una proforma, rehacer en otra moneda, cerrar una diferencia de cambio, la referencia de e-factura y el PDF. **Falta:** crear un borrador desde cero y registrar el comprobante de retención recibido.

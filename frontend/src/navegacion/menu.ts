@@ -46,7 +46,6 @@ const ORDEN: Record<GrupoMenuId, Clave[]> = {
 
 /** Módulos sin pantalla todavía: acción del backend que los habilitará y qué falta. */
 const PENDIENTES: Partial<Record<Clave, [Accion, string]>> = {
-  contratos: [ACCIONES.clienteVer, 'pantalla de contratos'],
   auditoria: [ACCIONES.auditoriaVer, 'pantalla de auditoría'],
 };
 
