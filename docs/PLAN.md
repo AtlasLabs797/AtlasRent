@@ -51,7 +51,7 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 |---|---|---|---|---|---|
 | F2-01 | Disponibilidad: exclusión por rangos + capacidad de medio día (trigger + bloqueo por unidad) | 3.4, 5 | Test concurrente: dos reservas solapadas → una falla; 2 medios días OK, el 3.º falla | F1-10 | HECHA (15/10/2026) |
 | F2-02 | Cotizaciones: CRUD, estados, PDF básico, crear reserva/contrato desde Aceptada | 3.3 | Estados según D18 | F1-09 | HECHA (15/10/2026) |
-| F2-03 | Reservas mensuales y cortas, anticipo como nota, estados, alerta 7 días, conflicto | 3.4 | Anticipo no aparece en ningún saldo ni informe económico | F2-01 | HECHA (15/10/2026) — **criterio no verificable hasta F3**: hoy no existen `cobro` ni `factura`, así que el test solo puede comprobar que toda tabla económica existente queda vacía (15/10, auditoría) · **Auditoría 26/10/2026:** sin UI de reservas (→ AUD-09); test y nota del plan no actualizados tras F3 (BUG-051e) → AUD-07 |
+| F2-03 | Reservas mensuales y cortas, anticipo como nota, estados, alerta 7 días, conflicto | 3.4 | Anticipo no aparece en ningún saldo ni informe económico | F2-01 | HECHA (15/10/2026) — **criterio no verificable hasta F3**: hoy no existen `cobro` ni `factura`, así que el test solo puede comprobar que toda tabla económica existente queda vacía (15/10, auditoría) · **Auditoría 26/10/2026:** sin UI de reservas (→ AUD-09); test y nota del plan no actualizados tras F3 (BUG-051e) → AUD-07. **28/10/2026:** el criterio ya se verifica (test `ElAnticipoNoApareceEnSaldosCuentasNiInformes`, BUG-051e) |
 | F2-04 | Calendario de disponibilidad | 3.1 | Muestra contratos, reservas, medios días y mantenimiento | F2-03, F2-05 *(dependencia corregida 15/10: el criterio pide contratos y no existían hasta F2-05)* | HECHA (15/10/2026) |
 | F2-05 | Contratos: flujo, aprobación (solicitud que caduca si cambia), versionado | 3.5 | Empleado no puede aprobar ni por API | F2-03 | HECHA (15/10/2026) |
 | F2-06 | Renovaciones automáticas e incrementos (job Hangfire diario idempotente) | 3.5 | Ejecutar el job dos veces no duplica | F2-05 | HECHA (15/10/2026) |
@@ -133,11 +133,11 @@ La auditoría con agentes del 26/10/2026 (base V-01.00) encontró 21 problemas d
 |---|---|---|---|---|
 | AUD-01 | Registro de hallazgos en BUGS / SEGURIDAD / PLAN | Todos los hallazgos registrados | — | HECHA (26/10/2026) |
 | AUD-02 | Seguridad Alta: SEC-010..SEC-015 | Cada SEC con test que reproduce el fallo y pasa tras corregir | AUD-01 | HECHA (26/10/2026) |
-| AUD-03 | Seguridad Media/Baja: SEC-016..SEC-030 | Ídem | AUD-01 | EN CURSO (orquestador) — falta SEC-018, SEC-022, SEC-030 |
-| AUD-04 | Bugs de dinero (cobros, facturas, fianzas, periódica, prorrateo, cotización): BUG-019..022, 029..036 | Test que reproduce cada bug; property test ampliado con anulaciones, otra moneda y concurrencia | AUD-01 | PENDIENTE |
-| AUD-05 | Bugs de contratos, reservas y avisos: BUG-023..028, 041..043, 048..050 | Ídem | AUD-01 | PENDIENTE |
-| AUD-06 | Bugs de mensajería, sesión, backup, CI y varios: BUG-037..040, 044..047, 052, 053 | Ídem; la CI ejecuta las pruebas de verdad | AUD-01 | PENDIENTE |
-| AUD-07 | Tests que no prueban lo prometido: BUG-051 | Cada punto (a)-(f) corregido | AUD-01 | PENDIENTE |
+| AUD-03 | Seguridad Media/Baja: SEC-016..SEC-030 | Ídem | AUD-01 | HECHA (28/10/2026) — SEC-030 MITIGADO: queda como riesgo documentado el AAD de AES-GCM y los códigos de acceso de emergencia con SHA-256 sin sal |
+| AUD-04 | Bugs de dinero (cobros, facturas, fianzas, periódica, prorrateo, cotización): BUG-019..022, 029..036 | Test que reproduce cada bug; property test ampliado con anulaciones, otra moneda y concurrencia | AUD-01 | HECHA (28/10/2026) |
+| AUD-05 | Bugs de contratos, reservas y avisos: BUG-023..028, 041..043, 048..050 | Ídem | AUD-01 | HECHA (28/10/2026) |
+| AUD-06 | Bugs de mensajería, sesión, backup, CI y varios: BUG-037..040, 044..047, 052, 053 | Ídem; la CI ejecuta las pruebas de verdad | AUD-01 | HECHA (28/10/2026) — BUG-052 parcial: 5 puntos de producto con TODO(A#) |
+| AUD-07 | Tests que no prueban lo prometido: BUG-051 | Cada punto (a)-(f) corregido | AUD-01 | HECHA (28/10/2026) |
 | AUD-08 | Pantallas de acceso y administración que faltan: segundo factor TOTP en el login, alta de MFA y códigos de recuperación, break-glass, refresco de sesión en el cliente, cambio de contraseña, desbloqueo de cuentas/IP, usuarios y permisos, configuración, clientes, inmuebles/unidades/documentos | El admin entra por la UI; revisión en claro/oscuro | AUD-02 | PENDIENTE |
 | AUD-09 | Pantallas de operación que faltan: reservas, cotizaciones, contratos, calendario, inventario, bandeja de aprobaciones, cuentas/cobros/facturas/fianzas, propuestas de IA | Ídem | AUD-04, AUD-05, AUD-08 | PENDIENTE |
 | AUD-10 | Documentación y revisión: API de F2 en DOC_TECNICA; revisión de seguridad de cierre de fases (PROCEDIMIENTOS §5) | API de F2 documentada; revisión de seguridad hecha y registrada | AUD-02..AUD-09 | PENDIENTE |

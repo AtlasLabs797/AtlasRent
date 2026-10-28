@@ -130,14 +130,15 @@
 ```
 
 ### SEC-030 · Endurecimiento varios
-- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Baja · Estado: **ABIERTO** · Componente: API / cifrado
+- Fecha detectado: 26/10/2026 · Fecha resuelto: 26/10/2026 (punto e abierto) · Gravedad: Baja · Estado: **MITIGADO** · Componente: API / cifrado
 - Detectado por: auditoría (agentes)
 - Descripción: (a) DTOs sin `JsonUnmappedMemberHandling.Disallow` (`IpDesbloquearPeticion`, `CuentaDesbloquearPeticion`, `TarifaPeticion`…). (b) `TarifaPeticion.Importe` sin tope: 500 al desbordar `numeric(18,2)`. (c) `GET /clientes?documento=<cédula>` pone un dato personal en la URL. (d) Códigos de recuperación con SHA-256 sin sal. (e) AES-GCM sin datos asociados. (f) `intento_login` no se purga. (g) La descarga de documentos de propiedad no se audita. (h) `GET /api/v1/envios` con solo `factura.ver` devuelve asuntos (plausible fuga si la plantilla lleva `{pendiente}`).
 - Evidencia: Varios archivos de `Controllers/`, `DTOs/` y `Services/`.
-- Solución: pendiente. Propuesta: corregir cada punto con su test.
-- Corrección prevista: AUD-03
-- Verificación: pendiente (ningún test cubría este hallazgo).
-- Commit/PR: pendiente.
+- Solución: (a) `UnmappedMemberHandling.Disallow` global. (b) `ImporteJsonConverter` global con tope `numeric(18,2)`; lee números y texto decimal invariante (el frontend manda el dinero como texto: regresión de 21 fallos corregida en 712b140, BUG-054). (c) `POST /api/v1/clientes/busqueda` con el documento en el cuerpo; `GET ?documento=` da 400. (d) Códigos de recuperación nuevos como `h1:` + HMAC-SHA256. (f) Purga de `intento_login` con la función `SECURITY DEFINER` `purgar_intentos_login` (migración `PurgaIntentosLogin`), variable `Seguridad__Limites__DiasConservarIntentosLogin` (mínimo 30, 90 por defecto). (g) Descarga de documentos de propiedad auditada. (h) Asunto de los envíos de estado de cuenta oculto sin `informe.ver`. **(e) No se hace, a propósito:** AAD en AES-GCM cambiaría el formato de todas las columnas cifradas y obligaría a reescribirlas con la clave en la mano; el valor es bajo mientras las claves estén fuera de la BD. Queda como riesgo documentado. **Pendiente menor:** los códigos de acceso de emergencia (break-glass) siguen con SHA-256 sin sal.
+- Corrección: AUD-03
+- Verificación: Seguridad/EndurecimientoVariosTests, Inmuebles/InmuebleUnidadTests, Clientes/ClienteCifradoYBusquedaTests, Seguridad/CodigosRecuperacionTests, Inmuebles/DocumentoInmueblePermisosTests, Mensajeria/EnvioCopiaPermisosTests. Suite completa 1083/1083 (28/10/2026).
+- Commit/PR: rama aud/sec018, commit 4c77fe6; merge efcb4f3. Regresión de integración corregida en 712b140 (BUG-054).
+- NO verificado / pendiente de despliegue: AAD de AES-GCM (e) sin hacer. Códigos de emergencia con SHA-256 sin sal. Los códigos de recuperación ya emitidos con el formato antiguo siguen siendo válidos hasta que se regeneren. La purga de `intento_login` no se ha ejecutado contra un servidor real con Hangfire.
 - ¿Hubo exposición real? Exposición real: no consta (no está en producción).
 
 ### SEC-029 · Límites de IA con TOCTOU y auditoría de agente incompleta
@@ -225,14 +226,15 @@
 - ¿Hubo exposición real? Exposición real: no consta (no está en producción).
 
 ### SEC-022 · Un empleado puede fijar el número de cliente
-- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: clientes
+- Fecha detectado: 26/10/2026 · Fecha resuelto: 26/10/2026 · Gravedad: Media · Estado: **CORREGIDO** · Componente: clientes
 - Detectado por: auditoría (agentes)
 - Descripción: Con `numero=2147483646` el siguiente `nextval` desborda el int; `setval(GREATEST(...))` puede retroceder la secuencia bajo concurrencia.
 - Evidencia: `Services/ServicioClientes.cs:185-206`; `ClienteDtos.cs:30` `Range(1,int.MaxValue)`; endpoint con `cliente.editar`.
-- Solución: pendiente. Propuesta: limitar el rango, restringir a quien corresponda y no retroceder la secuencia.
-- Corrección prevista: AUD-03
-- Verificación: pendiente (ningún test cubría este hallazgo).
-- Commit/PR: pendiente.
+- Solución: Fijar `numero` exige `configuracion.editar` (solo admin; 403 auditado si no). Tope 99.999.999. `AlinearSecuenciaAsync` con `pg_advisory_xact_lock` para no retroceder la secuencia.
+- Corrección: AUD-03
+- Verificación: Clientes/ClienteNumeroTests (2). Fallaban antes: sí.
+- Commit/PR: rama aud/sec018, commit 4c77fe6; merge efcb4f3.
+- NO verificado / pendiente de despliegue: Residual: queda una ventana de microsegundos entre un `nextval` ajeno y el `setval`.
 - ¿Hubo exposición real? Exposición real: no consta (no está en producción).
 
 ### SEC-021 · Watchdog aplica actualizaciones sin validar firma ni rollback
@@ -272,15 +274,16 @@
 - ¿Hubo exposición real? Exposición real: no consta (no está en producción).
 
 ### SEC-018 · Cédula/RNC en claro en envio.pdf_copia
-- Fecha detectado: 26/10/2026 · Fecha resuelto: — · Gravedad: Media · Estado: **ABIERTO** · Componente: envíos
+- Fecha detectado: 26/10/2026 · Fecha resuelto: 26/10/2026 · Gravedad: Media · Estado: **CORREGIDO** · Componente: envíos
 - Detectado por: auditoría (agentes)
 - Descripción: El PDF (con el documento del cliente) se guarda en bytea sin cifrar. Choca con AGENTS §6.
 - Evidencia: `Services/ServicioEnvios.cs:208`.
-- Solución: pendiente. Propuesta: cifrar la copia con `ServicioCifrado` (recomendado).
 - Decisión del responsable (26/10/2026): cifrar `pdf_copia` con AES-256-GCM.
-- Corrección prevista: AUD-03
-- Verificación: pendiente (ningún test cubría este hallazgo).
-- Commit/PR: pendiente.
+- Solución: `envio.pdf_copia` se cifra con `ServicioCifrado.CifrarBytes`/`DescifrarBytes` (AES-256-GCM, formato `v{versión}:{nonce}:{cifrado}`). Las filas antiguas en claro (empiezan por `%PDF-`) se leen tal cual y se cifran al reescribirse. Sin migración.
+- Corrección: AUD-03
+- Verificación: Mensajeria/EnvioCopiaCifradaTests (2).
+- Commit/PR: rama aud/sec018, commit 7def9f3; merge efcb4f3.
+- NO verificado / pendiente de despliegue: Las copias ya guardadas en claro siguen así hasta reescribirse; no hay migración de datos (no hay producción). Si hubiera datos reales habría que cifrarlas en bloque.
 - ¿Hubo exposición real? Exposición real: no consta (no está en producción).
 
 ### SEC-017 · JSON de auditoría montado a mano con el motivo sin escapar

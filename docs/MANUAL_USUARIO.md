@@ -2,7 +2,7 @@
 
 > Describe cómo funciona la app según la especificación.
 >
-> **Estado a 15/10/2026.** Este manual describe la app **tal como sedeliveryá**, no la que hay hoy:
+> **Estado a 15/10/2026.** Este manual describe la app **tal como se entregará**, no la que hay hoy:
 > la parte de contratos, reservas y cotizaciones ya está construida y probada por API, pero **todavía
 > no hay pantallas**. Antes de buscar un botón que aquí se describe, mira la marca del apartado:
 >
@@ -27,6 +27,8 @@ Ten en cuenta:
 - **5 intentos fallidos** bloquean tu cuenta 30 minutos. Muchos fallos desde la misma conexión bloquean esa conexión. Si te pasa, avisa al administrador.
 - Si entras desde un sitio nuevo, el administrador recibe un aviso. Es normal.
 - No compartas tu contraseña ni la guardes en ordenadores ajenos.
+- La contraseña tiene **al menos 12 caracteres** y la app rechaza las que han aparecido en filtraciones públicas (se comprueba sin enviar tu contraseña a nadie). Puedes cambiarla cuando quieras desde tu cuenta; al cambiarla se cierran tus otras sesiones.
+- Si el administrador **restablece** tu contraseña, te pedirá cambiarla en la siguiente entrada. Si desactiva tu usuario, tu sesión se cierra en la siguiente acción.
 
 ## 3. Qué puede hacer cada rol
 | | Empleado | Gerente | Administrador |
@@ -61,9 +63,9 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 3. Marca **Aceptada** o **Rechazada**. Desde una aceptada puedes crear la reserva o el contrato con los datos ya puestos.
 
 ## 7. Reservas 🟡
-**Mensual:** cliente, unidad, fecha de entrada prevista. Bloquea la unidad. Si en 7 días no hay contrato, sale un aviso.
+**Mensual:** cliente, unidad, fecha de entrada prevista. Bloquea la unidad. Si en 7 días no hay contrato, sale un aviso. Al activar el contrato de esa reserva, la reserva pasa sola a *Convertida*; si llega la fecha de entrada y el contrato sigue sin activar (o no existe), la reserva pasa a *En conflicto*, sigue bloqueando la unidad y sale un aviso.
 
-**Corta:** por cada día eliges **Medio día** o **Día completo** (puedes escribir una hora orientativa). En un mismo día caben dos medios días o un día completo.
+**Corta:** por cada día eliges **Medio día** o **Día completo** (puedes escribir una hora orientativa en texto libre, por ejemplo «mañana» o «a partir de las 3»; es opcional y no bloquea nada: lo que cuenta es medio día o día completo). En un mismo día caben dos medios días o un día completo.
 
 **Anticipo:** si el cliente adelantó dinero, anótalo en la reserva (importe, fecha). **Es solo una nota, no un cobro, y no aparece en ningún saldo ni informe económico.** El cobro se registrará en la fase de finanzas; todavía no existe, y tampoco el aviso que te lo recordará.
 
@@ -71,7 +73,7 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 1. Desde la reserva o Contratos → *Nuevo*. Renta, moneda, día de pago, fianza y renovación.
 2. *Enviar a aprobación*. El gerente lo aprueba o lo devuelve con comentario.
 - Se renueva solo hasta que se cancele. Las subidas de renta programadas se aplican solas.
-- **Baja:** el gerente pone la fecha de fin. En esa fecha el contrato **se finalize solo** y la unidad queda libre. Después hay que **liquidar**: se revisa el inventario de salida y se decide qué pasa con la fianza. **Los cobros y los saldos todavía no existen** (fase de finanzas), así que por ahora la liquidación deja constancia de qué falta y de la decisión, pero no mueve dinero.
+- **Baja:** el gerente pone la fecha de fin, **en cualquier fecha** (hoy o posterior), aunque sea antes de que acabe el periodo en curso. La fecha de baja ya no se factura: si la baja es el día 15, se factura hasta el 14, prorrateando ese último mes. En esa fecha el contrato **se finalizará solo** y la unidad queda libre. Después hay que **liquidar**: se revisa el inventario de salida y se decide qué pasa con la fianza. **Los cobros y los saldos todavía no existen** (fase de finanzas), así que por ahora la liquidación deja constancia de qué falta y de la decisión, pero no mueve dinero.
 
 ## 9. Facturas ⬜
 - **Del mes:** el gerente pulsa *Generar facturas periódicas*, revisa la simulación y confirma.
@@ -82,7 +84,7 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - **Mora:** añádela como una línea más.
 - **Proforma:** presupuesto que no genera deuda; con un botón se convierte en factura con los mismos importes.
 - **Duplicar:** crea un borrador igual, sin número ni cobros.
-- **Anular** (gerente): pide motivo. **Los cobros de esa factura también se anulan.** Si un cobro pagaba varias facturas, solo se anula la parte de esta. La pantalla te muestra qué cobros se verán afectados antes de confirmar.
+- **Anular** (gerente): pide motivo. **Los cobros de esa factura también se anulan.** Si un cobro pagaba varias facturas, solo se anula la parte de esta. La pantalla te muestra qué cobros se verán afectados antes de confirmar. El dinero de la parte anulada queda marcado como **devuelto** en el cobro (no se convierte en saldo a favor). Si el cobro ya financió otro cobro, la app no deja anular y te dice cuál hay que anular antes.
 
 ## 10. Cuentas y cobros (pantalla principal) ⬜
 

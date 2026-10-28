@@ -133,6 +133,9 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **La clave del servidor de correo no está en la base de datos.** Vive en variables de entorno o en `dotnet user-secrets`, en la sección `Correo` (docs/SEGURIDAD.md §A.7). No hay columna donde escribirla y esa es la decisión: si se configurara en la base, acabaría en los backups y en `ajuste_general`, que es justo lo que no se quiere con una credencial.
 - **Tokens de agente (`agente_token`, F6-01):** `usuario_id` (FK a `usuario`), `nombre`, `hash_token` (SHA-256 en hexadecimal, **único**, es la búsqueda en cada petición), `acciones` (`text[]`, el recorte que el token puede pedir), `creado`, `caduca`, `revocado`, `ultimo_uso` y `limite_consultas_dia`. **Del token no se guarda el en claro**: sale una sola vez en la respuesta del alta. No lleva `created_at/by` ni `updated_at/by` porque no usa `GuardadoAuditado` — su respuesta lleva el secreto y esa respuesta es la que `idempotencia` guardaría para el reintento, que es justo donde no puede acabar. `rent_app` tiene `SELECT, INSERT, UPDATE` y **no `DELETE`**: revocar es poner `revocado`, nunca borrar la fila, para que la auditoría siga explicando qué token hubo (AGENTS.md §6).
 
+### 4.2.1 Migraciones de la auditoría (26-27/10/2026)
+`AccionSesionPassword` (acción `sesion.password`, SEC-015) · `MfaGerenteYDesbloqueoManual` (SEC-024, SEC-012) · `PurgaIntentosLogin` (función `purgar_intentos_login`, SEC-030) · `CobroImporteDevuelto` (BUG-020) · `ReservaHoraOrientativaYContratoReserva` (BUG-026, BUG-027) · `RevocarUpdateCopiasCongeladas` (BUG-052: `rent_app` sin `UPDATE` sobre las copias congeladas del contrato). Lista completa: `backend/AtlasRent.Api/Migrations`. `SEC-020` añade además `db/scripts/04_base_jobs.sql` (rol `rent_jobs`, `ConnectionStrings__Jobs`; ver §9).
+
 ### 4.3 Piezas críticas en SQL
 - **Exclusión de rangos:** `EXCLUDE USING gist (unidad_id WITH =, daterange(fecha_inicio, fecha_fin, '[)') WITH &&) WHERE (bloquea)` sobre `ocupacion_rango` (`btree_gist`).
 - **Medio día:** `ocupacion_dia (unidad_id, fecha, tipo int)` con `tipo` 1 = `medio_dia`, 2 = `dia_completo`; trigger que serializa por unidad con `SELECT ... FROM unidad WHERE id = NEW.unidad_id FOR UPDATE`, rechaza si hay un rango bloqueando esa fecha y aplica la capacidad de 2 medios días o 1 día completo.
@@ -252,9 +255,16 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 - **La serie es obligatoria y única por ejecución**, y no hay serie «de la casa»: §3.7 deja la
   numeración en la serie. Un contrato cuya moneda no admite la serie aparece **omitido con su
   motivo** en la simulación y en la ejecución; no es un 409 a mitad del lote.
-- **El prorrateo** es `renta / días del mes × días facturables`, con días **inclusivos**, y el mes
-  entero paga la renta íntegra sin dividir (dividir y multiplicar por los mismos días no siempre
-  vuelve a dar la renta exacta en `decimal`).
+- **El prorrateo** es `renta × días facturables / días del mes` (BUG-029: se multiplica antes de
+  dividir, para no perder un céntimo en los empates exactos), y el mes entero paga la renta íntegra sin
+  dividir. El fin del tramo es **exclusivo** `[)` (BUG-024): una baja el día 15 factura hasta el 14. Se
+  factura hasta `FechaFinReal ?? FechaBajaProgramada ?? FechaFinVigente`; los contratos Finalizados
+  facturan su último tramo y un incremento de renta parte el periodo en dos líneas prorrateadas
+  (`Dominio/RentaPorTramos.cs`), sin modificar el contrato.
+- **Cada contrato va en su propia transacción** (BUG-022). Si uno falla, el lote sigue y la ejecución
+  se cierra siempre; el fallo queda en la alerta `factura-periodica-fallo:{contrato}:{yyyy-MM}` y en
+  `fallidas`/`fallidos` de la respuesta. Un borrador huérfano **de la misma moneda** se reutiliza; uno
+  de otra moneda (p. ej. el de «rehacer») no.
 - **El vencimiento** es el día de pago del contrato dentro del periodo facturado, recortado al final
   del mes; si ese día ya pasó al facturar, vence en el ciclo siguiente (el mismo día del mes
   siguiente). Con más de un mes de retraso la factura nace vencida: eso no lo arregla ninguna regla
@@ -340,6 +350,17 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 | `POST /api/v1/cobros/ajustes-diferencia-cambio` | `cobro.registrar` | **F3-07.** Cierra por ajuste el pendiente de una diferencia de cambio. Cuerpo `{ facturaId, tipoCambioValor, motivo }`; **el importe no se pide**. Acepta `Idempotency-Key`. |
 | `POST /api/v1/cobros/ajustes-diferencia-cambio/{id}/anular` | `cobro.registrar` | **F3-07.** Anulación **con motivo obligatorio**. No borra: la fila queda anulada y la factura recupera su pendiente. Acepta `Idempotency-Key`. |
 
+- **Cerrojo de cobros (BUG-019).** `Services/CerrojoCobros.TomarAsync` toma
+  `pg_advisory_xact_lock(int4 'COBR', hash del contrato o, sin contrato, del cliente)` al empezar la
+  transacción de registrar un cobro, registrar o anular un ajuste, anular un cobro y anular o rehacer una
+  factura. El pendiente se lee con el cerrojo ya tomado; dos cobros simultáneos no asignan más que el
+  neto de la factura. Anular un cobro, o la factura que lo deja sin asignaciones, cuyo crédito ya
+  financió otro cobro da 409 y dice qué cobro anular antes (`ExigirCreditoSinGastarAsync`, BUG-032).
+- **`cobro.importe_devuelto` (BUG-020).** Al anular una factura de un cobro multi-factura se anula
+  solo la asignación de esa factura y su importe, en la moneda recibida, se suma a `importe_devuelto`
+  del cobro (sin saldo a favor). Invariante: recibido + crédito usado = asignado vigente + excedente +
+  devuelto. Aún no está en el DTO de cobro. Modificar una factura no puede bajar su neto por debajo de lo
+  cobrado más lo ajustado (409, BUG-021).
 - **Ninguna acción nueva.** Ver un cobro es `factura.ver` (la fila 7 de §2) y mover dinero es
   `cobro.registrar`, que D15 deja desactivado al empleado. Registrar, simular, anular y **ajustar** llevan
   la misma acción: el ajuste mueve el mismo saldo que la factura tiene pendiente, y ponerlo detrás de
@@ -821,7 +842,9 @@ Los cuatro endpoints, todos con el permiso `mensajeria.masivo` (§2: gerente y a
 
 #### Los estados que esta tarea pone en uso
 
-- `Pendiente` lo escribe la confirmación; `Enviado`, el trabajo. `Entregado` y `Leido` **siguen sin
+- `Pendiente` lo escribe la confirmación; `Enviando` (=6, BUG-038) lo pone el trabajo al reclamar la
+  fila con un `UPDATE` condicional **antes** de hablar con SMTP (quien no gana el reclamo no manda);
+  `Enviado`, el trabajo al terminar. `Entregado` y `Leido` **siguen sin
   escribir**: SMTP no dice si un mensaje llegó a su destinatario, solo que el servidor lo aceptó, y poner
   «entregado» ahí sería una afirmación que nadie ha comprobado. Quedan pendientes del webhook de
   confirmación del proveedor o del enlace de seguimiento. Su `TODO(A#)` sigue escrito en `Data/Envio.cs`.
@@ -836,8 +859,8 @@ Los cuatro endpoints, todos con el permiso `mensajeria.masivo` (§2: gerente y a
 - Si el proceso se cae **entre el commit y el encolado** quedan filas `Pendiente` que nadie manda. La
   cola se crea después del commit a propósito (encolar dentro de la transacción haría que un trabajo
   encontrara filas a medio escribir, y que un trabajo encolado en una transacción deshecha mandara
-  correo que ya no está en ninguna parte). El cierre es un trabajo de barrido que re-encole lo
-  `Pendiente` más viejo de una hora, con su `TODO(A#)`.
+  correo que ya no está en ninguna parte). El cierre es el job `barrido-envios` (BUG-037, ver §8):
+  re-encola lo `Pendiente` de lotes con más de 30 minutos y alerta de lo `Enviando` con más de 60.
 - El resumen lee `ModeloPdfAsync` una vez por documento: es lo que garantiza que la vista previa y el
   correo dicen lo mismo, y se paga en tiempo de la pantalla de confirmación.
 
@@ -1113,6 +1136,7 @@ posteriores, que todavía no están escritos:
 | Recordatorios (§3.14, D12) | F4-05 | Hangfire | diario 09:00 AST | por (cliente, unidad, fecha) en `recordatorio` |
 | Alertas de vencimiento de factura | *previsto* (F3) | Hangfire | cada hora | dedupe por (tipo, entidad) |
 | Envíos (§3.14) | F4-03 | Hangfire (**cola**) | al confirmar un lote | por `envio.id`: la fila ya enviada no se vuelve a mandar |
+| Barrido de envíos huérfanos (`barrido-envios`) | AUD-06 (BUG-037) | Hangfire | cada 10 min (`*/10 * * * *`) | reclamo `Enviando` por fila; `[AutomaticRetry(3)]`; fuera de `ProgramacionJobs.Todos` (son diarios) |
 | Outbox | *previsto* (F3) | Hangfire | cada minuto | por evento |
 | Limpieza de sesiones, intentos, temporales | *previsto* | Hangfire | diario | — |
 | Comprobación de actualizaciones | *previsto* | Hangfire | diario | — |
@@ -1167,7 +1191,9 @@ primeras facturas. Y lo mismo con los trabajos previstos de F3 y F4: las horas d
   expresa. Si el trabajo fallara, Hangfire lo reintentaría por su cuenta, sin que nadie lo pidiera, que
   es justo lo que §3.14 deja en la persona que mira el progreso.
 - **Idempotencia en la fila, no en el planificador**: una fila ya `Enviado` no se vuelve a mandar
-  aunque el trabajo se entregue dos veces.
+  aunque el trabajo se entregue dos veces; el reclamo `Enviando` (UPDATE condicional) impide que dos
+  ejecuciones simultáneas manden el mismo correo. `PermisoDenegadoException` deja la fila en `Fallido`
+  sin reintentos de Hangfire.
 - **`IColaEnvios` detrás de una interfaz**, y resuelta por fábrica: `AddHangfire` solo se registra con el
   servidor activo, así que una instancia sin planificador (la segunda, o las pruebas) recibe
   `ColaEnviosSinServidor`, que **falla al encolar** en vez de dejar el lote en «pendientes» para
@@ -1373,6 +1399,8 @@ mismo que no haber configurado nada. `TODO(A#)` sigue pendiente de confirmar con
 - Backend: xUnit v3 + AwesomeAssertions; integración con Testcontainers PostgreSQL (obligatorio para exclusiones, triggers, RLS, numeración, auditoría); EF InMemory solo para lógica sin SQL específico.
 - Frontend: ESLint 10, `tsc --noEmit`, Node.js Test Runner, Playwright E2E (reserva → contrato → factura → cobro en otra moneda).
 - Casos obligatorios: ver ESPECIFICACION §8.
+- **Cómo se ejecutan (BUG-047):** `dotnet test` termina sin ejecutar ninguna prueba con xUnit v3 de runner en proceso. En local: `backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe` (opciones `-namespace`, `-class`). En CI (Linux): `dotnet backend/AtlasRent.Tests/bin/Release/net10.0/AtlasRent.Tests.dll`, y el paso falla si ejecuta 0 pruebas o alguna falla. `.gitattributes` fija `*.cs text eol=lf` (BUG-053).
+et10.0\AtlasRent.Tests.exe` (opciones `-namespace`, `-class`). En CI (Linux): `dotnet backend/AtlasRent.Tests/bin/Release/net10.0/AtlasRent.Tests.dll`, y el paso falla si ejecuta 0 pruebas o alguna falla. `.gitattributes` fija `*.cs text eol=lf` (BUG-053).
 - CI (GitHub Actions): build, tests, auditoría npm y NuGet, verificación de versiones, escaneo de secretos, releases y firma de paquetes.
 
 ## 11. Operación
