@@ -28,6 +28,24 @@ public sealed class EmergenciaController(
     IPolicyService politica,
     IResolutorIpPeticion resolutorIp) : ControllerBase
 {
+    /// <summary>Solicitudes de acceso de emergencia, por defecto las pendientes. Nunca lleva el código.</summary>
+    [HttpGet("solicitudes")]
+    [Accion(Acciones.SeguridadAccesoEmergencia)]
+    public async Task<IActionResult> Solicitudes([FromQuery] string estado = "pendiente", CancellationToken ct = default)
+    {
+        if (!ServicioEmergencia.EstadosSolicitud.Contains(estado))
+        {
+            return Problemas.Construir(
+                StatusCodes.Status400BadRequest,
+                Problemas.Validacion,
+                "Datos no válidos",
+                "El estado tiene que ser pendiente, aprobada, caducada, usada o todas.");
+        }
+
+        var datos = await emergencia.ListarSolicitudesAsync(estado, ct);
+        return Ok(new { data = datos, total = datos.Count, page = 1, pageSize = datos.Count, totalPages = 1 });
+    }
+
     /// <summary>Primer paso: un administrador pide el acceso para otro que está bloqueado.</summary>
     [HttpPost("solicitar")]
     [Accion(Acciones.SeguridadAccesoEmergencia)]

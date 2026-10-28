@@ -1,3 +1,4 @@
+using AtlasRent.Api.DTOs;
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -97,6 +98,67 @@ public sealed class ServicioEmergencia(
         await transaccion.CommitAsync(ct);
 
         return id;
+    }
+
+    /// <summary>Estados que admite el filtro de solicitudes; "todas" no filtra.</summary>
+    public static readonly IReadOnlyList<string> EstadosSolicitud = ["pendiente", "aprobada", "caducada", "usada", "todas"];
+
+    /// <summary>
+    /// Solicitudes de acceso de emergencia para revisarlas. Nunca devuelve el código ni su hash.
+    /// Una solicitud pendiente no caduca: solo caduca el código una vez aprobado.
+    /// </summary>
+    public async Task<IReadOnlyList<SolicitudEmergenciaResumen>> ListarSolicitudesAsync(string estado, CancellationToken ct)
+    {
+        var ahora = reloj.GetUtcNow();
+        var consulta = contexto.AccesoEmergencia.AsNoTracking();
+        consulta = estado switch
+        {
+            "pendiente" => consulta.Where(a => a.AprobadoPorId == null),
+            "aprobada" => consulta.Where(a => a.AprobadoPorId != null && a.UsadoAt == null && a.CaducaAt > ahora),
+            "caducada" => consulta.Where(a => a.AprobadoPorId != null && a.UsadoAt == null && a.CaducaAt <= ahora),
+            "usada" => consulta.Where(a => a.UsadoAt != null),
+            _ => consulta,
+        };
+
+        var filas = await (
+            from a in consulta
+            join objetivo in contexto.Usuario on a.UsuarioId equals objetivo.Id
+            join solicitante in contexto.Usuario on a.SolicitanteId equals solicitante.Id
+            join aprobador in contexto.Usuario on a.AprobadoPorId equals aprobador.Id into aprobadores
+            from aprobador in aprobadores.DefaultIfEmpty()
+            orderby a.CreadoAt descending
+            select new
+            {
+                a.Id,
+                a.UsuarioId,
+                ObjetivoAcceso = objetivo.NombreAcceso,
+                a.SolicitanteId,
+                SolicitanteAcceso = solicitante.NombreAcceso,
+                a.Motivo,
+                a.CreadoAt,
+                a.AprobadoPorId,
+                AprobadorAcceso = aprobador != null ? aprobador.NombreAcceso : null,
+                a.AprobadoAt,
+                a.CaducaAt,
+                a.UsadoAt,
+            }).Take(200).ToListAsync(ct);
+
+        return [.. filas.Select(f => new SolicitudEmergenciaResumen(
+            f.Id,
+            f.UsuarioId,
+            f.ObjetivoAcceso,
+            f.SolicitanteId,
+            f.SolicitanteAcceso,
+            f.Motivo,
+            f.CreadoAt,
+            f.AprobadoPorId,
+            f.AprobadorAcceso,
+            f.AprobadoAt,
+            f.CaducaAt,
+            f.UsadoAt,
+            f.UsadoAt is not null ? "usada"
+                : f.AprobadoPorId is null ? "pendiente"
+                : f.CaducaAt <= ahora ? "caducada" : "aprobada"))];
     }
 
     /// <summary>

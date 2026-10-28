@@ -1,3 +1,4 @@
+using AtlasRent.Api.DTOs;
 using AtlasRent.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,6 +51,42 @@ public sealed class ServicioBloqueos(
         return fila is not null
             && (fila.BloqueadaHasta is null || fila.BloqueadaHasta > reloj.GetUtcNow());
     }
+
+    /// <summary>IP con bloqueo vigente ahora (las vencidas no se listan). Solo lectura.</summary>
+    public async Task<IReadOnlyList<IpBloqueadaResumen>> ListarIpsBloqueadasAsync(CancellationToken ct)
+    {
+        var ahora = reloj.GetUtcNow();
+        var filas = await contexto.BloqueoIp
+            .AsNoTracking()
+            .Where(b => b.BloqueadaHasta == null || b.BloqueadaHasta > ahora)
+            .OrderByDescending(b => b.UpdatedAt)
+            .Select(b => new IpBloqueadaResumen(
+                b.Ip, b.Nivel, b.Fallos, b.UpdatedAt, b.BloqueadaHasta, b.BloqueadaHasta == null))
+            .ToListAsync(ct);
+
+        return [.. filas.Where(f => !seguridad.EsIpPermitida(f.Ip))];
+    }
+
+    /// <summary>
+    /// Cuentas con bloqueo vigente. No hay columna de inicio: se calcula como fin menos la duración
+    /// configurada, que es exacto salvo que esa duración se haya cambiado con el bloqueo en curso.
+    /// </summary>
+    public async Task<IReadOnlyList<CuentaBloqueadaResumen>> ListarCuentasBloqueadasAsync(CancellationToken ct)
+    {
+        var ahora = reloj.GetUtcNow();
+        var filas = await contexto.Usuario
+            .AsNoTracking()
+            .Where(u => u.DeletedAt == null && u.BloqueadaHasta > ahora)
+            .OrderBy(u => u.NombreAcceso)
+            .Select(u => new { u.Id, u.NombreAcceso, u.Nombre, Hasta = u.BloqueadaHasta!.Value })
+            .ToListAsync(ct);
+
+        return [.. filas.Select(u => new CuentaBloqueadaResumen(
+            u.Id, u.NombreAcceso, u.Nombre, u.Hasta.AddMinutes(-limites.MinutosBloqueoCuenta), u.Hasta))];
+    }
+
+    /// <summary>Lista blanca de IP de la configuración (<c>Seguridad__IpListaBlanca</c>); no se edita por API.</summary>
+    public IReadOnlyList<string> ListaBlanca() => [.. seguridad.IpListaBlanca.Order(StringComparer.Ordinal)];
 
     /// <summary>
     /// Anota un login fallido y aplica lo que corresponda: bloqueo de la cuenta y de la IP.
