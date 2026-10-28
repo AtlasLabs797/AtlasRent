@@ -4,7 +4,7 @@ export const textosBloqueos = {
   descripcion: 'Levanta bloqueos de cuentas e IPs por intentos fallidos y gestiona el acceso de emergencia de administradores.',
   pestanas: { cuentas: 'Cuentas', ips: 'IPs', emergencia: 'Acceso de emergencia' },
   cuentas: {
-    titulo: 'Cuentas bloqueadas',
+    titulo: 'Cuentas de usuario',
     aviso: 'Atlas Rent no informa de qué cuentas están bloqueadas. Desbloquear una cuenta que no lo está no cambia nada.',
     columnas: { usuario: 'Usuario', nombre: 'Nombre', rol: 'Rol', accion: 'Acción' },
     desbloquear: 'Desbloquear',
