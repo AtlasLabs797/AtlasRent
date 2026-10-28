@@ -55,6 +55,9 @@ public sealed class ServicioContratos(
     IPolicyService politica,
     TimeProvider reloj)
 {
+    /// <summary>El día de negocio según el reloj inyectado (nunca el del sistema).</summary>
+    private DateOnly Hoy => TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
+
     /// <summary>
     /// Los únicos cambios de estado permitidos (§3.5). Lo que no esté en esta tabla se rechaza: el
     /// flujo es lineal y el rechazo es la única vuelta atrás que existe, porque vuelve a borrador
@@ -64,6 +67,8 @@ public sealed class ServicioContratos(
     {
         [EstadoContrato.Borrador] = [EstadoContrato.PendienteAprobacion],
         [EstadoContrato.PendienteAprobacion] = [EstadoContrato.Aprobado, EstadoContrato.Borrador],
+        // TODO(A#): un contrato Aprobado solo puede activarse; no hay salida si el cliente se echa atrás
+        // antes de activar (¿vuelta a Borrador, o cancelación?). Decisión de producto (BUG-052).
         [EstadoContrato.Aprobado] = [EstadoContrato.Activo],
         [EstadoContrato.Activo] = [EstadoContrato.BajaProgramada],
         // Anular la baja antes de que llegue la fecha es un botón normal de la ficha: si no existiera,
@@ -187,7 +192,7 @@ public sealed class ServicioContratos(
         var contrato = new Contrato
         {
             Estado = EstadoContrato.Borrador,
-            EstadoActualDesde = TiempoNegocio.Hoy(),
+            EstadoActualDesde = Hoy,
             EstadoActualPorId = usuario,
         };
 
@@ -320,7 +325,7 @@ public sealed class ServicioContratos(
                 // contenido de ahora.
                 if (contrato.Estado == EstadoContrato.Borrador)
                 {
-                    CambiarEstado(contrato, EstadoContrato.PendienteAprobacion, usuario, solicitud.Comentario);
+                    CambiarEstado(contrato, EstadoContrato.PendienteAprobacion, usuario, solicitud.Comentario, Hoy);
                 }
 
                 contexto.SolicitudAprobacion.Add(solicitud);
@@ -377,7 +382,7 @@ public sealed class ServicioContratos(
             antesDeGuardar: async () =>
             {
                 ResolverSolicitud(solicitud, ResultadoSolicitud.Aprobada, aprobador);
-                CambiarEstado(contrato, EstadoContrato.Aprobado, aprobador, "Aprobado.");
+                CambiarEstado(contrato, EstadoContrato.Aprobado, aprobador, "Aprobado.", Hoy);
                 // La plantilla se congela al aprobar (§3.5): a partir de aquí, editar la plantilla del
                 // contrato ya no cambia la que usa este contrato. Copia el texto y los anexos a la fila
                 // congelada en esta misma transacción, porque una aprobación sin copia es un contrato
@@ -430,7 +435,7 @@ public sealed class ServicioContratos(
             antesDeGuardar: () =>
             {
                 ResolverSolicitud(solicitud, ResultadoSolicitud.Rechazada, rechazante, comentario);
-                CambiarEstado(contrato, EstadoContrato.Borrador, rechazante, comentario);
+                CambiarEstado(contrato, EstadoContrato.Borrador, rechazante, comentario, Hoy);
                 return Task.CompletedTask;
             },
             ct: ct);
@@ -508,7 +513,7 @@ public sealed class ServicioContratos(
                 await ResolverReservasSolapadasAsync(contrato, usuario, ip, ct);
                 await disponibilidad.OcuparRangoAsync(
                     contrato.UnidadId, OrigenOcupacion.Contrato, contrato.Id, contrato.FechaInicio, null, ct);
-                CambiarEstado(contrato, EstadoContrato.Activo, usuario, "Activado.");
+                CambiarEstado(contrato, EstadoContrato.Activo, usuario, "Activado.", Hoy);
                 contexto.ContratoVersion.Add(version);
                 // F2-08 (§3.5): el inventario de la unidad se copia y se congela aquí, no antes. Va
                 // en el mismo antesDeGuardar que el cambio de estado y el candado de la unidad, así que
@@ -553,6 +558,14 @@ public sealed class ServicioContratos(
         var rentaAnterior = contrato.Renta;
         var plantillaAnterior = contrato.PlantillaContratoId;
         var huellaAntes = HuellaContrato.Calcular(contrato);
+
+        // La moneda del contrato no se cambia estando vigente: lo facturado y cobrado ya está en ella
+        // y un documento nunca se convierte (AGENTS.md §6, BUG-052).
+        if (peticion.Moneda is { } monedaNueva && monedaNueva != contrato.Moneda)
+        {
+            throw new InvalidOperationException(
+                $"Un contrato vigente no cambia de moneda (es {contrato.Moneda}): lo ya facturado y cobrado está en ella.");
+        }
 
         var cambio = AComoPeticion(peticion, contrato);
         Validar(cambio, contrato);
@@ -626,7 +639,7 @@ public sealed class ServicioContratos(
 
         // §3.5: baja en cualquier fecha, también antes del fin del bloque en curso (decisión del
         // responsable, BUG-024). Solo se pide que no sea pasada ni anterior al inicio del contrato.
-        if (fechaFin < TiempoNegocio.Hoy() || fechaFin < contrato.FechaInicio)
+        if (fechaFin < Hoy || fechaFin < contrato.FechaInicio)
         {
             throw new InvalidOperationException(
                 $"La baja no puede ser anterior a hoy ni al inicio del contrato ({contrato.FechaInicio:yyyy-MM-dd}).");
@@ -647,7 +660,7 @@ public sealed class ServicioContratos(
             datosAuditoria: DatosAuditoria,
             antesDeGuardar: () =>
             {
-                CambiarEstado(contrato, EstadoContrato.BajaProgramada, usuario, Limpiar(peticion.Comentario));
+                CambiarEstado(contrato, EstadoContrato.BajaProgramada, usuario, Limpiar(peticion.Comentario), Hoy);
                 return Task.CompletedTask;
             },
             ct: ct);
@@ -681,7 +694,7 @@ public sealed class ServicioContratos(
             datosAuditoria: DatosAuditoria,
             antesDeGuardar: () =>
             {
-                CambiarEstado(contrato, EstadoContrato.Activo, usuario, "Baja anulada.");
+                CambiarEstado(contrato, EstadoContrato.Activo, usuario, "Baja anulada.", Hoy);
                 return Task.CompletedTask;
             },
             ct: ct);
@@ -704,7 +717,7 @@ public sealed class ServicioContratos(
         var contrato = await CargarAsync(id, ct);
         Exigir(contrato, EstadoContrato.BajaProgramada);
 
-        var hoy = TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow());
+        var hoy = Hoy;
         var fechaFin = contrato.FechaBajaProgramada ?? hoy;
 
         // BUG-025: solo se finaliza cuando la fecha efectiva de la baja ya llegó. Finalizar antes
@@ -825,7 +838,7 @@ public sealed class ServicioContratos(
                 // exactamente igual que estaba, y no con el inventario cerrado a medias.
                 await inventario.ExigirRevisionFirmadaAsync(id, ct);
 
-                CambiarEstado(contrato, EstadoContrato.Liquidado, usuario, "Liquidado.", TiempoNegocio.FechaEnZonaNegocio(reloj.GetUtcNow()));
+                CambiarEstado(contrato, EstadoContrato.Liquidado, usuario, "Liquidado.", Hoy);
 
                 // TODO(A#) F3-01: emitir el cobro por el importe de faltantes registrado aquí y mover
                 // la fianza según esta decisión. La firma que hará falta cuando existan las tablas
@@ -1098,7 +1111,7 @@ public sealed class ServicioContratos(
             motivo: motivo ?? "El contrato cambió después de enviarse a aprobación.");
     }
 
-    private static void ResolverSolicitud(
+    private void ResolverSolicitud(
         SolicitudAprobacion solicitud,
         ResultadoSolicitud resultado,
         Guid usuario,
@@ -1107,7 +1120,7 @@ public sealed class ServicioContratos(
     {
         solicitud.Resultado = resultado;
         solicitud.ResueltoPorId = usuario;
-        solicitud.ResueltoAt = DateTimeOffset.UtcNow;
+        solicitud.ResueltoAt = reloj.GetUtcNow();
         if (comentario is not null)
         {
             solicitud.Comentario = comentario;
@@ -1118,7 +1131,7 @@ public sealed class ServicioContratos(
             solicitud.MotivoCaducidad = motivo;
         }
 
-        solicitud.UpdatedAt = DateTimeOffset.UtcNow;
+        solicitud.UpdatedAt = reloj.GetUtcNow();
         solicitud.UpdatedBy = usuario;
     }
 
@@ -1404,7 +1417,7 @@ public sealed class ServicioContratos(
         EstadoContrato destino,
         Guid? usuario,
         string? comentario,
-        DateOnly? hoy = null)
+        DateOnly hoy)
     {
         if (!Transiciones[contrato.Estado].Contains(destino))
         {
@@ -1413,7 +1426,7 @@ public sealed class ServicioContratos(
         }
 
         contrato.Estado = destino;
-        contrato.EstadoActualDesde = hoy ?? TiempoNegocio.Hoy();
+        contrato.EstadoActualDesde = hoy;
         contrato.EstadoActualPorId = usuario;
         contrato.EstadoActualComentario = Limpiar(comentario);
     }

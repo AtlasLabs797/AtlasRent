@@ -57,6 +57,25 @@ public sealed class CalendarioPermisosTests(
             .StatusCode.Should().Be(HttpStatusCode.Forbidden, "sin cliente.ver no hay calendario");
     }
 
+    /// <summary>
+    /// BUG-052: sin <c>desde</c> o sin <c>hasta</c> la API no puede tomar el 01/01/0001 por defecto y
+    /// contestar 200 con un calendario absurdo: es un 400.
+    /// </summary>
+    [Theory]
+    [InlineData("hasta=2026-01-10")]
+    [InlineData("desde=2026-01-01")]
+    [InlineData("")]
+    public async Task SinDesdeOHastaElCalendarioRespondeUn400(string consulta)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var admin = await AyudaPermisos.SesionAsync(
+            api, await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct), Contrasena, ct);
+        var unidadId = await AyudaReserva.UnidadAsync(admin, ct);
+
+        (await admin.GetAsync($"/api/v1/calendario?unidadId={unidadId:D}&{consulta}", ct))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     /// <summary>Sin sesión tampoco se ve, como en el resto de la API.</summary>
     [Fact]
     public async Task SinSesionNoSeVeElCalendario()

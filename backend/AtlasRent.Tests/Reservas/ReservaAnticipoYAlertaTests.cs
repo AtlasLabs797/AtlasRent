@@ -6,7 +6,9 @@ using AtlasRent.Api.Data;
 using AtlasRent.Api.Dominio;
 using AtlasRent.Api.Jobs;
 using AtlasRent.Api.Services;
+using AtlasRent.Tests.Cuentas;
 using AtlasRent.Tests.Infra;
+using AtlasRent.Tests.Informes;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -25,7 +27,7 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
     /// <summary>
     /// D10: el anticipo es una nota con número. No hay pasarela de pago, así que una reserva con
     /// anticipo no puede haber generado un cobro ni una factura: ni los escribe la aplicación ni
-    /// siquiera existen esas tablas todavía (el cobro es de F3-01).
+    /// hay ningún camino de reserva a esas tablas.
     /// <para>
     /// Lo que se comprueba es doble. Primero, que el anticipo sí está guardado en la reserva, con su
     /// importe y su nota. Segundo, que <b>ninguna tabla de efecto económico que exista</b> haya
@@ -38,12 +40,9 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
     /// tabla esté a cero, sino que crear la reserva no la haya movido.
     /// </para>
     /// <para>
-    /// <b>Lo que este test todavía no puede comprobar, y es importante decirlo:</b> el criterio de
-    /// aceptación completo de F2-03 es "el anticipo no aparece en ningún saldo ni informe económico",
-    /// y un saldo es algo que hoy no existe. <c>cobro</c> y <c>factura</c> son de F3-01, así que
-    /// hasta que F3 no las cree, aquí solo se puede afirmar que no se ha escrito nada donde hoy se
-    /// puede escribir. Cuando existan, este mismo test empezará a mirarlas de verdad sin cambiar una
-    /// línea.
+    /// Este test mira las tablas (<c>cobro</c> y <c>factura</c> ya existen desde F3). Que el anticipo
+    /// tampoco aparezca en saldos, cuentas ni informes lo prueba
+    /// <see cref="ElAnticipoNoApareceEnSaldosCuentasNiInformes"/>.
     /// </para>
     /// </summary>
     [Fact]
@@ -83,10 +82,85 @@ public sealed class ReservaAnticipoYAlertaTests(ContenedorBdFixture bd, ApiTestF
             despues[tabla].Should().Be(
                 antes[tabla],
                 $"un anticipo no escribe nada en {tabla}: el cobro se registra al pagar la factura, "
-                + "que es de F3. Ojo con el alcance de esto: mientras F3 no cree `cobro` ni "
-                + "`factura`, esta comprobación solo demuestra que no se ha escrito en lo que existe "
-                + "hoy, que no es el criterio completo de F2-03");
+                + "que es de F3");
         }
+    }
+
+    /// <summary>
+    /// El criterio de aceptación completo de F2-03, ahora que existen cobro, factura, vista única de
+    /// cuentas e informes: un anticipo anotado en una reserva <b>no aparece</b> en el saldo del
+    /// cliente, ni en la vista única de cuentas, ni en el resumen y el dashboard de informes, ni como
+    /// cobro.
+    /// <para>
+    /// Se mira por dos lados. Con el cliente recién creado (sin más movimientos), nada de lo que las
+    /// tres vistas devuelven puede llevar el importe del anticipo. Y el resumen global es idéntico
+    /// antes y después de crear la reserva con anticipo.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ElAnticipoNoApareceEnSaldosCuentasNiInformes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var sesion = await SesionAsync(ct);
+        var clienteId = await AyudaReserva.ClienteAsync(sesion, ct);
+        var unidadId = await AyudaReserva.UnidadAsync(sesion, ct);
+        const decimal anticipo = 2500m;
+
+        var resumenAntes = (await AyudaInformes.ResumenAsync(sesion, string.Empty, ct)).GetRawText();
+
+        await AyudaReserva.CrearAsync(
+            sesion,
+            AyudaReserva.Corta(clienteId, unidadId, AyudaReserva.Dia(150), anticipo: anticipo, anticipoNota: "Anticipo en efectivo"),
+            ct);
+
+        var filtro = $"clienteId={clienteId:D}";
+
+        var vista = await AyudaCuentas.VistaAsync(sesion, filtro, ct);
+        AyudaCuentas.Filas(vista).Should().BeEmpty("el anticipo no es ni factura ni cobro: no es una fila de la vista única");
+        NumerosDe(vista).Should().NotContain(anticipo, "ni las filas ni los totales de la vista única lo suman");
+
+        var cobros = await sesion.GetAsync($"/api/v1/cobros?{filtro}", ct);
+        cobros.StatusCode.Should().Be(HttpStatusCode.OK);
+        NumerosDe(await AyudaReserva.Json(cobros, ct)).Should().NotContain(anticipo, "el anticipo no es un cobro");
+
+        NumerosDe(await AyudaInformes.ResumenAsync(sesion, filtro, ct))
+            .Should().NotContain(anticipo, "el resumen de informes no lo cuenta como ingreso ni como saldo");
+        NumerosDe(await AyudaInformes.DashboardAsync(sesion, filtro, ct))
+            .Should().NotContain(anticipo, "el dashboard tampoco");
+
+        (await AyudaInformes.ResumenAsync(sesion, string.Empty, ct)).GetRawText()
+            .Should().Be(resumenAntes, "crear una reserva con anticipo no mueve ningún informe económico");
+    }
+
+    private static List<decimal> NumerosDe(System.Text.Json.JsonElement elemento)
+    {
+        var numeros = new List<decimal>();
+        void Recorrer(System.Text.Json.JsonElement e)
+        {
+            switch (e.ValueKind)
+            {
+                case System.Text.Json.JsonValueKind.Number:
+                    numeros.Add(e.GetDecimal());
+                    break;
+                case System.Text.Json.JsonValueKind.Array:
+                    foreach (var hijo in e.EnumerateArray())
+                    {
+                        Recorrer(hijo);
+                    }
+
+                    break;
+                case System.Text.Json.JsonValueKind.Object:
+                    foreach (var propiedad in e.EnumerateObject())
+                    {
+                        Recorrer(propiedad.Value);
+                    }
+
+                    break;
+            }
+        }
+
+        Recorrer(elemento);
+        return numeros;
     }
 
     /// <summary>

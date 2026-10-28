@@ -788,45 +788,6 @@ public sealed class ServicioConfiguracion(
             ct);
     }
 
-    // ---------------------------------------------------------------- cálculo
-
-    /// <summary>
-    /// Calcula ITBIS y retenciones de un subtotal con los porcentajes que hay ahora mismo en la
-    /// configuración. Es el camino que usarán las facturas, y la prueba de que cambiar la
-    /// configuración cambia el resultado (D14).
-    /// </summary>
-    public async Task<ResultadoImpuestos> CalcularAsync(
-        decimal subtotal,
-        Guid? tipoItbisId,
-        IReadOnlyList<Guid> tipoRetencionIds,
-        CancellationToken ct)
-    {
-        var porcentajeItbis = tipoItbisId is { } idItbis
-            ? await contexto.TipoItbis.AsNoTracking()
-                .Where(t => t.Id == idItbis && t.Activo)
-                .Select(t => t.Porcentaje)
-                .SingleOrDefaultAsync(ct)
-            : 0m;
-
-        var retenciones = await contexto.TipoRetencion.AsNoTracking()
-            .Where(t => t.Activo && tipoRetencionIds.Contains(t.Id))
-            .Select(t => new { t.Id, t.Porcentaje, t.Base })
-            .ToListAsync(ct);
-
-        // En el orden en que los pidió el documento, no en el que los devuelva la consulta.
-        var porId = retenciones.ToDictionary(r => r.Id, r => (r.Porcentaje, r.Base));
-        var aplicadas = new List<(decimal, BaseRetencion)>(tipoRetencionIds.Count);
-        foreach (var id in tipoRetencionIds)
-        {
-            if (porId.TryGetValue(id, out var tipo))
-            {
-                aplicadas.Add(tipo);
-            }
-        }
-
-        return CalculoImpuestos.Calcular(subtotal, porcentajeItbis, aplicadas);
-    }
-
     // ---------------------------------------------------------------- internos
 
     private static SerieRespuesta ASerie(Serie s) => new(

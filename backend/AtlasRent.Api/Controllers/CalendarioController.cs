@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
 using AtlasRent.Api.Services;
@@ -33,13 +34,14 @@ public sealed class CalendarioController(
     public async Task<IActionResult> Leer(
         [FromQuery] Guid? unidadId,
         [FromQuery] Guid? inmuebleId,
-        [FromQuery] DateOnly desde,
-        [FromQuery] DateOnly hasta,
+        // Nullable + [Required]: un DateOnly sin más tomaría 01/01/0001 si falta el parámetro (BUG-052).
+        [FromQuery, Required] DateOnly? desde,
+        [FromQuery, Required] DateOnly? hasta,
         CancellationToken ct)
     {
         try
         {
-            return Ok(await calendario.LeerAsync(unidadId, inmuebleId, desde, hasta, ct));
+            return Ok(await calendario.LeerAsync(unidadId, inmuebleId, desde!.Value, hasta!.Value, ct));
         }
         catch (ArgumentException peticionInvalida)
         {

@@ -12,6 +12,8 @@ ConnectionStrings__Migraciones=Host=localhost;Port=5432;Database=atlas_rent;User
 ConnectionStrings__Backup=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_backup;Password=<secreto>
 # SEC-020: servidor de jobs (Hangfire). Rol rent_jobs, dueño solo de atlas_rent_jobs; la base se fija en código.
 ConnectionStrings__Jobs=Host=localhost;Port=5432;Database=atlas_rent_jobs;Username=rent_jobs;Password=<secreto>
+# Servidor de jobs (Hangfire) de este proceso. true (por defecto) lo levanta; false solo para una segunda instancia sin planificador.
+Jobs__ServidorActivo=true
 
 Kestrel__Certificates__Default__Path=<ruta .pfx>
 Kestrel__Certificates__Default__Password=<secreto>

@@ -21,10 +21,11 @@ namespace AtlasRent.Tests.Facturas;
 /// <summary>
 /// F4-01: el PDF de la factura y de la proforma con el diseño de <c>docs/DESIGN.md §7</c>.
 /// <para>
-/// Lo que el PDF <b>dice</b> se comprueba sobre el modelo (<see cref="DocumentoFacturaPdfModelo"/>),
-/// no sobre el archivo: QuestPDF incrusta las fuentes con subconjunto y escribe los caracteres como
-/// índices de glifo, así que el texto no se puede leer del PDF. Del archivo solo se comprueba lo
-/// estructural: que es un PDF, que se sirve como tal y que dos generaciones dan los mismos bytes.
+/// Lo que el PDF <b>dice</b> se comprueba sobre el modelo (<see cref="DocumentoFacturaPdfModelo"/>).
+/// QuestPDF escribe los caracteres como índices de glifo, pero el texto sí se puede leer del archivo con
+/// <see cref="TextoPdf"/> (CMap <c>ToUnicode</c>): la prueba de texto del usuario lo usa. Del archivo, el
+/// resto de pruebas comprueba lo estructural: que es un PDF, que se sirve como tal y que dos
+/// generaciones dan los mismos bytes.
 /// </para>
 /// <para>
 /// Los importes y los totales salen de los datos ya calculados del dominio; estas pruebas no los
@@ -280,7 +281,15 @@ public sealed class FacturaPdfTests(ContenedorBdFixture bd, ApiTestFactory api)
         var pdf = await admin.GetAsync($"/api/v1/facturas/{facturaId:D}/pdf", ct);
         pdf.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var bytes = Encoding.Latin1.GetString(await pdf.Content.ReadAsByteArrayAsync(ct));
+        var crudo = await pdf.Content.ReadAsByteArrayAsync(ct);
+        var bytes = Encoding.Latin1.GetString(crudo);
+
+        // (c) Y lo que el papel imprime —no el modelo— lleva los textos tal cual (BUG-051).
+        var impreso = TextoPdf.SinEspacios(TextoPdf.Extraer(crudo));
+        foreach (var marca in new[] { marcahtml, marcaImagen, plantilla, sustitucion, nombreCliente })
+        {
+            impreso.Should().Contain(TextoPdf.SinEspacios(marca), $"el PDF imprime «{marca}» sin interpretarlo");
+        }
 
         foreach (var prohibido in new[] { "/JavaScript", "/JS", "/OpenAction", "/URI", "/Launch", "/EmbeddedFile" })
         {

@@ -204,6 +204,62 @@ public sealed class DocumentoInmuebleAlmacenamientoTests(ContenedorBdFixture bd,
         ArchivosEnDisco().Should().HaveCount(3);
     }
 
+    /// <summary>
+    /// BUG-052: subir a un inmueble que no existe es un 404 y no deja ningún archivo en el almacén
+    /// (se comprueba el inmueble antes de guardar el PDF).
+    /// </summary>
+    [Fact]
+    public async Task SubirAUnInmuebleQueNoExisteEsUn404SinDejarArchivo()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        VaciarCarpeta();
+        using var gerente = await SesionAsync(Roles.Gerente, ct);
+
+        var subida = await gerente.SubirArchivoAsync(
+            $"/api/v1/inmuebles/{Guid.NewGuid():D}/documentos",
+            "archivo",
+            "titulo.pdf",
+            SesionCliente.PdfDePrueba(),
+            DocumentoInmueble.TipoPdf,
+            [("categoria", "Titulo")],
+            ct);
+
+        subida.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        ArchivosEnDisco().Should().BeEmpty("no hay inmueble al que colgar el archivo");
+    }
+
+    /// <summary>
+    /// BUG-052: dos subidas simultáneas de la misma categoría no dan un 409 por la versión: ambas se
+    /// guardan, con las versiones 1 y 2.
+    /// </summary>
+    [Fact]
+    public async Task DosSubidasSimultaneasDeLaMismaCategoriaTomanVersionesDistintas()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        VaciarCarpeta();
+        using var gerente = await SesionAsync(Roles.Gerente, ct);
+        var inmueble = await DocumentoInmueblePermisosTests.CrearInmuebleAsync(gerente, ct);
+
+        var subidas = await Task.WhenAll(Enumerable.Range(0, 2).Select(i => gerente.SubirArchivoAsync(
+            $"/api/v1/inmuebles/{inmueble:D}/documentos",
+            "archivo",
+            $"titulo{i}.pdf",
+            SesionCliente.PdfDePrueba(),
+            DocumentoInmueble.TipoPdf,
+            [("categoria", "Titulo")],
+            ct)));
+
+        subidas.Select(r => r.StatusCode).Should().AllBeEquivalentTo(HttpStatusCode.OK);
+        var versiones = new List<int>();
+        foreach (var subida in subidas)
+        {
+            versiones.Add((await subida.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("version").GetInt32());
+        }
+
+        versiones.Should().BeEquivalentTo([1, 2]);
+        ArchivosEnDisco().Should().HaveCount(2);
+    }
+
     private static async Task<Guid> SubirAsync(
         SesionCliente sesion,
         Guid inmueble,

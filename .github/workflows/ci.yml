@@ -46,8 +46,21 @@ jobs:
         if: steps.detecta.outputs.existe == 'true'
       - run: dotnet build -c Release --warnaserror --no-restore
         if: steps.detecta.outputs.existe == 'true'
-      - run: dotnet test -c Release --no-build   # integración con Testcontainers (Docker disponible en el runner)
+      # `dotnet test` NO sirve aquí: con xUnit v3 en proceso termina en verde sin ejecutar una sola
+      # prueba (AGENTS §8, BUG-047). Se ejecuta el ejecutable de pruebas (Testcontainers con el Docker
+      # del runner). El runner de xUnit v3 sale con 0 aunque haya 0 pruebas, así que el paso falla
+      # además si el total ejecutado es 0, si hay fallos o si no aparece el resumen.
+      - name: Pruebas del backend
         if: steps.detecta.outputs.existe == 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet backend/AtlasRent.Tests/bin/Release/net10.0/AtlasRent.Tests.dll -noColor | tee pruebas.txt
+          total=$(grep -oE 'Total: [0-9]+' pruebas.txt | awk '{s+=$2} END {print s+0}')
+          fallos=$(grep -oE 'Failed: [0-9]+' pruebas.txt | awk '{s+=$2} END {print s+0}')
+          echo "Pruebas ejecutadas: $total; fallidas: $fallos"
+          if [ "$total" -eq 0 ]; then echo "::error::0 pruebas ejecutadas"; exit 1; fi
+          if [ "$fallos" -gt 0 ]; then echo "::error::hay pruebas fallidas"; exit 1; fi
       - name: Paquetes vulnerables
         if: steps.detecta.outputs.existe == 'true'
         run: |

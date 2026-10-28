@@ -850,6 +850,8 @@ public sealed class ServicioCobros(
         // aplicado es el que se usa para convertir las líneas de otra moneda y va en cada asignación.
         // Son dos cosas porque el gerente pudo cobrar al cambio del banco y no al de la casa, y el
         // informe del día tiene que seguir siendo el del día.
+        // TODO(A#): el tipo de cambio aplicado no tiene control de sensatez (solo > 0): un 1000 en lugar
+        // de 100 pasa. ¿Tolerancia máxima respecto al cambio del día? Es regla de negocio (BUG-052).
         var cambioAplicado = peticion.TipoCambioAplicado is { } fijado
             ? Redondeo.TipoCambio(fijado)
             : Redondeo.TipoCambio(cambio.Valor);

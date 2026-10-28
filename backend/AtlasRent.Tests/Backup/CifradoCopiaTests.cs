@@ -189,9 +189,9 @@ public sealed class CifradoCopiaTests
             .Should().BeTrue("con que una sola tabla tenga filas, la copia sirve");
     }
 
-    /// <summary>Una base sin ninguna tabla no tiene datos que perder y no debe tumbar la copia.</summary>
+    /// <summary>Un volcado sin ningún bloque COPY no tiene filas y se rechaza igual que uno vacío. Una base real nunca está así (la migración siembra roles y permisos), así que es mejor no dar por buena una copia sin datos.</summary>
     [Fact]
-    public void UnVolcadoSinNingunBloqueCopyNoSeConsideraVacio()
+    public void UnVolcadoSinNingunBloqueCopyNoTieneFilas()
     {
         ServicioBackup.TieneFilas(Encoding.UTF8.GetBytes("-- solo el esquema, sin tablas"))
             .Should().BeFalse();
