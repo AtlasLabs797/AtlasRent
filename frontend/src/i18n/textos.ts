@@ -205,7 +205,7 @@ export const textos = {
     sinMesAnterior: 'Sin mes anterior para comparar',
     dePendiente: 'de un pendiente de',
     deUnidades: 'de {n} unidades',
-    soloGerencia: 'Solo gerente y administrador',
+    soloGerencia: 'Solo gerencia',
     pendiente: 'Pendiente de decisión',
     abrirBandeja: 'Abrir bandeja',
     contratos: 'Contratos por aprobar',

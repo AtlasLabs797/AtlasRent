@@ -251,3 +251,17 @@ instalación, la pantalla lo dice y no hay que enviar nada para enterarse.
 - **No veo un botón.** Tu usuario no tiene ese permiso.
 - **El cliente dice que pagó y no aparece.** Solo el gerente registra cobros; pásale el justificante.
 - **No puedo entrar.** Espera 30 minutos o pide al administrador que te desbloquee.
+
+## Bandeja, envíos y panel de inicio
+
+**Panel de inicio.** Al entrar ves cuatro indicadores (facturado, cobrado, vencido y unidades ocupadas), cada uno con su comparación. Si tu usuario no puede ver totales, en su lugar aparece "Solo gerencia". Debajo tienes lo que está pendiente de decidir y accesos directos a lo que puedes usar.
+
+**Bandeja** (gerente y administrador). Tiene tres pestañas:
+- Contratos: los contratos enviados a aprobación, con la renta vigente y la propuesta. Puedes aprobar o rechazar; rechazar pide un motivo. Si el aviso dice que la solicitud cambió, alguien la decidió antes o el contrato se modificó: vuelve a revisarla.
+- Propuestas de la IA: lo que el asistente propone, con su justificación y la evidencia. El asistente solo propone; no se manda nada hasta que apruebas. Si el saldo cambió, la propuesta caduca y se te explica el motivo.
+- Alertas: el listado todavía no está disponible.
+
+**Envíos.**
+- Historial: cada correo con su estado (Pendiente, Enviando, Enviado, Entregado, Leído o Fallido). Puedes descargar la copia exacta de lo que salió y reintentar los fallidos.
+- Envío masivo (gerente y administrador): elige el filtro y pulsa Preparar envío. Verás cuántos documentos salen, cuáles se excluyen y por qué, y una vista previa. Preparar no manda nada: el envío empieza al confirmar. Después sigues el progreso y puedes reintentar solo los fallidos.
+- Recordatorios (gerente y administrador): en modo manual confirmas cada aviso; el saldo del mensaje se recalcula al confirmar y, si el cliente ya pagó, el aviso se omite. Con "Pausa" dejas de avisar a un cliente hasta que la levantes.

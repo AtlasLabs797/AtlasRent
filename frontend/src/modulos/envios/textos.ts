@@ -61,9 +61,9 @@ export const textosEnvios = {
     preparando: 'Preparando…',
     errorPreparar: 'No se ha podido preparar el envío',
     resumenTitulo: 'Resumen del lote',
-    resumen: '{total} documentos se enviarán · {excluidos} excluidos',
+    resumen: 'Documentos a enviar: {total} · Excluidos: {excluidos}',
     vistaPreviaTitulo: 'Vista previa',
-    vistaPreviaNota: 'Primeros {n} mensajes de {total}.',
+    vistaPreviaNota: 'Vista previa de {n} de {total}.',
     excluidosTitulo: 'Excluidos',
     columnasExcluidos: { documento: 'Documento', cliente: 'Cliente', motivo: 'Motivo' },
     sinDocumentos: 'Con este filtro no hay nada que enviar',
@@ -104,6 +104,8 @@ export const textosEnvios = {
     notaManual:
       'En modo manual la app prepara la lista y tú confirmas cada aviso. El saldo que se menciona se recalcula al confirmar: si el cliente pagó mientras tanto, el aviso se omite.',
     notaAutomatico: 'En modo automático la app los manda sola cada día; aquí revisas qué salió y qué se saltó.',
+    notaGeneral:
+      'En manual confirmas cada aviso aquí y el saldo se recalcula al confirmar; en automático la app los manda sola cada día.',
     notaApagado: 'Los avisos están apagados: no se prepara ni se manda ninguno.',
     estado: 'Estado',
     todosEstados: 'Todos los estados',

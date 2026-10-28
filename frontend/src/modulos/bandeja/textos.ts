@@ -17,7 +17,6 @@ export const textosBandeja = {
       contrato: 'Contrato',
       solicitud: 'Solicitado',
       renta: 'Renta vigente → propuesta',
-      vigencia: 'Vigencia',
       acciones: 'Acciones',
     },
     contratoNuevo: 'Contrato nuevo',

@@ -165,6 +165,11 @@ function PestanaContratos({
                     <div>
                       <strong style={{ fontWeight: 600 }}>{s.cliente ?? c.sinDato}</strong>
                       <div style={{ color: 'var(--text-muted)' }}>{s.unidad ?? c.sinDato}</div>
+                      <div className="mono" style={{ color: 'var(--text-subtle)' }}>
+                        {c.vigencia
+                          .replace('{inicio}', formatearFecha(s.fechaInicio))
+                          .replace('{fin}', formatearFecha(s.fechaFinVigente))}
+                      </div>
                     </div>
                   ),
                 },
@@ -178,17 +183,6 @@ function PestanaContratos({
                         <div style={{ color: 'var(--text-muted)' }}>{c.por.replace('{nombre}', s.solicitadoPor)}</div>
                       )}
                     </div>
-                  ),
-                },
-                {
-                  key: 'vigencia',
-                  label: c.columnas.vigencia,
-                  render: (s: SolicitudContrato) => (
-                    <span className="mono">
-                      {c.vigencia
-                        .replace('{inicio}', formatearFecha(s.fechaInicio))
-                        .replace('{fin}', formatearFecha(s.fechaFinVigente))}
-                    </span>
                   ),
                 },
                 {
@@ -327,8 +321,14 @@ function PestanaPropuestas({
                 record={x.cliente}
                 current={p.actualSaldo.replace('{pendiente}', x.pendiente)}
                 proposed={p.propuesto}
-                reason={x.comentario ?? p.sinJustificacion}
-                impact={p.evidencia.replace('{pendiente}', x.pendiente).replace('{huella}', x.huellaContenido.slice(0, 12))}
+                reason={
+                  <>
+                    {x.comentario ?? p.sinJustificacion}
+                    <span style={{ display: 'block', color: 'var(--text-muted)' }}>
+                      {p.evidencia.replace('{pendiente}', x.pendiente).replace('{huella}', x.huellaContenido.slice(0, 12))}
+                    </span>
+                  </>
+                }
                 origin={x.solicitadoPor ? p.origen.replace('{nombre}', x.solicitadoPor) : p.origenSinNombre}
                 requestedAt={formatearMarca(x.solicitadoAt)}
                 {...(puedeDecidir

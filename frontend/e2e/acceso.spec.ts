@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { problema } from './apiFalsa';
 import { capturarClaroOscuro } from './capturas';
 import { expect, test } from './prueba';
-import { DESAFIO_ALTA_MFA, DESAFIO_MFA, conSesion, identidad, sinSesion } from './fixtures';
+import { DESAFIO_ALTA_MFA, DESAFIO_MFA, conSesion, identidad, panelAdmin, sinSesion } from './fixtures';
 
 async function rellenarCredenciales(page: Page) {
   await page.getByLabel('Usuario').fill('admin');
@@ -12,6 +12,7 @@ async function rellenarCredenciales(page: Page) {
 
 test('login simple: usuario y contraseña abren la sesión y enseñan el panel', async ({ page, api }) => {
   sinSesion(api);
+  panelAdmin(api);
   api.responder('POST', '/auth/login', () => {
     conSesion(api);
     return { body: identidad() };
@@ -28,6 +29,7 @@ test('login simple: usuario y contraseña abren la sesión y enseñan el panel',
 
 test('login con credenciales incorrectas: mensaje del producto y código de referencia', async ({ page, api }) => {
   sinSesion(api);
+  panelAdmin(api);
   api.responder('POST', '/auth/login', problema(401, 'AUT-001', 'No autenticado', 'Usuario o contraseña incorrectos.'));
 
   await page.goto('/');
@@ -41,6 +43,7 @@ test('login con credenciales incorrectas: mensaje del producto y código de refe
 
 test('login con TOTP: pide el segundo factor, rechaza un código malo y acepta el bueno', async ({ page, api }) => {
   sinSesion(api);
+  panelAdmin(api);
   api.responder('POST', '/auth/login', { body: DESAFIO_MFA });
   api.responder('POST', '/auth/mfa/verificar', (p) =>
     (p.cuerpo as { codigo: string }).codigo === '123456'
@@ -67,6 +70,7 @@ test('login con TOTP: pide el segundo factor, rechaza un código malo y acepta e
 
 test('login con código de recuperación y con acceso de emergencia', async ({ page, api }) => {
   sinSesion(api);
+  panelAdmin(api);
   api.responder('POST', '/auth/login', { body: DESAFIO_MFA });
   api.responder('POST', '/auth/mfa/recuperacion', () => (conSesion(api), { body: identidad() }));
 
@@ -89,6 +93,7 @@ test('login con código de recuperación y con acceso de emergencia', async ({ p
 
 test('alta de MFA: clave copiable, confirmación, códigos de recuperación una sola vez y último paso', async ({ page, api }) => {
   sinSesion(api);
+  panelAdmin(api);
   api.responder('POST', '/auth/login', { body: DESAFIO_ALTA_MFA });
   api.responder('POST', '/auth/mfa/activar', {
     body: { uri: 'otpauth://totp/AtlasRent:admin?secret=JBSWY3DPEHPK3PXP&issuer=AtlasRent', digitos: 6, periodoSegundos: 30 },
@@ -132,6 +137,7 @@ test('alta de MFA: clave copiable, confirmación, códigos de recuperación una 
 
 test('cambio de contraseña forzado: sustituye al menú, valida en cliente y pinta el SEG-011 del backend', async ({ page, api }) => {
   conSesion(api, identidad({ debeCambiarPassword: true }));
+  panelAdmin(api);
   let intentos = 0;
   api.responder('POST', '/auth/password', () => {
     intentos++;
@@ -211,6 +217,7 @@ test('si el refresco falla la sesión pasa a sin-sesion, sin bucle de peticiones
 
 test('capturas: pantalla de acceso, panel con menú, menú de usuario, Mi cuenta y componentes en claro y oscuro', async ({ page, api }) => {
   sinSesion(api);
+  panelAdmin(api);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible();
   await capturarClaroOscuro(page, 'acceso');

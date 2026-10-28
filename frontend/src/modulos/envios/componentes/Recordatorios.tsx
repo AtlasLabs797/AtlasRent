@@ -78,7 +78,7 @@ export function Recordatorios({ puedeVerModo, puedePausar }: { puedeVerModo: boo
           )
         ) : (
           <Alert tone="info" title={r.modoDesconocido}>
-            {r.notaManual}
+            {r.notaGeneral}
           </Alert>
         )}
         {aviso && (

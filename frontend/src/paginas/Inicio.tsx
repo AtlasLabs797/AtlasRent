@@ -15,6 +15,8 @@ import { accesosRapidos, comparacionMensual } from '../modulos/panel/modelo';
 import { ACCIONES } from '../permisos';
 import { permisosDe, puede, useSesion } from '../sesion/store';
 
+/** Sobre el tile oscuro del KPI destacado el importe hereda el texto claro del tile. */
+const EN_TILE = { color: 'inherit' } as const;
 const REJILLA = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 'var(--space-6)' } as const;
 
 /**
@@ -115,10 +117,10 @@ function Indicadores({ dashboard, permitido }: { dashboard: DashboardRespuesta |
   const u = dashboard?.unidades;
   const totalUnidades = u ? u.disponibles + u.reservadas + u.ocupadas + u.mantenimiento : null;
 
-  const mensual = (c: NonNullable<typeof fact>) =>
+  const mensual = (c: NonNullable<typeof fact>, estilo: { color: string } = { color: 'var(--text-muted)' }) =>
     c.anterior !== null ? (
       <>
-        {t.mesAnterior.replace('{mes}', c.mesAnterior ?? '')} <Money amount={c.anterior} currency="USD" tone="muted" />
+        {t.mesAnterior.replace('{mes}', c.mesAnterior ?? '')} <Money amount={c.anterior} currency="USD" style={estilo} />
       </>
     ) : (
       t.sinMesAnterior
@@ -132,10 +134,10 @@ function Indicadores({ dashboard, permitido }: { dashboard: DashboardRespuesta |
         icon="receipt"
         value={
           <RestrictedValue allowed={permitido} label={t.soloGerencia}>
-            {r && fact && (fact.actual !== null ? <Money amount={fact.actual} currency="USD" /> : <Money amount={r.facturado.consolidadoUsd} currency="USD" />)}
+            {r && fact && (fact.actual !== null ? <Money amount={fact.actual} currency="USD" style={EN_TILE} /> : <Money amount={r.facturado.consolidadoUsd} currency="USD" style={EN_TILE} />)}
           </RestrictedValue>
         }
-        meta={permitido && fact ? mensual(fact) : undefined}
+        meta={permitido && fact ? mensual(fact, EN_TILE) : undefined}
       />
       <StatCard
         label={cob?.mes ? t.cobradoMes.replace('{mes}', cob.mes) : t.cobrado}
