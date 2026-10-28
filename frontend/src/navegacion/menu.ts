@@ -39,7 +39,7 @@ type Clave = keyof typeof textos.navegacion.modulos;
 /** Orden del menú: grupos y claves. Una clave registrada fuera de esta lista se añade al final de su grupo. */
 const ORDEN: Record<GrupoMenuId, Clave[]> = {
   operacion: ['panel', 'clientes', 'unidades', 'contratos'],
-  finanzas: ['facturas', 'cobros', 'fianzas', 'informes'],
+  finanzas: ['cuentas', 'facturas', 'cobros', 'fianzas', 'informes'],
   control: ['auditoria', 'bloqueos', 'usuarios', 'configuracion'],
   herramientas: ['asistente', 'componentes'],
 };
@@ -51,9 +51,6 @@ const PENDIENTES: Partial<Record<Clave, [Accion, string]>> = {
   // TODO(A#): `cliente.ver` es la acción que cubre ver unidades (Acciones.cs).
   unidades: [ACCIONES.clienteVer, 'pantalla de unidades e inmuebles'],
   contratos: [ACCIONES.clienteVer, 'pantalla de contratos'],
-  facturas: [ACCIONES.facturaVer, 'pantalla de facturas'],
-  cobros: [ACCIONES.cobroRegistrar, 'pantalla de cobros'],
-  fianzas: [ACCIONES.fianzaMover, 'pantalla de fianzas'],
   auditoria: [ACCIONES.auditoriaVer, 'pantalla de auditoría'],
   bloqueos: [ACCIONES.ipDesbloquear, 'pantalla de desbloqueos'],
   // La matriz de la especificación mete usuarios y roles en la misma fila que configuración:

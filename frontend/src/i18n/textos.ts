@@ -164,6 +164,7 @@ export const textos = {
       usuarios: { etiqueta: 'Usuarios', icono: 'user-cog' },
       configuracion: { etiqueta: 'Configuración', icono: 'settings' },
       componentes: { etiqueta: 'Design system', icono: 'swatch-book' },
+      cuentas: { etiqueta: 'Cuentas y cobros', icono: 'wallet' },
     },
     /** Nombres de los roles de `usuario_rol` para la `SideNav`. */
     roles: {
