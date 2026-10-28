@@ -23,6 +23,8 @@ export const ACCIONES = {
   // Herramienta de consulta (F6-03). No está en la matriz de la especificación §2 como el resto, pero
   // pasa por `[Accion]` igual que todas: sin ella el endpoint queda denegado.
   iaConsultar: 'ia.consultar',
+  // Propuestas del asistente (F6-03): ver la lista. Decidirlas es `mensajeria.masivo`.
+  iaProponer: 'ia.proponer',
   auditoriaVer: 'auditoria.ver',
   ipDesbloquear: 'ip.desbloquear',
   cuentaDesbloquear: 'cuenta.desbloquear',
