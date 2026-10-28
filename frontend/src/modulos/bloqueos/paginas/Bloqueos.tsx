@@ -19,9 +19,23 @@ import { formatearMarca } from '../../../dominio/fechas';
 import { textos } from '../../../i18n/textos';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
-import { useUsuarios, type UsuarioResumen } from '../../usuarios/api';
-import { textosUsuarios } from '../../usuarios/textos';
-import { useAprobarEmergencia, useDesbloquearCuenta, useDesbloquearIp, useSolicitarEmergencia, type RespuestaEmergencia } from '../api';
+import { useUsuarios } from '../../usuarios/api';
+import {
+  ESTADOS_SOLICITUD,
+  useAprobarEmergencia,
+  useCuentasBloqueadas,
+  useDesbloquearCuenta,
+  useDesbloquearIp,
+  useIpsBloqueadas,
+  useListaBlanca,
+  useSolicitarEmergencia,
+  useSolicitudesEmergencia,
+  type CuentaBloqueada,
+  type EstadoSolicitud,
+  type IpBloqueada,
+  type RespuestaEmergencia,
+  type SolicitudEmergencia,
+} from '../api';
 import { MOTIVO_MAXIMO, MOTIVO_MINIMO, esGuid, esIpValida } from '../bloqueos';
 import { textosBloqueos as t } from '../textos';
 
@@ -55,16 +69,16 @@ export default function Bloqueos(): JSX.Element {
 }
 
 function PestanaCuentas(): JSX.Element {
-  const usuarios = useUsuarios();
+  const cuentas = useCuentasBloqueadas();
   const desbloquear = useDesbloquearCuenta();
-  const [hecho, setHecho] = useState<UsuarioResumen | null>(null);
+  const [hecho, setHecho] = useState<CuentaBloqueada | null>(null);
   const [enCurso, setEnCurso] = useState<string | null>(null);
   const c = t.cuentas;
 
-  function lanzar(u: UsuarioResumen) {
+  function lanzar(u: CuentaBloqueada) {
     setHecho(null);
-    setEnCurso(u.id);
-    desbloquear.mutate(u.id, {
+    setEnCurso(u.usuarioId);
+    desbloquear.mutate(u.usuarioId, {
       onSuccess: () => setHecho(u),
       onSettled: () => setEnCurso(null),
     });
@@ -72,31 +86,33 @@ function PestanaCuentas(): JSX.Element {
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-7)' }}>
-      <Alert tone="info">{c.aviso}</Alert>
       {hecho && (
         <Alert tone="success" title={c.desbloqueada}>
           {c.desbloqueadaCuerpo.replace('{usuario}', hecho.nombreAcceso)}
         </Alert>
       )}
       {desbloquear.isError && <ErrorAlerta error={desbloquear.error} titulo={c.error} />}
-      {usuarios.isError && <ErrorAlerta error={usuarios.error} titulo={c.errorLista} />}
+      {cuentas.isError && <ErrorAlerta error={cuentas.error} titulo={c.errorLista} />}
       <Card title={c.titulo} padded={false}>
-        {usuarios.isPending ? (
+        {cuentas.isPending ? (
           <div style={{ padding: 'var(--space-9)' }}>
             <Skeleton lines={4} height={20} />
           </div>
         ) : (
           <DataTable
-            rows={usuarios.data ?? []}
+            rows={cuentas.data ?? []}
+            rowKey="usuarioId"
+            empty={c.vacio}
             columns={[
-              { key: 'nombreAcceso', label: c.columnas.usuario, render: (u: UsuarioResumen) => <span className="mono">{u.nombreAcceso}</span> },
+              { key: 'nombreAcceso', label: c.columnas.usuario, render: (u: CuentaBloqueada) => <span className="mono">{u.nombreAcceso}</span> },
               { key: 'nombre', label: c.columnas.nombre },
-              { key: 'rol', label: c.columnas.rol, render: (u: UsuarioResumen) => <Badge tone="neutral">{textosUsuarios.roles[u.rol] ?? u.rol}</Badge> },
+              { key: 'desde', label: c.columnas.desde, render: (u: CuentaBloqueada) => <span className="mono">{formatearMarca(u.desde)}</span> },
+              { key: 'hasta', label: c.columnas.hasta, render: (u: CuentaBloqueada) => <span className="mono">{formatearMarca(u.hasta)}</span> },
               {
                 key: 'accion',
                 label: c.columnas.accion,
                 align: 'right',
-                render: (u: UsuarioResumen) => (
+                render: (u: CuentaBloqueada) => (
                   <Button size="sm" variant="secondary" disabled={enCurso !== null} onClick={() => lanzar(u)}>
                     {c.desbloquear}
                   </Button>
@@ -111,6 +127,102 @@ function PestanaCuentas(): JSX.Element {
 }
 
 function PestanaIps(): JSX.Element {
+  return (
+    <div style={{ display: 'grid', gap: 'var(--space-9)' }}>
+      <ListaIps />
+      <DesbloqueoManualIp />
+      <ListaBlanca />
+    </div>
+  );
+}
+
+function ListaIps(): JSX.Element {
+  const ips = useIpsBloqueadas();
+  const desbloquear = useDesbloquearIp();
+  const [hecho, setHecho] = useState<string | null>(null);
+  const [enCurso, setEnCurso] = useState<string | null>(null);
+  const i = t.ips;
+
+  function lanzar(ip: string) {
+    setHecho(null);
+    setEnCurso(ip);
+    desbloquear.mutate(ip, { onSuccess: () => setHecho(ip), onSettled: () => setEnCurso(null) });
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 'var(--space-7)' }}>
+      {hecho && (
+        <Alert tone="success" title={i.hecho}>
+          {i.hechoCuerpo.replace('{ip}', hecho)}
+        </Alert>
+      )}
+      {desbloquear.isError && <ErrorAlerta error={desbloquear.error} titulo={i.error} />}
+      {ips.isError && <ErrorAlerta error={ips.error} titulo={i.errorLista} />}
+      <Card title={i.titulo} padded={false}>
+        {ips.isPending ? (
+          <div style={{ padding: 'var(--space-9)' }}>
+            <Skeleton lines={4} height={20} />
+          </div>
+        ) : (
+          <DataTable
+            rows={ips.data ?? []}
+            rowKey="ip"
+            empty={i.vacio}
+            columns={[
+              { key: 'ip', label: i.columnas.ip, render: (b: IpBloqueada) => <span className="mono">{b.ip}</span> },
+              { key: 'nivel', label: i.columnas.nivel },
+              { key: 'fallos', label: i.columnas.fallos },
+              { key: 'desde', label: i.columnas.desde, render: (b: IpBloqueada) => <span className="mono">{formatearMarca(b.desde)}</span> },
+              {
+                key: 'hasta',
+                label: i.columnas.hasta,
+                render: (b: IpBloqueada) => (b.hasta ? <span className="mono">{formatearMarca(b.hasta)}</span> : <Badge tone="warning">{i.indefinido}</Badge>),
+              },
+              {
+                key: 'accion',
+                label: i.columnas.accion,
+                align: 'right',
+                render: (b: IpBloqueada) => (
+                  <Button size="sm" variant="secondary" disabled={enCurso !== null} onClick={() => lanzar(b.ip)}>
+                    {i.desbloquearFila}
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function ListaBlanca(): JSX.Element {
+  const lista = useListaBlanca();
+  const l = t.ips.listaBlanca;
+  return (
+    <Card title={l.titulo}>
+      <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
+        <p style={{ margin: 0, color: 'var(--text-muted)' }}>{l.descripcion}</p>
+        {lista.isError && <ErrorAlerta error={lista.error} titulo={l.error} />}
+        {lista.isPending ? (
+          <Skeleton lines={2} height={20} />
+        ) : (lista.data ?? []).length === 0 ? (
+          <p style={{ margin: 0, color: 'var(--text-muted)' }}>{l.vacio}</p>
+        ) : (
+          <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+            {(lista.data ?? []).map((ip) => (
+              <Badge key={ip} tone="neutral">
+                <span className="mono">{ip}</span>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function DesbloqueoManualIp(): JSX.Element {
   const desbloquear = useDesbloquearIp();
   const [hecho, setHecho] = useState<string | null>(null);
   const [general, setGeneral] = useState<{ titulo: string; texto: string } | null>(null);
@@ -136,7 +248,7 @@ function PestanaIps(): JSX.Element {
   }
 
   return (
-    <Card title={i.titulo}>
+    <Card title={i.manual}>
       <form onSubmit={handleSubmit(enviar)} noValidate style={{ display: 'grid', gap: 'var(--space-7)', maxWidth: 480 }}>
         <p style={{ margin: 0, color: 'var(--text-muted)' }}>{i.descripcion}</p>
         <Input
@@ -168,12 +280,13 @@ function PestanaIps(): JSX.Element {
 
 function PestanaEmergencia(): JSX.Element {
   return (
-    <div style={{ display: 'grid', gap: 'var(--space-9)' }}>
+    <div style={{ display: 'grid', gap: 'var(--space-9)', gridTemplateColumns: 'minmax(0, 1fr)' }}>
       <Alert tone="warning">{t.emergencia.intro}</Alert>
       <div style={{ display: 'grid', gap: 'var(--space-9)', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', alignItems: 'start' }}>
         <SolicitarEmergencia />
         <AprobarEmergencia />
       </div>
+      <Solicitudes />
     </div>
   );
 }
@@ -290,19 +403,7 @@ function AprobarEmergencia(): JSX.Element {
             {general}
           </Alert>
         )}
-        {resultado?.codigoAcceso ? (
-          <Alert tone="success" title={a.codigoTitulo}>
-            {a.codigoCuerpo}
-            <div style={{ marginTop: 'var(--space-4)' }}>
-              <Copiable texto={resultado.codigoAcceso} etiqueta={a.codigo} />
-            </div>
-            {resultado.caduca && <div className="mono">{a.caduca.replace('{fecha}', formatearMarca(resultado.caduca))}</div>}
-          </Alert>
-        ) : resultado ? (
-          <Alert tone="info" title={a.sinCodigo}>
-            {a.sinCodigoCuerpo}
-          </Alert>
-        ) : null}
+        {resultado && <ResultadoAprobacion resultado={resultado} />}
         <div>
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? a.enviando : a.enviar}
@@ -310,5 +411,104 @@ function AprobarEmergencia(): JSX.Element {
         </div>
       </form>
     </Card>
+  );
+}
+
+/** Lo que devuelve la aprobación: el código de un solo uso (si esta aprobación lo genera) o el aviso de que falta otra. */
+function ResultadoAprobacion({ resultado }: { resultado: RespuestaEmergencia }): JSX.Element {
+  const a = t.emergencia.aprobar;
+  return resultado.codigoAcceso ? (
+    <Alert tone="success" title={a.codigoTitulo}>
+      {a.codigoCuerpo}
+      <div style={{ marginTop: 'var(--space-4)' }}>
+        <Copiable texto={resultado.codigoAcceso} etiqueta={a.codigo} />
+      </div>
+      {resultado.caduca && <div className="mono">{a.caduca.replace('{fecha}', formatearMarca(resultado.caduca))}</div>}
+    </Alert>
+  ) : (
+    <Alert tone="info" title={a.sinCodigo}>
+      {a.sinCodigoCuerpo}
+    </Alert>
+  );
+}
+
+const TONO_ESTADO: Record<string, 'warning' | 'success' | 'neutral' | 'info'> = {
+  pendiente: 'warning',
+  aprobada: 'success',
+  caducada: 'neutral',
+  usada: 'info',
+};
+
+function Solicitudes(): JSX.Element {
+  const yo = useSesion((s) => s.identidad);
+  const [estado, setEstado] = useState<EstadoSolicitud>('pendiente');
+  const solicitudes = useSolicitudesEmergencia(estado);
+  const aprobar = useAprobarEmergencia();
+  const [resultado, setResultado] = useState<RespuestaEmergencia | null>(null);
+  const [enCurso, setEnCurso] = useState<string | null>(null);
+  const s = t.emergencia.solicitudes;
+
+  function lanzar(id: string) {
+    setResultado(null);
+    setEnCurso(id);
+    aprobar.mutate(id, { onSuccess: setResultado, onSettled: () => setEnCurso(null) });
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 'var(--space-7)', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+      {resultado && <ResultadoAprobacion resultado={resultado} />}
+      {aprobar.isError && <ErrorAlerta error={aprobar.error} titulo={t.emergencia.aprobar.error} />}
+      {solicitudes.isError && <ErrorAlerta error={solicitudes.error} titulo={s.error} />}
+      <Card title={s.titulo} padded={false}>
+        <div style={{ padding: 'var(--space-7) var(--space-9) 0', maxWidth: 280 }}>
+          <Select
+            label={s.filtro}
+            value={estado}
+            options={ESTADOS_SOLICITUD.map((e) => ({ value: e, label: s.estados[e] }))}
+            onChange={(ev) => setEstado(ev.target.value as EstadoSolicitud)}
+          />
+        </div>
+        {solicitudes.isPending ? (
+          <div style={{ padding: 'var(--space-9)' }}>
+            <Skeleton lines={3} height={20} />
+          </div>
+        ) : (
+          <DataTable
+            rows={solicitudes.data ?? []}
+            empty={s.vacio}
+            columns={[
+              { key: 'usuarioNombreAcceso', label: s.columnas.para, render: (r: SolicitudEmergencia) => <span className="mono">{r.usuarioNombreAcceso}</span> },
+              { key: 'solicitanteNombreAcceso', label: s.columnas.solicitante, render: (r: SolicitudEmergencia) => <span className="mono">{r.solicitanteNombreAcceso}</span> },
+              { key: 'motivo', label: s.columnas.motivo },
+              { key: 'creadoAt', label: s.columnas.creada, render: (r: SolicitudEmergencia) => <span className="mono">{formatearMarca(r.creadoAt)}</span> },
+              {
+                key: 'estado',
+                label: s.columnas.estado,
+                render: (r: SolicitudEmergencia) => (
+                  <Badge tone={TONO_ESTADO[r.estado] ?? 'neutral'}>{s.estadoBadge[r.estado as keyof typeof s.estadoBadge] ?? r.estado}</Badge>
+                ),
+              },
+              {
+                key: 'accion',
+                label: s.columnas.accion,
+                align: 'right',
+                render: (r: SolicitudEmergencia) =>
+                  r.estado === 'pendiente' ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={enCurso !== null || r.solicitanteId === yo?.id}
+                      title={r.solicitanteId === yo?.id ? s.propia : undefined}
+                      onClick={() => lanzar(r.id)}
+                    >
+                      {s.aprobar}
+                    </Button>
+                  ) : null,
+              },
+            ]}
+          />
+        )}
+      </Card>
+    </div>
   );
 }
