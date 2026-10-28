@@ -1,4 +1,5 @@
-import { clienteHttp } from '../api/cliente';
+import { useMutation } from '@tanstack/react-query';
+import { clienteHttp } from '../../api/cliente';
 import type { CuerpoConsultaIa } from './consulta.ts';
 
 /**
@@ -19,4 +20,9 @@ export interface RespuestaConsultaIa {
 export async function preguntarIa(cuerpo: CuerpoConsultaIa): Promise<RespuestaConsultaIa> {
   const { data } = await clienteHttp.post<RespuestaConsultaIa>('/ia/consulta', cuerpo);
   return data;
+}
+
+/** Mutación de TanStack Query: una pregunta, una respuesta, sin caché (el backend es sin estado). */
+export function useConsultaIa() {
+  return useMutation({ mutationFn: (cuerpo: CuerpoConsultaIa) => preguntarIa(cuerpo) });
 }

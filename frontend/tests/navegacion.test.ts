@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { MODULOS } from '../src/modulos/lista.ts';
 import { ACCIONES } from '../src/permisos.ts';
 import {
   ENTRADAS_MENU,
@@ -34,16 +35,18 @@ const modulos = (permisos: string[]): string[] =>
 const enrutables = (permisos: string[]): string[] =>
   menuPermitido(permisos).flatMap((grupo) => entradasNavegables(grupo).map((e) => String(e.clave)));
 
-test('el menú no enlaza a rutas que no existen', () => {
-  const app = leer('src/App.tsx');
-  const rutasMontadas = new Set<string>(['/']);
-  for (const coincidencia of app.matchAll(/<Route (?:index|path)="([^"]*)"/g)) {
-    const valor = coincidencia[1];
-    // '*' es la ruta comodín de página no encontrada: no es una pantalla del menú.
-    if (valor.includes('*')) continue;
-    rutasMontadas.add(valor === '' ? '/' : `/${valor}`);
+test('el menú no enlaza a rutas que no existen: las rutas salen del registro de módulos y App.tsx las monta', () => {
+  const rutasMontadas = new Set<string>();
+  for (const modulo of MODULOS) {
+    for (const ruta of modulo.rutas) rutasMontadas.add(ruta.path === '' ? '/' : `/${ruta.path}`);
   }
-  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/componentes', '/informes']);
+  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/componentes', '/cuenta', '/informes']);
+
+  // App.tsx no declara rutas de módulo a mano: las monta del registro (si no, el menú y el
+  // enrutador podrían divergir).
+  const app = leer('src/App.tsx');
+  assert.ok(app.includes('MODULOS'), 'App.tsx monta las rutas desde MODULOS');
+  assert.ok(!/<Route (?:index|path)="[a-z]/.test(app), 'App.tsx no declara rutas de módulo a mano');
 
   for (const entrada of ENTRADAS_MENU) {
     if (entrada.ruta === null) {
@@ -55,6 +58,37 @@ test('el menú no enlaza a rutas que no existen', () => {
       `${entrada.clave} apunta a ${entrada.ruta}, que el enrutador no monta`,
     );
   }
+});
+
+test('el registro de módulos es coherente: claves y rutas únicas, rutas hijas bajo la ruta base', () => {
+  assert.equal(new Set(MODULOS.map((m) => m.clave)).size, MODULOS.length, 'claves únicas');
+  assert.equal(new Set(MODULOS.map((m) => m.ruta)).size, MODULOS.length, 'rutas base únicas');
+  for (const modulo of MODULOS) {
+    assert.ok(modulo.rutas.length > 0, `${modulo.clave} sin rutas`);
+    for (const ruta of modulo.rutas) {
+      const absoluta = ruta.path === '' ? '/' : `/${ruta.path}`;
+      assert.ok(
+        absoluta === modulo.ruta || absoluta.startsWith(modulo.ruta === '/' ? '/' : `${modulo.ruta}/`),
+        `${modulo.clave}: ${absoluta} no cuelga de ${modulo.ruta}`,
+      );
+    }
+  }
+  // Todo módulo con grupo declarado sale en el menú; uno sin grupo y fuera del esqueleto no.
+  const enMenu = new Set(ENTRADAS_MENU.map((e) => e.clave as string));
+  for (const modulo of MODULOS.filter((m) => m.grupo !== undefined)) {
+    assert.ok(enMenu.has(modulo.clave), `${modulo.clave} declara grupo pero no sale en el menú`);
+  }
+  assert.ok(!enMenu.has('cuenta'), '"Mi cuenta" no sale en el menú lateral');
+});
+
+test('una ruta hija hereda el permiso del módulo y "Mi cuenta" lo tiene todo el mundo con sesión', () => {
+  assert.equal(accionDeRuta('/informes/mensual'), ACCIONES.informeVer);
+  assert.equal(puedeVerRuta(EMPLEADO, '/informes/mensual'), false);
+  assert.equal(accionDeRuta('/informesfalsos'), null, 'el prefijo exige el separador');
+  // sesion.password está en el techo de los tres roles (MatrizPermisos).
+  assert.equal(accionDeRuta('/cuenta'), ACCIONES.sesionPassword);
+  assert.equal(puedeVerRuta([ACCIONES.sesionPassword], '/cuenta'), true);
+  assert.equal(puedeVerRuta([], '/cuenta'), false);
 });
 
 test('un módulo sin pantalla no aparece en la barra lateral', () => {

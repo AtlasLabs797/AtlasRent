@@ -19,8 +19,106 @@ export const textos = {
     entrar: 'Entrar',
     cambiando: 'Entrando…',
     credencialesInvalidas: 'Usuario o contraseña incorrectos.',
-    segundoFactor: 'Esta cuenta tiene un segundo factor pendiente y todavía no hay pantalla para introducirlo.',
-    error: 'No se ha podido entrar. Inténtalo de nuevo.',
+    error: 'No se ha podido entrar',
+    sinConexion: 'No se ha podido contactar con el servidor. Comprueba la conexión e inténtalo de nuevo.',
+    codigoReferencia: 'Código de referencia: {codigo}',
+    volver: 'Volver a entrar',
+    segundoFactor: {
+      titulo: 'Verificación en dos pasos',
+      descripcion: 'Escribe el código de 6 dígitos que muestra tu aplicación de autenticación.',
+      codigo: 'Código',
+      pista: '6 dígitos',
+      verificar: 'Verificar',
+      verificando: 'Verificando…',
+      usarRecuperacion: 'Usar un código de recuperación',
+      usarEmergencia: 'Usar un código de acceso de emergencia',
+      usarAplicacion: 'Usar el código de la aplicación',
+      invalido: 'El código no es válido o ha caducado. Si ha pasado un rato, vuelve a entrar.',
+    },
+    recuperacion: {
+      titulo: 'Código de recuperación',
+      descripcion: 'Escribe uno de los códigos de recuperación que guardaste al activar la verificación. Cada código solo sirve una vez.',
+      codigo: 'Código de recuperación',
+      pista: 'ABCDE-FGHIJ',
+      entrar: 'Entrar con el código',
+    },
+    emergencia: {
+      titulo: 'Acceso de emergencia',
+      descripcion:
+        'Escribe el código de un solo uso que te dio otro administrador al aprobar tu acceso de emergencia. El uso queda registrado en la auditoría.',
+      codigo: 'Código de acceso',
+      pista: 'Código de un solo uso',
+      entrar: 'Entrar con el acceso de emergencia',
+    },
+    altaMfa: {
+      titulo: 'Configura la verificación en dos pasos',
+      descripcion:
+        'Tu cuenta necesita un segundo factor para entrar. Añade esta clave a una aplicación de autenticación y confirma con el código que genere.',
+      cargando: 'Preparando la clave…',
+      clave: 'Clave de configuración',
+      enlace: 'Enlace de configuración',
+      enlaceAyuda: 'Si tu aplicación admite enlaces otpauth, puedes copiarlo y pegarlo en ella.',
+      copiar: 'Copiar',
+      copiado: 'Copiado',
+      sinPortapapeles: 'Tu navegador no permite copiar. Selecciona el texto y cópialo a mano.',
+      codigo: 'Código de 6 dígitos',
+      confirmar: 'Confirmar y activar',
+      confirmando: 'Confirmando…',
+      invalido: 'El código no es válido. Comprueba la hora de tu teléfono e inténtalo de nuevo.',
+      recuperacionTitulo: 'Guarda tus códigos de recuperación',
+      recuperacionDescripcion:
+        'Solo se muestran ahora. Cada código sirve una vez si pierdes el acceso a tu aplicación. Guárdalos en un lugar seguro.',
+      copiarCodigos: 'Copiar los códigos',
+      guardados: 'He guardado los códigos',
+      continuar: 'Continuar',
+      ultimoPaso: 'Para terminar, escribe el código que muestra ahora tu aplicación.',
+    },
+  },
+  cuenta: {
+    titulo: 'Mi cuenta',
+    descripcion: 'Tus datos de acceso, tu contraseña y la verificación en dos pasos.',
+    menu: 'Mi cuenta',
+    datos: {
+      titulo: 'Datos de acceso',
+      usuario: 'Usuario',
+      nombre: 'Nombre',
+      rol: 'Rol',
+      ultimoAcceso: 'Último acceso',
+      primerAcceso: 'Primer acceso',
+    },
+    password: {
+      titulo: 'Cambiar contraseña',
+      descripcion: 'Entre 12 y 72 caracteres. Al cambiarla se cierran tus otras sesiones.',
+      actual: 'Contraseña actual',
+      nueva: 'Contraseña nueva',
+      repetir: 'Repite la contraseña nueva',
+      guardar: 'Cambiar contraseña',
+      guardando: 'Guardando…',
+      hecho: 'Contraseña cambiada',
+      hechoCuerpo: 'Tus otras sesiones se han cerrado.',
+      noComprobada: 'No se ha podido comprobar la contraseña contra filtraciones conocidas, así que se ha aceptado sin comprobar.',
+      error: 'No se ha podido cambiar la contraseña',
+      errores: {
+        obligatorio: 'Este campo es obligatorio.',
+        longitud: 'Debe tener entre 12 y 72 caracteres.',
+        noCoincide: 'Las contraseñas no coinciden.',
+        igual: 'La contraseña nueva debe ser distinta de la actual.',
+      },
+    },
+    forzado: {
+      titulo: 'Cambia tu contraseña para continuar',
+      descripcion: 'Antes de usar Atlas Rent tienes que elegir una contraseña nueva.',
+      cerrarSesion: 'Cerrar sesión',
+    },
+    mfa: {
+      titulo: 'Verificación en dos pasos',
+      activada: 'Activada',
+      noActivada: 'Sin activar',
+      descripcion: 'Un segundo factor protege tu cuenta aunque alguien conozca tu contraseña.',
+      activar: 'Activar la verificación en dos pasos',
+      activadaAviso: 'Verificación en dos pasos activada',
+      activadaCuerpo: 'La próxima vez que entres te pediremos el código.',
+    },
   },
   sesion: {
     cerrar: 'Cerrar sesión',
@@ -68,6 +166,7 @@ export const textos = {
   barraSuperior: {
     buscar: 'Buscar cliente, unidad, factura o contrato',
     cerrar: 'Cerrar sesión',
+    cuenta: 'Mi cuenta',
   },
   tema: {
     etiqueta: 'Tema',
@@ -242,74 +341,6 @@ export const textos = {
       titulo: 'No se ha podido cargar el informe',
       cuerpo:
         'Los datos no se han podido pedir a la API, así que no se muestra ninguna cifra. Vuelve a intentarlo en un momento.',
-    },
-  },
-  /**
-   * Asistente de IA (F6-03). El backend es sin estado: cada pregunta va sola y la respuesta no se
-   * guarda en el navegador, así que aquí no hay historial ni conversación que restaurar.
-   */
-  asistente: {
-    titulo: 'Asistente',
-    descripcion: 'Pregunta sobre los datos de Atlas Rent. Elige sobre qué quieres la respuesta.',
-    formulario: {
-      titulo: 'Pregunta',
-      descripcion:
-        'La pregunta se manda junto con el alcance elegido. Cada pregunta es independiente: no se guarda la conversación en este navegador.',
-      pregunta: 'Pregunta',
-      pista: 'Por ejemplo: cuántos contratos vencen este mes',
-      alcance: 'Alcance',
-      alcances: {
-        clientes: 'Clientes',
-        cuentas: 'Cuentas',
-        facturas: 'Facturas',
-        contratos: 'Contratos',
-        informes: 'Informes',
-      },
-      enviar: 'Consultar',
-      enviando: 'Consultando…',
-      preguntaVacia: 'Escribe una pregunta antes de consultar.',
-      alcanceInvalido: 'Elige un alcance de los de la lista.',
-    },
-    respuesta: {
-      titulo: 'Respuesta',
-      vacioTitulo: 'Todavía no hay respuesta',
-      vacioCuerpo: 'Escribe una pregunta y elige el alcance para ver aquí lo que responde la IA.',
-      fuente: 'Respuesta de {proveedor} · {modelo}',
-    },
-    /**
-     * Aviso de privacidad de F6-04. Es permanente y visible antes de escribir nada, no un modal: lo
-     * que protege no es una acción puntual sino un envío que va a pasar cada vez que se consulte.
-     * Y termina en la instrucción que de verdad sirve, que es la que el sistema no puede imponer:
-     * la seudonimización cubre los datos que carga el servicio, no lo que escribe la persona.
-     */
-    privacidad: {
-      titulo: 'Tu pregunta sale de Atlas Rent',
-      cuerpo:
-        'La pregunta y los datos del alcance elegido se envían al proveedor de IA configurado en esta instalación, fuera de Atlas Rent. Los nombres, teléfonos y documentos se sustituyen por seudónimos antes de salir, pero lo que escribas tú va tal cual: no pongas datos personales en la pregunta.',
-    },
-    /** Fallbacks: si la API manda su `detail` de `ProblemDetails`, ese texto es el que se enseña. */
-    errores: {
-      sesionCaducada: {
-        titulo: 'La sesión ha caducado',
-        cuerpo: 'Vuelve a entrar en Atlas Rent para poder seguir preguntando.',
-      },
-      sinPermiso: {
-        titulo: 'Tu usuario no puede consultar la IA',
-        cuerpo: 'Pídeselo a quien administre Atlas Rent.',
-      },
-      limite: {
-        titulo: 'Se ha alcanzado el límite de consultas',
-        cuerpo: 'Espera unos minutos antes de volver a intentarlo.',
-      },
-      noDisponible: {
-        titulo: 'La IA no está disponible',
-        cuerpo: 'No está habilitada en esta instalación o no tiene clave configurada.',
-      },
-      generico: {
-        titulo: 'No se ha podido consultar la IA',
-        cuerpo: 'Vuelve a intentarlo en un momento.',
-      },
-      reintentar: 'Reintentar',
     },
   },
 };

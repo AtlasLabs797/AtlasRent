@@ -1,4 +1,4 @@
-import { textos } from '../i18n/textos.ts';
+import { textosAsistente } from './textos.ts';
 
 /**
  * Consulta al asistente de IA (F6-03) contra `POST /api/v1/ia/consulta`.
@@ -37,10 +37,10 @@ export interface AvisoErrorIa {
  */
 export function cuerpoConsulta(pregunta: string, alcance: string): CuerpoConsultaIa {
   const limpia = pregunta.trim();
-  if (limpia.length === 0) throw new Error(textos.asistente.formulario.preguntaVacia);
+  if (limpia.length === 0) throw new Error(textosAsistente.formulario.preguntaVacia);
 
   const exacto = ALCANCES.find((valor) => valor === alcance);
-  if (exacto === undefined) throw new Error(textos.asistente.formulario.alcanceInvalido);
+  if (exacto === undefined) throw new Error(textosAsistente.formulario.alcanceInvalido);
 
   return { pregunta: limpia, alcance: exacto };
 }
@@ -59,7 +59,7 @@ export function avisoDeError(error: unknown): AvisoErrorIa {
   const estado = fallo?.response?.status ?? null;
   const detalle = detalleDeProblema(fallo?.response?.data);
 
-  const e = textos.asistente.errores;
+  const e = textosAsistente.errores;
   switch (estado) {
     case 401:
       return aviso('warning', e.sesionCaducada.titulo, detalle ?? e.sesionCaducada.cuerpo, false);
