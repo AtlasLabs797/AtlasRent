@@ -167,7 +167,9 @@ public sealed record ProspectoResumen(
     string? Email,
     string? Telefono,
     bool Activo,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    Guid? ClienteId,
+    DateTimeOffset? ConvertidoAt);
 
 /// <summary>Prospecto en la ficha, con el documento descifrado.</summary>
 public sealed record ProspectoRespuesta(
@@ -179,7 +181,9 @@ public sealed record ProspectoRespuesta(
     string? Telefono,
     string? Notas,
     bool Activo,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    Guid? ClienteId,
+    DateTimeOffset? ConvertidoAt);
 
 /// <summary>
 /// Búsqueda de clientes por documento de identidad (SEC-030): el documento viaja en el cuerpo y no

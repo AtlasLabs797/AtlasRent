@@ -119,7 +119,10 @@ public sealed class ServicioClientes(
         if (!string.IsNullOrWhiteSpace(busqueda))
         {
             var termino = busqueda.Trim().ToLowerInvariant();
-            consulta = consulta.Where(c => c.Nombre.ToLower().Contains(termino));
+            // El documento no se busca aquí: solo exacto por el índice ciego (SEC-030).
+            consulta = int.TryParse(termino, out var numero)
+                ? consulta.Where(c => c.Nombre.ToLower().Contains(termino) || c.Numero == numero)
+                : consulta.Where(c => c.Nombre.ToLower().Contains(termino));
         }
 
         if (documento is not null)
@@ -170,7 +173,8 @@ public sealed class ServicioClientes(
         Guid usuario,
         string ip,
         MutacionIdempotente? mutacion,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<Cliente, Task>? alCrear = null)
     {
         var huella = indice.Huella(peticion.Documento);
         await ExigirDocumentoLibreAsync(huella, null, ct);
@@ -203,6 +207,7 @@ public sealed class ServicioClientes(
             mutacion,
             proyectar: AResumen,
             datosAuditoria: DatosAuditoria,
+            antesDeGuardar: alCrear is null ? null : () => alCrear(cliente),
             despuesDeGuardar: numeroImportado ? () => AlinearSecuenciaAsync(ct) : null,
             ct: ct);
     }
@@ -255,6 +260,36 @@ public sealed class ServicioClientes(
             contexto.Cliente, cliente,
             esAlta: false,
             accion: "cliente.desactivado",
+            entidad: "cliente",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: c => AResumen(AFila(c)),
+            datosAuditoria: DatosAuditoria,
+            ct: ct);
+    }
+
+    /// <summary>Deshace la baja lógica. Reactivar un cliente activo no cambia nada ni audita.</summary>
+    public async Task<ClienteResumen> ReactivarAsync(
+        Guid id,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var cliente = await CargarAsync(id, ct);
+        if (cliente.Activo)
+        {
+            return AResumen(AFila(cliente));
+        }
+
+        cliente.Activo = true;
+
+        return await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Cliente, cliente,
+            esAlta: false,
+            accion: "cliente.reactivado",
             entidad: "cliente",
             usuario,
             ip,

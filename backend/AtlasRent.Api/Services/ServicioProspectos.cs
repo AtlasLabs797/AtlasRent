@@ -24,6 +24,7 @@ public sealed class ServicioProspectos(
     AtlasRentDbContext contexto,
     AuditoriaService auditoria,
     ServicioIdempotencia idempotencia,
+    ServicioClientes clientes,
     ServicioCifrado cifrado,
     IndiceCiegoDocumento indice,
     TimeProvider reloj)
@@ -41,7 +42,8 @@ public sealed class ServicioProspectos(
         string? busqueda,
         CancellationToken ct)
     {
-        var consulta = contexto.Prospecto.AsNoTracking().Where(p => p.Activo);
+        // Un prospecto convertido ya es cliente: no se ofrece más como destinatario.
+        var consulta = contexto.Prospecto.AsNoTracking().Where(p => p.Activo && p.ClienteId == null);
 
         if (!string.IsNullOrWhiteSpace(busqueda))
         {
@@ -67,7 +69,9 @@ public sealed class ServicioProspectos(
             prospecto.Telefono,
             prospecto.Notas,
             prospecto.Activo,
-            prospecto.CreatedAt);
+            prospecto.CreatedAt,
+            prospecto.ClienteId,
+            prospecto.ConvertidoAt);
     }
 
     public async Task<ProspectoResumen> CrearAsync(
@@ -152,6 +156,108 @@ public sealed class ServicioProspectos(
             ct: ct);
     }
 
+    /// <summary>Deshace la baja lógica. Un prospecto ya convertido no se reactiva (409).</summary>
+    public async Task<ProspectoResumen> ReactivarAsync(
+        Guid id,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var prospecto = await CargarAsync(id, ct);
+        if (prospecto.ClienteId is not null)
+        {
+            throw new InvalidOperationException("El prospecto ya se convirtió en cliente: no se reactiva.");
+        }
+
+        if (prospecto.Activo)
+        {
+            return AResumen(prospecto);
+        }
+
+        prospecto.Activo = true;
+
+        return await GuardadoAuditado.GuardarAsync(
+            contexto, auditoria, idempotencia, reloj,
+            contexto.Prospecto, prospecto,
+            esAlta: false,
+            accion: "prospecto.reactivado",
+            entidad: "prospecto",
+            usuario,
+            ip,
+            mutacion,
+            proyectar: AResumen,
+            datosAuditoria: DatosAuditoria,
+            ct: ct);
+    }
+
+    /// <summary>
+    /// Convierte el prospecto en cliente (§3.2) en una sola transacción: el cliente sale por el mismo
+    /// camino que el alta normal (número de la secuencia, documento cifrado e índice ciego), el
+    /// prospecto queda vinculado y dado de baja, y sus cotizaciones y reservas pasan al cliente para
+    /// que una cotización aceptada pueda seguir a reserva o contrato (§3.3).
+    /// </summary>
+    public async Task<ClienteResumen> ConvertirAsync(
+        Guid id,
+        ClientePeticion peticion,
+        Guid usuario,
+        string ip,
+        MutacionIdempotente? mutacion,
+        CancellationToken ct)
+    {
+        var prospecto = await CargarAsync(id, ct);
+        ExigirSinConvertir(prospecto);
+        var clave = "prospecto:" + id.ToString("D");
+
+        return await clientes.CrearAsync(peticion, usuario, ip, mutacion, ct, async cliente =>
+        {
+            // Dos conversiones simultáneas del mismo prospecto: la segunda espera y ve el vínculo.
+            await contexto.Database.ExecuteSqlAsync(
+                $"SELECT pg_advisory_xact_lock(hashtext({clave}))", ct);
+            await contexto.Entry(prospecto).ReloadAsync(ct);
+            ExigirSinConvertir(prospecto);
+
+            var ahora = reloj.GetUtcNow();
+            prospecto.ClienteId = cliente.Id;
+            prospecto.ConvertidoAt = ahora;
+            prospecto.Activo = false;
+            prospecto.UpdatedAt = ahora;
+            prospecto.UpdatedBy = usuario;
+
+            foreach (var cotizacion in await contexto.Cotizacion.Where(c => c.ProspectoId == id).ToListAsync(ct))
+            {
+                cotizacion.ClienteId = cliente.Id;
+                cotizacion.ProspectoId = null;
+            }
+
+            foreach (var reserva in await contexto.Reserva.Where(r => r.ProspectoId == id).ToListAsync(ct))
+            {
+                reserva.ClienteId = cliente.Id;
+                reserva.ProspectoId = null;
+            }
+
+            await auditoria.RegistrarAsync(new RegistroAuditoria
+            {
+                Accion = "prospecto.convertido",
+                Ip = ip,
+                UsuarioId = usuario,
+                Entidad = "prospecto",
+                EntidadId = id.ToString("D"),
+                DatosJson = System.Text.Json.JsonSerializer.Serialize(new { ClienteId = cliente.Id, cliente.Numero }),
+                Resultado = "permitido",
+                Origen = "api",
+            }, ct);
+        });
+    }
+
+    private static void ExigirSinConvertir(Prospecto prospecto)
+    {
+        if (prospecto.ClienteId is not null)
+        {
+            throw new InvalidOperationException("El prospecto ya se convirtió en cliente.");
+        }
+    }
+
     // ---------------------------------------------------------------- internos
 
     private static ProspectoResumen AResumen(Prospecto prospecto) =>
@@ -162,7 +268,9 @@ public sealed class ServicioProspectos(
             prospecto.Email,
             prospecto.Telefono,
             prospecto.Activo,
-            prospecto.CreatedAt);
+            prospecto.CreatedAt,
+            prospecto.ClienteId,
+            prospecto.ConvertidoAt);
 
     /// <summary>Lo que sí puede ir a la auditoría: el documento nunca, ni cifrado ni en claro.</summary>
     private static object DatosAuditoria(Prospecto prospecto) => new

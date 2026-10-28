@@ -31,6 +31,13 @@ public sealed class Prospecto : IEntidadTrazada
     /// <summary>Baja lógica, por la misma razón que en <see cref="Cliente"/>.</summary>
     public bool Activo { get; set; }
 
+    /// <summary>Cliente en que se convirtió este prospecto (§3.2). Null mientras siga siendo prospecto.</summary>
+    public Guid? ClienteId { get; set; }
+
+    public Cliente? Cliente { get; set; }
+
+    public DateTimeOffset? ConvertidoAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public Guid? CreatedBy { get; set; }

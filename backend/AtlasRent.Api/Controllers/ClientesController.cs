@@ -138,6 +138,22 @@ public sealed class ClientesController(
         });
     }
 
+    /// <summary>Deshace la baja lógica (200 sin cambios si ya está activo).</summary>
+    [HttpPost("{id:guid}/reactivar")]
+    [Accion(Acciones.ClienteEditar)]
+    public async Task<IActionResult> Reactivar(Guid id, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { id }, $"/api/v1/clientes/{id:D}/reactivar");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => clientes.ReactivarAsync(id, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
     // ---------------------------------------------------------------- recordatorios (F4-05)
 
     /// <summary>
