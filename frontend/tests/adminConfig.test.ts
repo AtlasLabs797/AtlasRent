@@ -45,9 +45,9 @@ test('tipo de cambio: el valor viaja como string con 6 decimales máximo, nunca 
 });
 
 test('formato de tasas y porcentajes sin coma flotante', () => {
-  assert.equal(formatearTasa(62.5), '62,500000');
+  assert.equal(formatearTasa('62.5'), '62,500000');
   assert.equal(formatearTasa('1060.35'), '1.060,350000');
-  assert.equal(formatearPorcentaje(18), '18,00 %');
+  assert.equal(formatearPorcentaje('18'), '18,00 %');
   assert.equal(formatearPorcentaje('0.5'), '0,50 %');
 });
 

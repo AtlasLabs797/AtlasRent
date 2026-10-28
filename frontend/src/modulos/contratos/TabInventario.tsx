@@ -1,3 +1,4 @@
+import { formatearNumero } from '../../dominio/dinero.ts';
 import { useEffect, useState, type JSX } from 'react';
 import { ErrorAlerta } from '../../componentes/ErrorAlerta';
 import { Badge } from '../../design-system/components/core/Badge';
@@ -46,7 +47,7 @@ export function TabInventario({ contratoId, moneda, puedeFirmar }: { contratoId:
               rows={items}
               columns={[
                 { key: 'nombre', label: t.columnas.elemento },
-                { key: 'cantidad', label: t.columnas.cantidad, align: 'right', render: (i: ItemInventario) => <span className="mono">{i.cantidad}</span> },
+                { key: 'cantidad', label: t.columnas.cantidad, align: 'right', render: (i: ItemInventario) => <span className="mono">{formatearNumero(i.cantidad)}</span> },
                 { key: 'notas', label: t.columnas.notas, render: (i: ItemInventario) => i.notas ?? '—' },
               ]}
             />

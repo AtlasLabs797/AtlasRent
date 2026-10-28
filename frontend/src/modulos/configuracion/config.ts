@@ -43,14 +43,14 @@ export function validarNumerador(v: { rangoDesde: number; rangoHasta: number; si
 }
 
 /** Tasa de cambio con 6 decimales y coma decimal: `62.5` -> `62,500000`. Sin coma flotante. */
-export function formatearTasa(valor: number | string): string {
+export function formatearTasa(valor: string): string {
   const normal = normalizarDecimal(aTexto(valor), 6);
   const [entera = '0', dec = '000000'] = normal.split('.');
   return `${entera.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${dec}`;
 }
 
 /** Porcentaje con 2 decimales: `18` -> `18,00 %`. */
-export function formatearPorcentaje(valor: number | string): string {
+export function formatearPorcentaje(valor: string): string {
   const normal = normalizarDecimal(aTexto(valor), 2);
   return `${normal.replace('.', ',')} %`;
 }

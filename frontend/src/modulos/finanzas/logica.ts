@@ -196,8 +196,8 @@ export function cuerpoCobro(
       // La API solo propone importes para facturas: con fianzas se piden explícitas, cada una por su pendiente.
       cuerpo.asignaciones = seleccion.filas.map((x) =>
         x.tipo === 'Fianza'
-          ? { fianzaId: x.id, importe: aDecimal(x.pendiente ?? 0) }
-          : { facturaId: x.id, importe: aDecimal(x.pendiente ?? 0) },
+          ? { fianzaId: x.id, importe: aDecimal(x.pendiente ?? '0') }
+          : { facturaId: x.id, importe: aDecimal(x.pendiente ?? '0') },
       );
     }
   }

@@ -87,8 +87,8 @@ test('comprobantes: alertas de agotado, vencido y sin configurar, y guardado del
 
 test('impuestos: el porcentaje viaja como string y las retenciones muestran su base', async ({ page, api }) => {
   conSesion(api);
-  api.responder('GET', '/config/tipos-itbis', lista([{ id: 'i1', nombre: 'ITBIS general', porcentaje: 18, activo: true }]));
-  api.responder('GET', '/config/tipos-retencion', lista([{ id: 'r1', nombre: 'Retención ITBIS', porcentaje: 30, base: 'Itbis', esDefecto: true, activo: true }]));
+  api.responder('GET', '/config/tipos-itbis', lista([{ id: 'i1', nombre: 'ITBIS general', porcentaje: '18.00', activo: true }]));
+  api.responder('GET', '/config/tipos-retencion', lista([{ id: 'r1', nombre: 'Retención ITBIS', porcentaje: '30.00', base: 'Itbis', esDefecto: true, activo: true }]));
   api.responder('POST', '/config/tipos-itbis', { body: { id: 'i2' } });
 
   await page.goto('/configuracion?seccion=impuestos');
@@ -109,8 +109,8 @@ test('tipo de cambio: histórico con 6 decimales y carga manual como string', as
   api.responder('GET', '/tipos-cambio', {
     body: {
       data: [
-        { id: 't1', fecha: '2026-10-27', moneda: 'DOP', valor: 62.35, fuente: 'exchange_rate_api', registradoAt: '2026-10-27T10:00:00Z', registradoPor: null, actualizadoAt: null },
-        { id: 't2', fecha: '2026-10-26', moneda: 'DOP', valor: 62.123456, fuente: 'manual', registradoAt: '2026-10-26T15:00:00Z', registradoPor: '11111111-1111-1111-1111-111111111111', actualizadoAt: null },
+        { id: 't1', fecha: '2026-10-27', moneda: 'DOP', valor: '62.350000', fuente: 'exchange_rate_api', registradoAt: '2026-10-27T10:00:00Z', registradoPor: null, actualizadoAt: null },
+        { id: 't2', fecha: '2026-10-26', moneda: 'DOP', valor: '62.123456', fuente: 'manual', registradoAt: '2026-10-26T15:00:00Z', registradoPor: '11111111-1111-1111-1111-111111111111', actualizadoAt: null },
       ],
       total: 2,
       page: 1,
@@ -138,19 +138,19 @@ test('tipo de cambio: histórico con 6 decimales y carga manual como string', as
 test('ajustes: tolerancias, modo de recordatorios y el interruptor de MFA de gerentes', async ({ page, api }) => {
   conSesion(api);
   api.responder('GET', '/config/ajustes', {
-    body: { id: 'a1', toleranciaCambioUsd: 1.5, toleranciaCambioDop: null, modoRecordatorios: 'Manual', diasPrimerRecordatorio: 3, diasEntreRecordatorios: 7, mfaGerente: false },
+    body: { id: 'a1', toleranciaCambioUsd: '1.50', toleranciaCambioDop: null, modoRecordatorios: 'Manual', diasPrimerRecordatorio: 3, diasEntreRecordatorios: 7, mfaGerente: false },
   });
   api.responder('PUT', '/config/ajustes', { body: { id: 'a1' } });
 
   await page.goto('/configuracion?seccion=ajustes');
-  await expect(page.getByLabel('Tolerancia en USD')).toHaveValue('1.5');
+  await expect(page.getByLabel('Tolerancia en USD')).toHaveValue('1.50');
   await capturarClaroOscuro(page, 'configuracion-ajustes');
   await page.getByRole('switch', { name: 'Exigir el segundo factor también a los gerentes' }).click();
   await page.getByLabel('Tolerancia en DOP').fill('50,00');
   await page.getByRole('button', { name: 'Guardar' }).click();
   await expect(page.getByText('Ajustes guardados')).toBeVisible();
   expect(api.ultimoCuerpo('PUT', '/config/ajustes')).toEqual({
-    toleranciaCambioUsd: '1.5',
+    toleranciaCambioUsd: '1.50',
     toleranciaCambioDop: '50.00',
     modoRecordatorios: 'Manual',
     diasPrimerRecordatorio: 3,

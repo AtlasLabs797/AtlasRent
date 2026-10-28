@@ -47,7 +47,8 @@ export default function GraficoMensual({ serie }: GraficoMensualProps) {
   );
 
   const datos = useMemo(
-    () => serie.map((mes) => ({ mes: mes.mes, facturado: mes.facturadoUsd, cobrado: mes.cobradoUsd })),
+    // Recharts pide números: solo para dibujar las barras; el dinero no se opera.
+    () => serie.map((mes) => ({ mes: mes.mes, facturado: Number(mes.facturadoUsd), cobrado: Number(mes.cobradoUsd) })),
     [serie],
   );
 

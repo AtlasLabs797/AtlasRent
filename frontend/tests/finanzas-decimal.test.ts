@@ -12,7 +12,7 @@ import {
 
 test('vista previa de conversión: 59.500 DOP a 59,50 son 1.000,00 USD', () => {
   assert.equal(equivalenteEnMonedaFactura('59500.00', '59.50'), '1000.00');
-  assert.equal(equivalenteEnMonedaFactura(59500, 59.5), '1000.00');
+  assert.equal(equivalenteEnMonedaFactura('59500', '59.5'), '1000.00');
 });
 
 test('vista previa de conversión: half-up y sin coma flotante', () => {
@@ -39,7 +39,7 @@ test('equivalente recibido: 1.000 USD a 59,50 son 59.500,00 DOP, con half-up', (
 
 test('sumas y restas exactas (0.1 + 0.2 no se cuela)', () => {
   assert.equal(sumarImportes(['0.10', '0.20']), '0.30');
-  assert.equal(sumarImportes([0.1, 0.2, 1e-7]), '0.30');
+  assert.equal(sumarImportes(['0.1', '0.2', '0.0000001']), '0.30');
   assert.equal(restarImportes('1000.00', '999.99'), '0.01');
   assert.equal(restarImportes('1.00', '2.50'), '-1.50');
   assert.equal(compararImportes('10.00', '9.99'), 1);
@@ -59,6 +59,6 @@ test('entrada tecleada: coma o punto decimal, sin separador de miles ni más dec
 });
 
 test('aDecimal normaliza lo que manda la API', () => {
-  assert.equal(aDecimal(1250.5), '1250.50');
+  assert.equal(aDecimal('1250.5'), '1250.50');
   assert.equal(aDecimal('0'), '0.00');
 });

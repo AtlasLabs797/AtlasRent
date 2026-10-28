@@ -70,8 +70,8 @@ export function useGuardarNumerador() {
 
 export interface Ajustes {
   id: string;
-  toleranciaCambioUsd: number | null;
-  toleranciaCambioDop: number | null;
+  toleranciaCambioUsd: string | null;
+  toleranciaCambioDop: string | null;
   modoRecordatorios: string;
   diasPrimerRecordatorio: number | null;
   diasEntreRecordatorios: number | null;
@@ -94,7 +94,7 @@ export interface TipoCambio {
   id: string;
   fecha: string;
   moneda: string;
-  valor: number;
+  valor: string;
   fuente: string;
   registradoAt: string;
   registradoPor: string | null;
@@ -111,7 +111,7 @@ export function useTiposCambio(page: number, pageSize: number) {
 export interface TipoCambioActual {
   fecha: string;
   moneda: string;
-  valor: number;
+  valor: string;
   id: string | null;
   fuente: string | null;
 }

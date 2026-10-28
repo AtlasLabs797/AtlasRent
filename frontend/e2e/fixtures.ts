@@ -41,7 +41,7 @@ export function conSesion(api: ApiFalsa, quien = identidad()): void {
   api.responder('POST', '/auth/logout', { status: 204 });
 }
 
-const IMPORTE_CERO = { usd: 0, dop: 0, consolidadoUsd: 0 };
+const IMPORTE_CERO = { usd: '0.00', dop: '0.00', consolidadoUsd: '0.00' };
 
 /** `DashboardRespuesta` mínimo con la forma de `GET /informes/dashboard`. */
 export const DASHBOARD = {
@@ -53,16 +53,16 @@ export const DASHBOARD = {
     hasta: null,
     fechaCorte: '2026-10-28',
     proformado: IMPORTE_CERO,
-    facturado: { usd: 9000, dop: 0, consolidadoUsd: 9000 },
-    cobrado: { facturas: IMPORTE_CERO, fianzas: IMPORTE_CERO, saldoAFavor: IMPORTE_CERO, total: { usd: 7000, dop: 0, consolidadoUsd: 7000 } },
+    facturado: { usd: '9000.00', dop: '0.00', consolidadoUsd: '9000.00' },
+    cobrado: { facturas: IMPORTE_CERO, fianzas: IMPORTE_CERO, saldoAFavor: IMPORTE_CERO, total: { usd: '7000.00', dop: '0.00', consolidadoUsd: '7000.00' } },
     retenido: { conComprobante: IMPORTE_CERO, sinComprobante: IMPORTE_CERO, total: IMPORTE_CERO },
-    pendiente: { facturas: IMPORTE_CERO, fianzas: IMPORTE_CERO, total: { usd: 2000, dop: 0, consolidadoUsd: 2000 } },
-    vencido: { usd: 800, dop: 0, consolidadoUsd: 800 },
+    pendiente: { facturas: IMPORTE_CERO, fianzas: IMPORTE_CERO, total: { usd: '2000.00', dop: '0.00', consolidadoUsd: '2000.00' } },
+    vencido: { usd: '800.00', dop: '0.00', consolidadoUsd: '800.00' },
     fianzasRetenidas: IMPORTE_CERO,
     diferenciasCambio: IMPORTE_CERO,
     serieMensual: [
-      { mes: '2026-09', facturadoUsd: 8500, cobradoUsd: 6900 },
-      { mes: '2026-10', facturadoUsd: 9000, cobradoUsd: 7000 },
+      { mes: '2026-09', facturadoUsd: '8500.00', cobradoUsd: '6900.00' },
+      { mes: '2026-10', facturadoUsd: '9000.00', cobradoUsd: '7000.00' },
     ],
     documentosSinTipoCambioCongelado: 0,
     saldoAFavorFueraDePeriodo: false,

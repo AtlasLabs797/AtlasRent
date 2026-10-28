@@ -39,9 +39,9 @@ test('un 409 es solicitud cambiada y el rechazo exige comentario recortado', () 
 });
 
 test('sin renta vigente el contrato es nuevo; con cambio se enseñan las dos rentas', () => {
-  assert.equal(cambioDeRenta({ rentaVigente: null, rentaPropuesta: 900, hayCambioDeRenta: true }).nuevo, true);
-  const c = cambioDeRenta({ rentaVigente: 800, rentaPropuesta: 900, hayCambioDeRenta: true });
-  assert.deepEqual([c.actual, c.propuesta, c.cambia, c.nuevo], [800, 900, true, false]);
+  assert.equal(cambioDeRenta({ rentaVigente: null, rentaPropuesta: '900.00', hayCambioDeRenta: true }).nuevo, true);
+  const c = cambioDeRenta({ rentaVigente: '800.00', rentaPropuesta: '900.00', hayCambioDeRenta: true });
+  assert.deepEqual([c.actual, c.propuesta, c.cambia, c.nuevo], ['800.00', '900.00', true, false]);
 });
 
 test('una propuesta caducada da su motivo y una aprobada no', () => {
@@ -71,8 +71,8 @@ test('envíos: Enviando es un estado propio, el lote avanza y el reintento no fu
 
 test('panel: comparación con el mes anterior y accesos según permisos', () => {
   assert.equal(mesLegible('2026-10'), '10/2026');
-  const c = comparacionMensual([{ mes: '2026-09', facturadoUsd: 100, cobradoUsd: 50 }, { mes: '2026-10', facturadoUsd: 120, cobradoUsd: 60 }], 'facturadoUsd');
-  assert.deepEqual([c.mes, c.actual, c.mesAnterior, c.anterior], ['10/2026', 120, '09/2026', 100]);
+  const c = comparacionMensual([{ mes: '2026-09', facturadoUsd: '100.00', cobradoUsd: '50.00' }, { mes: '2026-10', facturadoUsd: '120.00', cobradoUsd: '60.00' }], 'facturadoUsd');
+  assert.deepEqual([c.mes, c.actual, c.mesAnterior, c.anterior], ['10/2026', '120.00', '09/2026', '100.00']);
   assert.equal(comparacionMensual([], 'cobradoUsd').actual, null);
   assert.deepEqual(accesosRapidos([ACCIONES.sesionVer]), []);
   assert.deepEqual(accesosRapidos([ACCIONES.facturaVer, ACCIONES.informeVer]).map((a) => a.clave), ['envios', 'informes']);

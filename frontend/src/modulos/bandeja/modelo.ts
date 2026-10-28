@@ -20,8 +20,8 @@ export interface SolicitudContrato {
   estado: string;
   fechaInicio: string;
   fechaFinVigente: string;
-  rentaVigente: number | null;
-  rentaPropuesta: number;
+  rentaVigente: string | null;
+  rentaPropuesta: string;
   moneda: MonedaDoc;
   hayCambioDeRenta: boolean;
   huellaContenido: string;
@@ -74,7 +74,7 @@ export function cuerpoRechazo(comentario: string): { comentario: string } {
  */
 export function cambioDeRenta(
   s: Pick<SolicitudContrato, 'rentaVigente' | 'rentaPropuesta' | 'hayCambioDeRenta'>,
-): { actual: number | null; propuesta: number; cambia: boolean; nuevo: boolean } {
+): { actual: string | null; propuesta: string; cambia: boolean; nuevo: boolean } {
   return {
     actual: s.rentaVigente,
     propuesta: s.rentaPropuesta,

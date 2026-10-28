@@ -8,17 +8,17 @@ import { MODULOS } from '../lista.ts';
 
 export interface SerieMes {
   mes: string;
-  facturadoUsd: number;
-  cobradoUsd: number;
+  facturadoUsd: string;
+  cobradoUsd: string;
 }
 
 export interface ComparacionMensual {
   /** Mes en curso (`MM/AAAA`) y su importe; `null` si la serie está vacía. */
   mes: string | null;
-  actual: number | null;
+  actual: string | null;
   /** Mes anterior de la serie, si lo hay. */
   mesAnterior: string | null;
-  anterior: number | null;
+  anterior: string | null;
 }
 
 /** `AAAA-MM` → `MM/AAAA` (DESIGN §5 pide dd/mm/aaaa; un mes lleva solo mm/aaaa). */

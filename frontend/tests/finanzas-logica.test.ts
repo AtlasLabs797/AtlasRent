@@ -20,7 +20,7 @@ function fila(o: Partial<CuentaFila> = {}): CuentaFila {
   return {
     tipo: 'Factura', id: 'f1', serieId: 's', serieNumero: 1, numero: 412, comprobanteTipo: null, comprobanteNumero: null,
     fecha: '2026-10-01', clienteId: 'c1', cliente: 'Cliente', unidadId: null, unidad: null, contratoId: 'k1', concepto: 'Renta',
-    moneda: 'USD', total: 1000, retencion: 0, cobrado: 0, pendiente: 1000, saldoADevolver: null, vencimiento: '2026-10-05',
+    moneda: 'USD', total: '1000.00', retencion: '0.00', cobrado: '0.00', pendiente: '1000.00', saldoADevolver: null, vencimiento: '2026-10-05',
     diasVencida: 0, vencida: false, estado: 'Pendiente', modificada: false, tieneReservaConAnticipo: false, estadoEnvio: null,
     modificadaTrasEnvio: false, cobrable: true, ...o,
   };
@@ -91,7 +91,7 @@ test('cuerpo: con líneas simuladas van como asignaciones explícitas y se desca
 });
 
 test('cuerpo: con fianzas seleccionadas las asignaciones salen explícitas por su pendiente', () => {
-  const sel = { clienteId: 'c1', contratoId: 'k1', filas: [fila(), fila({ tipo: 'Fianza', id: 'z1', pendiente: 500 })] };
+  const sel = { clienteId: 'c1', contratoId: 'k1', filas: [fila(), fila({ tipo: 'Fianza', id: 'z1', pendiente: '500.00' })] };
   const c = cuerpoCobro(FORM, sel, 'seleccionadas', null, true);
   assert.deepEqual(c.asignaciones, [{ facturaId: 'f1', importe: '1000.00' }, { fianzaId: 'z1', importe: '500.00' }]);
 });
@@ -117,8 +117,8 @@ test('presentación: número de documento e insignias', () => {
 
 test('fianza: el motivo es obligatorio con descuento o si la devolución no deja la fianza a cero', async () => {
   const { motivoObligatorio } = await import('../src/modulos/finanzas/logica.ts');
-  assert.equal(motivoObligatorio('1000.00', '0', 1000), false);
-  assert.equal(motivoObligatorio('800.00', '0', 1000), true);
-  assert.equal(motivoObligatorio('900.00', '100.00', 1000), true);
-  assert.equal(motivoObligatorio('700.00', '300.00', 1000), true);
+  assert.equal(motivoObligatorio('1000.00', '0', '1000.00'), false);
+  assert.equal(motivoObligatorio('800.00', '0', '1000.00'), true);
+  assert.equal(motivoObligatorio('900.00', '100.00', '1000.00'), true);
+  assert.equal(motivoObligatorio('700.00', '300.00', '1000.00'), true);
 });
