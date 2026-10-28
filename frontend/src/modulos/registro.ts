@@ -15,6 +15,7 @@ export { modulo as componentes } from './componentes/rutas.ts';
 export { modulo as configuracion } from './configuracion/rutas.ts';
 export { modulo as cuenta } from './cuenta/rutas.ts';
 export { modulo as envios } from './envios/rutas.ts';
+export { cobros, cuentas, facturas, fianzas } from './finanzas/rutas.ts';
 export { modulo as informes } from './informes/rutas.ts';
 export { modulo as panel } from './panel/rutas.ts';
 export { modulo as unidades } from './unidades/rutas.ts';

@@ -40,7 +40,7 @@ test('el menú no enlaza a rutas que no existen: las rutas salen del registro de
   for (const modulo of MODULOS) {
     for (const ruta of modulo.rutas) rutasMontadas.add(ruta.path === '' ? '/' : `/${ruta.path}`);
   }
-  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/bandeja', '/bloqueos', '/clientes', '/clientes/:id', '/clientes/prospectos', '/componentes', '/configuracion', '/cuenta', '/envios', '/informes', '/unidades', '/unidades/:id', '/usuarios']);
+  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/bandeja', '/bloqueos', '/clientes', '/clientes/:id', '/clientes/prospectos', '/cobros', '/cobros/:id', '/componentes', '/configuracion', '/cuenta', '/cuentas', '/envios', '/facturas', '/facturas/:id', '/facturas/periodicas', '/fianzas', '/fianzas/:id', '/informes', '/unidades', '/unidades/:id', '/usuarios']);
 
   // App.tsx no declara rutas de módulo a mano: las monta del registro (si no, el menú y el
   // enrutador podrían divergir).
@@ -99,16 +99,19 @@ test('un módulo sin pantalla no aparece en la barra lateral', () => {
       `${clave} no tiene pantalla y no debe ser pulsable`,
     );
   }
-  assert.deepEqual(conPantalla, ['panel', 'clientes', 'unidades', 'bandeja', 'envios', 'informes', 'bloqueos', 'usuarios', 'configuracion', 'asistente', 'componentes']);
+  assert.deepEqual(conPantalla, ['panel', 'clientes', 'unidades', 'bandeja', 'envios', 'cuentas', 'facturas', 'cobros', 'fianzas', 'informes', 'bloqueos', 'usuarios', 'configuracion', 'asistente', 'componentes']);
 });
 
 test('los permisos de la API filtran el menú: el empleado no ve Informes y el admin sí', () => {
   assert.ok(!modulos(EMPLEADO).includes('informes'), 'el empleado no tiene informe.ver');
   assert.ok(modulos(ADMIN).includes('informes'), 'el administrador sí tiene informe.ver');
 
-  for (const modulo of ['configuracion', 'usuarios', 'auditoria', 'bloqueos', 'cobros', 'fianzas']) {
+  for (const modulo of ['configuracion', 'usuarios', 'auditoria', 'bloqueos']) {
     assert.ok(!modulos(EMPLEADO).includes(modulo), `el empleado no debería ver ${modulo}`);
   }
+
+  // Facturas, cobros, fianzas y cuentas se leen con factura.ver, que el empleado tiene.
+  for (const modulo of ['cuentas', 'facturas', 'cobros', 'fianzas']) assert.ok(modulos(EMPLEADO).includes(modulo), `el empleado debería ver ${modulo}`);
 
   // El panel lo tiene todo el mundo con sesión.
   assert.ok(modulos(EMPLEADO).includes('panel'));

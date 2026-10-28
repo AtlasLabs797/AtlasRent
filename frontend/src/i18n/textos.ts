@@ -166,6 +166,7 @@ export const textos = {
       componentes: { etiqueta: 'Design system', icono: 'swatch-book' },
       bandeja: { etiqueta: 'Bandeja', icono: 'inbox' },
       envios: { etiqueta: 'Envíos', icono: 'send' },
+      cuentas: { etiqueta: 'Cuentas y cobros', icono: 'wallet' },
     },
     /** Nombres de los roles de `usuario_rol` para la `SideNav`. */
     roles: {
