@@ -29,6 +29,12 @@ export const ACCIONES = {
   sesionVer: 'sesion.ver',
   sesionCerrar: 'sesion.cerrar',
   sesionPassword: 'sesion.password',
+  // Administración (AUD-08). Las cuatro últimas son técnicas: no están en la matriz de §2.
+  inmuebleDocumento: 'inmueble.documento',
+  mfaObligatorio: 'mfa.obligatorio',
+  seguridadAccesoEmergencia: 'seguridad.acceso_emergencia',
+  agenteToken: 'agente.token',
+  iaProponer: 'ia.proponer',
 } as const;
 
 export type Accion = (typeof ACCIONES)[keyof typeof ACCIONES];

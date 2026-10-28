@@ -55,11 +55,6 @@ const PENDIENTES: Partial<Record<Clave, [Accion, string]>> = {
   cobros: [ACCIONES.cobroRegistrar, 'pantalla de cobros'],
   fianzas: [ACCIONES.fianzaMover, 'pantalla de fianzas'],
   auditoria: [ACCIONES.auditoriaVer, 'pantalla de auditoría'],
-  bloqueos: [ACCIONES.ipDesbloquear, 'pantalla de desbloqueos'],
-  // La matriz de la especificación mete usuarios y roles en la misma fila que configuración:
-  // `configuracion.editar`, solo admin.
-  usuarios: [ACCIONES.configuracionEditar, 'pantalla de usuarios y roles'],
-  configuracion: [ACCIONES.configuracionEditar, 'pantalla de configuración'],
 };
 
 function entrada(clave: Clave, registrado: DefinicionModulo | undefined): EntradaMenu | null {

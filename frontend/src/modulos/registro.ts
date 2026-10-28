@@ -8,7 +8,10 @@
  * módulos a la vez no choquen en la misma línea.
  */
 export { modulo as asistente } from './asistente/rutas.ts';
+export { modulo as bloqueos } from './bloqueos/rutas.ts';
 export { modulo as componentes } from './componentes/rutas.ts';
+export { modulo as configuracion } from './configuracion/rutas.ts';
 export { modulo as cuenta } from './cuenta/rutas.ts';
 export { modulo as informes } from './informes/rutas.ts';
 export { modulo as panel } from './panel/rutas.ts';
+export { modulo as usuarios } from './usuarios/rutas.ts';
