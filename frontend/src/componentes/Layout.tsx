@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router';
 import { Avatar } from '../design-system/components/data/Avatar';
 import { IconButton } from '../design-system/components/core/IconButton';
 import { AppShell } from '../design-system/components/navigation/AppShell';
+import { Menu } from '../design-system/components/navigation/Menu';
 import { SegmentedControl } from '../design-system/components/navigation/SegmentedControl';
 import type { SideNavItem, SideNavProps } from '../design-system/components/navigation/SideNav';
 import type { TopBarProps } from '../design-system/components/navigation/TopBar';
@@ -63,10 +64,29 @@ export function Layout() {
     children: (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {identidad && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Avatar name={identidad.nombre} size={26} />
-            <span style={{ font: 'var(--type-label)', color: 'var(--text-strong)' }}>{identidad.nombre}</span>
-          </div>
+          <Menu
+            align="right"
+            trigger={
+              <button
+                type="button"
+                aria-label={textos.barraSuperior.cuenta}
+                className="ar-btn ar-btn--ghost ar-btn--md"
+                style={{ gap: 8 }}
+              >
+                <Avatar name={identidad.nombre} size={26} />
+                <span style={{ font: 'var(--type-label)', color: 'var(--text-strong)' }}>{identidad.nombre}</span>
+              </button>
+            }
+            items={[
+              { label: textos.cuenta.menu, value: 'cuenta', icon: 'user-round' },
+              { separator: true },
+              { label: textos.barraSuperior.cerrar, value: 'salir', icon: 'log-out' },
+            ]}
+            onSelect={(valor) => {
+              if (valor === 'cuenta') navegar('/cuenta');
+              else void salir();
+            }}
+          />
         )}
         <div role="group" aria-label={textos.tema.etiqueta}>
           <SegmentedControl

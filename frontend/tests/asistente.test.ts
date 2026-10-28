@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ACCIONES } from '../src/permisos.ts';
 import { entradasNavegables, menuPermitido, puedeVerRuta } from '../src/navegacion/menu.ts';
-import { ALCANCES, avisoDeError, cuerpoConsulta } from '../src/ia/consulta.ts';
-import { textos } from '../src/i18n/textos.ts';
+import { ALCANCES, avisoDeError, cuerpoConsulta } from '../src/modulos/asistente/consulta.ts';
+import { textosAsistente } from '../src/modulos/asistente/textos.ts';
 
 const modulos = (permisos: string[]): string[] =>
   menuPermitido(permisos).flatMap((grupo) => grupo.entradas.map((e) => String(e.clave)));
@@ -81,7 +81,7 @@ test('el texto que manda la API es el que se enseña, con el título de la panta
 });
 
 test('el aviso de privacidad (F6-04) existe y no enseña un marcador sin sustituir', () => {
-  const aviso = textos.asistente.privacidad;
+  const aviso = textosAsistente.privacidad;
 
   assert.ok(aviso.titulo.length > 0 && aviso.cuerpo.length > 0);
   // El aviso va antes de la primera consulta, así que no puede depender de una respuesta: si

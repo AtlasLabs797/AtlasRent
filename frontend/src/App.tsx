@@ -1,24 +1,29 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, type ComponentType } from 'react';
 import { Route, Routes } from 'react-router';
 import { Layout } from './componentes/Layout';
 import { textos } from './i18n/textos';
+import { MODULOS } from './modulos/lista';
 import { useSesion } from './sesion/store';
 
 const Acceso = lazy(() => import('./paginas/Acceso'));
-const Inicio = lazy(() => import('./paginas/Inicio'));
-const Informes = lazy(() => import('./paginas/Informes'));
-const Asistente = lazy(() => import('./paginas/Asistente'));
-const DesignSystem = lazy(() => import('./paginas/DesignSystem'));
+const CambioPasswordForzado = lazy(() => import('./paginas/CambioPasswordForzado'));
 const NoEncontrada = lazy(() => import('./paginas/NoEncontrada'));
+
+/** Una página lazy por ruta de cada módulo registrado (`src/modulos/registro.ts`). Se crean una vez, fuera del render. */
+const RUTAS_MODULOS: Array<{ path: string; Pagina: ComponentType }> = MODULOS.flatMap((modulo) =>
+  modulo.rutas.map((ruta) => ({ path: ruta.path, Pagina: lazy(ruta.cargar) })),
+);
 
 /**
  * Tres estados, y solo tres: cargando la sesión, sin sesión (pantalla de acceso) y con sesión
- * (el `Layout` con menú y rutas). El tema lo fija el script inicial (`public/tema-inicial.js`) antes del primer
+ * (el `Layout` con menú y las rutas de los módulos registrados). Con sesión pero con el cambio de contraseña
+ * pendiente (`debeCambiarPassword`, SEG-010) solo se ve la pantalla de cambio: la API rechaza todo lo demás. El tema lo fija el script inicial (`public/tema-inicial.js`) antes del primer
  * pintado, así que cambiar de estado no cambia los colores y no hay parpadeo.
  */
 export function App() {
   const estado = useSesion((sesion) => sesion.estado);
   const cargar = useSesion((sesion) => sesion.cargar);
+  const debeCambiarPassword = useSesion((sesion) => sesion.identidad?.debeCambiarPassword === true);
 
   useEffect(() => {
     void cargar();
@@ -47,17 +52,17 @@ export function App() {
         <Routes>
           <Route path="*" element={<Acceso />} />
         </Routes>
+      ) : debeCambiarPassword ? (
+        <Routes>
+          <Route path="*" element={<CambioPasswordForzado />} />
+        </Routes>
       ) : (
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<Inicio />} />
-            {/* Informes exige `informe.ver`; el `Layout` filtra la ruta con la misma acción que
-                exige la API, así que el empleado recibe "sin permiso" y no un 403. */}
-            <Route path="informes" element={<Informes />} />
-            {/* El asistente exige `ia.consultar`, la misma acción que declara el endpoint: el
-                `Layout` filtra la ruta con ella y quien no la tiene recibe "sin permiso". */}
-            <Route path="asistente" element={<Asistente />} />
-            <Route path="componentes" element={<DesignSystem />} />
+            {/* Cada módulo exige en `Layout` la acción que declara; la API la vuelve a comprobar. */}
+            {RUTAS_MODULOS.map(({ path, Pagina }) => (
+              <Route key={path || '/'} index={path === ''} path={path === '' ? undefined : path} element={<Pagina />} />
+            ))}
             <Route path="*" element={<NoEncontrada />} />
           </Route>
         </Routes>

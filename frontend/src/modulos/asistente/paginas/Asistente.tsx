@@ -1,22 +1,22 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Button } from '../design-system/components/core/Button';
-import { Card } from '../design-system/components/core/Card';
-import { Alert } from '../design-system/components/feedback/Alert';
-import { EmptyState } from '../design-system/components/feedback/EmptyState';
-import { PageHeader } from '../design-system/components/navigation/PageHeader';
-import { textos } from '../i18n/textos';
-import { ACCIONES } from '../permisos';
-import { puede, useSesion } from '../sesion/store';
-import { preguntarIa } from '../ia/api';
+import { Button } from '../../../design-system/components/core/Button';
+import { Card } from '../../../design-system/components/core/Card';
+import { Alert } from '../../../design-system/components/feedback/Alert';
+import { EmptyState } from '../../../design-system/components/feedback/EmptyState';
+import { PageHeader } from '../../../design-system/components/navigation/PageHeader';
+import { textos } from '../../../i18n/textos';
+import { ACCIONES } from '../../../permisos';
+import { puede, useSesion } from '../../../sesion/store';
+import { useConsultaIa } from '../api';
 import {
   ALCANCES,
   avisoDeError,
   cuerpoConsulta,
   type AlcanceConsulta,
   type CuerpoConsultaIa,
-} from '../ia/consulta';
-import SinPermiso from './SinPermiso';
+} from '../consulta';
+import SinPermiso from '../../../paginas/SinPermiso';
+import { textosAsistente } from '../textos';
 
 /**
  * Asistente de IA (F6-03). Una pregunta, un alcance y una respuesta: el backend es sin estado, así
@@ -32,9 +32,7 @@ export default function Asistente() {
   const [alcance, setAlcance] = useState<AlcanceConsulta>(ALCANCES[0]);
   const [falloLocal, setFalloLocal] = useState<string | null>(null);
 
-  const consulta = useMutation({
-    mutationFn: (cuerpo: CuerpoConsultaIa) => preguntarIa(cuerpo),
-  });
+  const consulta = useConsultaIa();
 
   const enVuelo = consulta.isPending;
 
@@ -45,7 +43,7 @@ export default function Asistente() {
       cuerpo = cuerpoConsulta(pregunta, alcance);
     } catch (e) {
       // El botón se deshabilita sin pregunta, así que esto es el camino de seguridad, no el normal.
-      setFalloLocal(e instanceof Error ? e.message : textos.asistente.errores.generico.cuerpo);
+      setFalloLocal(e instanceof Error ? e.message : textosAsistente.errores.generico.cuerpo);
       return;
     }
     setFalloLocal(null);
@@ -55,7 +53,7 @@ export default function Asistente() {
 
   if (!puede(identidad, ACCIONES.iaConsultar)) return <SinPermiso />;
 
-  const t = textos.asistente;
+  const t = textosAsistente;
   const respuesta = consulta.data ?? null;
   const aviso = consulta.isError ? avisoDeError(consulta.error) : null;
 

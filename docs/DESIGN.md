@@ -37,7 +37,8 @@ Se hace en F1 y se documenta en `docs/DOC_TECNICA.md`:
 4. Fuentes Geist / Geist Mono: autoalojadas con `@fontsource/geist-sans` y `@fontsource/geist-mono` (pesos 300/400/600/700; mono 400/600), importadas en `main.tsx`. En la copia del frontend, `tokens/fonts.css` deja de importar Google Fonts y queda vacío: `--font-sans` ya incluye "Geist Sans", el nombre de familia que registra `@fontsource/geist-sans`.
 5. Tema claro/oscuro: mecanismo en §3.1 y en `docs/DOC_TECNICA.md` §3.1.
 6. Sin Tailwind, Bootstrap, shadcn ni CSS-in-JS. Clases del DS con prefijo `ar-` (BEM) y variables CSS de `tokens/`.
-7. Cuando se cambie algo del DS (tokens o componentes), se cambia primero en `Atlas Rent Design System/` y después se copia al frontend, para que las dos copias no diverjan.
+7. Están portados los 59 componentes del DS (`frontend/src/design-system/components/**`, cada uno con su `.prompt.md`) y se ven en `/componentes`, en claro y oscuro. Dos ajustes respecto al original: `Money` acepta `amount` como string decimal (se formatea sin coma flotante) y `Icon` lleva un mapa de alias porque lucide-react 1.x renombró `trash-2`, `building-2` y `file-signature`. `InvoiceLines`, `PaymentAllocation`, `DepositSummary` e `InventoryChecklist` suman con `Number` solo para vista previa: la API es quien calcula (AGENTS §6). Los ajustes de `Money` e `Icon` están solo en la copia del frontend: pendiente replicarlos en `Atlas Rent Design System/` (§1.8).
+8. Cuando se cambie algo del DS (tokens o componentes), se cambia primero en `Atlas Rent Design System/` y después se copia al frontend, para que las dos copias no diverjan.
 
 ## 2. Principios
 
@@ -184,4 +185,7 @@ Diseño base **[Supuesto, A2]**: se ajusta cuando el responsable aporte los ejem
 
 - Logo real (SVG) y fuentes propias si existen → `assets/` + `tokens/fonts.css`.
 - Ajustar el diseño de PDF con los ejemplos por serie de F0-06.
+- `--surface-sunken` en oscuro (`#151517`) apenas se distingue del fondo de la barra superior: el control de tema (`SegmentedControl`) pierde su pista. Revisar el token en el DS.
+- Los componentes con textos fijos en español (`Dialog` "Cerrar", `Pagination` "de", `ApprovalCard`, etc.) no están en `i18n/textos.ts`: cuando se active el inglés habrá que parametrizarlos.
+- Los desplegables (`Select`, `Combobox`, `DatePicker`, `Menu`) cierran con clic fuera y Escape pero `Dialog` y `Drawer` no atrapan el foco; `ConfirmarDestructivo` solo añade Escape.
 - Accesibilidad: el DS cubre contraste, `:focus-visible` e iconos `aria-hidden`. Roles ARIA y navegación por teclado se verifican al portar cada componente (F1-13).

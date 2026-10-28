@@ -1,23 +1,8 @@
 import { create } from 'zustand';
-import { clienteHttp } from '../api/cliente';
+import type { Identidad } from '../api/auth';
+import { clienteHttp, registrarManejadoresSesion } from '../api/cliente';
 
-/**
- * Identidad de la sesión, tal y como la devuelve `GET /api/v1/auth/yo`. `permisosEfectivos` son los
- * identificadores de acción del backend (techo del rol recortado por los permisos por usuario).
- */
-export interface Identidad {
-  id: string;
-  nombreAcceso: string;
-  nombre: string;
-  email: string | null;
-  rol: string;
-  debeCambiarPassword: boolean;
-  mfaActivado: boolean;
-  mfaPendiente: boolean;
-  accesoEmergencia: boolean;
-  ultimoAcceso: string | null;
-  permisosEfectivos: string[];
-}
+export type { Identidad } from '../api/auth';
 
 /** Los tres estados de la interfaz al cargar: cargando, sin sesión y con sesión. */
 export type EstadoSesion = 'cargando' | 'sin-sesion' | 'con-sesion';
@@ -27,29 +12,13 @@ interface Estado {
   identidad: Identidad | null;
   /** Pide la identidad y deja el store en el estado que corresponda. Nunca lanza. */
   cargar: () => Promise<void>;
-  /**
-   * Entra con usuario y contraseña. Devuelve `'con-sesion'` si abrió sesión y
-   * `'credenciales-invalidas'` si el usuario o la contraseña no son correctos (o la API no responde).
-   * Lanza `RequiereSegundoFactor` si el backend exige el segundo factor: con usuario y contraseña no
-   * hay sesión.
-   */
-  entrar: (nombreAcceso: string, contrasena: string) => Promise<'con-sesion' | 'credenciales-invalidas'>;
+  /** Abre la sesión con la identidad que devolvió el login, el segundo factor o el acceso de emergencia. */
+  iniciarSesion: (identidad: Identidad) => void;
+  /** Tras cambiar la contraseña la API quita el cambio pendiente: la interfaz lo refleja sin volver a pedir `/auth/yo`. */
+  passwordCambiada: () => void;
+  /** El MFA quedó activado desde "Mi cuenta". */
+  mfaActivado: () => void;
   salir: () => Promise<void>;
-}
-
-interface RespuestaDesafio {
-  requiereMfa: boolean;
-  requiereConfiguracion: boolean;
-}
-
-/** El backend exige segundo factor: con usuario y contraseña no se puede abrir sesión. */
-export class RequiereSegundoFactor extends Error {
-  requiereConfiguracion: boolean;
-
-  constructor(requiereConfiguracion: boolean) {
-    super('La cuenta tiene un segundo factor pendiente.');
-    this.requiereConfiguracion = requiereConfiguracion;
-  }
 }
 
 export const useSesion = create<Estado>((set) => ({
@@ -61,31 +30,21 @@ export const useSesion = create<Estado>((set) => ({
       const { data } = await clienteHttp.get<Identidad>('/auth/yo');
       set({ estado: 'con-sesion', identidad: data });
     } catch {
-      // 401 es lo normal al abrir la app sin sesión; cualquier otro fallo (API caída) también deja
-      // la pantalla de acceso, que ya explica lo que pasa. La UI no muestra un error de red.
+      // Un 401 ya intentó el refresco en el cliente HTTP; si seguimos aquí no hay sesión. Cualquier
+      // otro fallo (API caída) también deja la pantalla de acceso, que ya explica lo que pasa.
       set({ estado: 'sin-sesion', identidad: null });
     }
   },
 
-  entrar: async (nombreAcceso, contrasena) => {
-    try {
-      const { data } = await clienteHttp.post<Identidad | RespuestaDesafio>('/auth/login', {
-        nombreAcceso,
-        contrasena,
-      });
+  iniciarSesion: (identidad) => set({ estado: 'con-sesion', identidad }),
 
-      if ('requiereMfa' in data && data.requiereMfa) {
-        throw new RequiereSegundoFactor(data.requiereConfiguracion);
-      }
+  passwordCambiada: () =>
+    set((actual) => (actual.identidad ? { identidad: { ...actual.identidad, debeCambiarPassword: false } } : actual)),
 
-      set({ estado: 'con-sesion', identidad: data as Identidad });
-      return 'con-sesion' as const;
-    } catch (e) {
-      if (e instanceof RequiereSegundoFactor) throw e;
-      set({ estado: 'sin-sesion', identidad: null });
-      return 'credenciales-invalidas' as const;
-    }
-  },
+  mfaActivado: () =>
+    set((actual) =>
+      actual.identidad ? { identidad: { ...actual.identidad, mfaActivado: true, mfaPendiente: false } } : actual,
+    ),
 
   salir: async () => {
     try {
@@ -97,6 +56,20 @@ export const useSesion = create<Estado>((set) => ({
     set({ estado: 'sin-sesion', identidad: null });
   },
 }));
+
+// El cliente HTTP no importa el store (dependencia circular): se enganchan aquí.
+registrarManejadoresSesion({
+  sesionPerdida: () => useSesion.setState({ estado: 'sin-sesion', identidad: null }),
+  identidadRefrescada: (identidad) => {
+    if (identidad && typeof identidad === 'object' && 'permisosEfectivos' in identidad) {
+      useSesion.setState({ estado: 'con-sesion', identidad: identidad as Identidad });
+    }
+  },
+  passwordPendiente: () =>
+    useSesion.setState((actual) =>
+      actual.identidad ? { identidad: { ...actual.identidad, debeCambiarPassword: true } } : actual,
+    ),
+});
 
 /** Permisos efectivos de una identidad. Vacíos si no hay sesión. */
 export function permisosDe(identidad: Identidad | null): string[] {

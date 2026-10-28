@@ -1,6 +1,8 @@
 // Las extensiones van explícitas en los módulos puros que carga el runner de Node (tests/*.test.ts);
 // `allowImportingTsExtensions` lo permite y Vite las acepta igual.
 import { textos } from '../i18n/textos.ts';
+import { MODULOS } from '../modulos/lista.ts';
+import type { DefinicionModulo, GrupoMenuId } from '../modulos/tipos.ts';
 import { ACCIONES, type Accion } from '../permisos.ts';
 
 /**
@@ -8,9 +10,11 @@ import { ACCIONES, type Accion } from '../permisos.ts';
  * backend que lo habilita: el menú se filtra con el MISMO identificador que exige la API, así que
  * una entrada visible nunca es un 403 garantizado.
  *
- * Un módulo sin pantalla todavía se declara aquí, con `ruta: null` y su `TODO(A#)` al lado. La
- * `SideNav` solo pinta los que tienen ruta: enlazar a una ruta inexistente daría un 404, que es
- * peor que una entrada sin destino.
+ * La ruta y la acción de un módulo con pantalla salen del registro (`src/modulos/registro.ts`): aquí
+ * solo está el ORDEN del menú y los módulos que todavía no tienen pantalla, con `ruta: null` y su
+ * `TODO(A#)`. La `SideNav` solo pinta los que tienen ruta: enlazar a una ruta inexistente daría un
+ * 404, que es peor que una entrada sin destino. Cuando un módulo se registra, deja de ser pendiente
+ * sin tocar este archivo.
  */
 export interface EntradaMenu {
   /** Clave estable: la usa `SideNav` como `key` y para resaltar la activa. */
@@ -32,62 +36,69 @@ export interface GrupoMenu {
 
 type Clave = keyof typeof textos.navegacion.modulos;
 
-function modulo(clave: Clave, accion: Accion, ruta: string | null, pendiente?: string): EntradaMenu {
+/** Orden del menú: grupos y claves. Una clave registrada fuera de esta lista se añade al final de su grupo. */
+const ORDEN: Record<GrupoMenuId, Clave[]> = {
+  operacion: ['panel', 'clientes', 'unidades', 'contratos'],
+  finanzas: ['facturas', 'cobros', 'fianzas', 'informes'],
+  control: ['auditoria', 'bloqueos', 'usuarios', 'configuracion'],
+  herramientas: ['asistente', 'componentes'],
+};
+
+/** Módulos sin pantalla todavía: acción del backend que los habilitará y qué falta. */
+const PENDIENTES: Partial<Record<Clave, [Accion, string]>> = {
+  // TODO(A#): la API de clientes es de F1-09, pero la pantalla todavía no existe.
+  clientes: [ACCIONES.clienteVer, 'pantalla de clientes'],
+  // TODO(A#): `cliente.ver` es la acción que cubre ver unidades (Acciones.cs).
+  unidades: [ACCIONES.clienteVer, 'pantalla de unidades e inmuebles'],
+  contratos: [ACCIONES.clienteVer, 'pantalla de contratos'],
+  facturas: [ACCIONES.facturaVer, 'pantalla de facturas'],
+  cobros: [ACCIONES.cobroRegistrar, 'pantalla de cobros'],
+  fianzas: [ACCIONES.fianzaMover, 'pantalla de fianzas'],
+  auditoria: [ACCIONES.auditoriaVer, 'pantalla de auditoría'],
+  bloqueos: [ACCIONES.ipDesbloquear, 'pantalla de desbloqueos'],
+  // La matriz de la especificación mete usuarios y roles en la misma fila que configuración:
+  // `configuracion.editar`, solo admin.
+  usuarios: [ACCIONES.configuracionEditar, 'pantalla de usuarios y roles'],
+  configuracion: [ACCIONES.configuracionEditar, 'pantalla de configuración'],
+};
+
+function entrada(clave: Clave, registrado: DefinicionModulo | undefined): EntradaMenu | null {
   const texto = textos.navegacion.modulos[clave];
-  return pendiente === undefined
-    ? { clave, etiqueta: texto.etiqueta, icono: texto.icono, accion, ruta }
-    : { clave, etiqueta: texto.etiqueta, icono: texto.icono, accion, ruta, pendiente };
+  if (registrado) {
+    return { clave, etiqueta: texto.etiqueta, icono: texto.icono, accion: registrado.accion, ruta: registrado.ruta };
+  }
+  const pendiente = PENDIENTES[clave];
+  if (!pendiente) return null;
+  return { clave, etiqueta: texto.etiqueta, icono: texto.icono, accion: pendiente[0], ruta: null, pendiente: pendiente[1] };
 }
 
-export const GRUPOS_MENU: GrupoMenu[] = [
-  {
-    etiqueta: textos.navegacion.grupos.operacion,
-    entradas: [
-      modulo('panel', ACCIONES.sesionVer, '/'),
-      // TODO(A#): la API de clientes es de F1-09, pero la pantalla todavía no existe.
-      modulo('clientes', ACCIONES.clienteVer, null, 'pantalla de clientes'),
-      // TODO(A#): `cliente.ver` es la acción que cubre ver unidades (Acciones.cs).
-      modulo('unidades', ACCIONES.clienteVer, null, 'pantalla de unidades e inmuebles'),
-      modulo('contratos', ACCIONES.clienteVer, null, 'pantalla de contratos'),
-    ],
-  },
-  {
-    etiqueta: textos.navegacion.grupos.finanzas,
-    entradas: [
-      modulo('facturas', ACCIONES.facturaVer, null, 'pantalla de facturas'),
-      modulo('cobros', ACCIONES.cobroRegistrar, null, 'pantalla de cobros'),
-      modulo('fianzas', ACCIONES.fianzaMover, null, 'pantalla de fianzas'),
-      modulo('informes', ACCIONES.informeVer, '/informes'),
-    ],
-  },
-  {
-    etiqueta: textos.navegacion.grupos.control,
-    entradas: [
-      modulo('auditoria', ACCIONES.auditoriaVer, null, 'pantalla de auditoría'),
-      modulo('bloqueos', ACCIONES.ipDesbloquear, null, 'pantalla de desbloqueos'),
-      // La matriz de la especificación mete usuarios y roles en la misma fila que configuración:
-      // `configuracion.editar`, solo admin.
-      modulo('usuarios', ACCIONES.configuracionEditar, null, 'pantalla de usuarios y roles'),
-      modulo('configuracion', ACCIONES.configuracionEditar, null, 'pantalla de configuración'),
-    ],
-  },
-  {
-    etiqueta: textos.navegacion.grupos.herramientas,
-    entradas: [
-      modulo('asistente', ACCIONES.iaConsultar, '/asistente'),
-      // Muestra de componentes del design system (F1-13). Es una herramienta de quien la mantiene,
-      // así que se reserva a quien edita la configuración.
-      modulo('componentes', ACCIONES.configuracionEditar, '/componentes'),
-    ],
-  },
-];
+function construirGrupos(): GrupoMenu[] {
+  const registrados = new Map(MODULOS.map((m) => [m.clave, m]));
+  return (Object.keys(ORDEN) as GrupoMenuId[]).map((grupo) => {
+    const claves = [...ORDEN[grupo]];
+    for (const m of MODULOS) {
+      if (m.grupo === grupo && !claves.includes(m.clave as Clave)) claves.push(m.clave as Clave);
+    }
+    return {
+      etiqueta: textos.navegacion.grupos[grupo],
+      entradas: claves.flatMap((clave) => entrada(clave, registrados.get(clave)) ?? []),
+    };
+  });
+}
+
+export const GRUPOS_MENU: GrupoMenu[] = construirGrupos();
 
 /** Todas las entradas, sin filtrar. */
 export const ENTRADAS_MENU: EntradaMenu[] = GRUPOS_MENU.flatMap((grupo) => grupo.entradas);
 
-/** Entrada del menú que corresponde a una ruta, si la hay. */
+/** Si `ruta` es la base del módulo o una hija suya (`/clientes` cubre `/clientes/7`). La raíz `/` solo cubre `/`. */
+function cubre(base: string, ruta: string): boolean {
+  return ruta === base || (base !== '/' && ruta.startsWith(base + '/'));
+}
+
+/** Entrada del menú que corresponde a una ruta (o a una ruta hija suya), si la hay. */
 export function entradaDeRuta(ruta: string): EntradaMenu | undefined {
-  return ENTRADAS_MENU.find((entrada) => entrada.ruta === ruta);
+  return ENTRADAS_MENU.find((entrada) => entrada.ruta !== null && cubre(entrada.ruta, ruta));
 }
 
 /**
@@ -108,9 +119,12 @@ export function entradasNavegables(grupo: GrupoMenu): EntradaMenu[] {
   return grupo.entradas.filter((entrada) => entrada.ruta !== null);
 }
 
-/** Acción que habilita una ruta, o `null` si esa ruta no pertenece a ningún módulo. */
+/**
+ * Acción que habilita una ruta, o `null` si esa ruta no pertenece a ningún módulo. Mira todos los
+ * módulos registrados, también los que no salen en el menú ("Mi cuenta").
+ */
 export function accionDeRuta(ruta: string): Accion | null {
-  return entradaDeRuta(ruta)?.accion ?? null;
+  return MODULOS.find((m) => cubre(m.ruta, ruta))?.accion ?? null;
 }
 
 /**
