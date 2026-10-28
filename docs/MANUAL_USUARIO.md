@@ -246,6 +246,30 @@ que se propone y se aprueba el saldo del cliente cambia, la propuesta caduca y n
 Cada respuesta dice al pie qué proveedor y qué modelo han contestado. Si no hay IA configurada en la
 instalación, la pantalla lo dice y no hay que enviar nada para enterarse.
 
+## 15 bis. Administración (solo administrador) ✅
+
+Tres entradas del menú, bajo **Control**. Gerente y empleado no las ven.
+
+**Usuarios.** Lista de personas con su rol y estado. «Nuevo usuario» pide nombre de acceso, nombre, email (opcional), contraseña de 12 a 72 caracteres y rol. Al pulsar una fila se abre el detalle:
+- **Rol:** el rol marca el techo de lo que la persona puede hacer.
+- **Permisos:** se ve todo lo que el rol permite y se puede **apagar** lo que esa persona no debe hacer. No se puede encender nada que su rol no traiga. A un administrador no se le puede quitar el segundo factor obligatorio ni el acceso de emergencia.
+- **Restablecer contraseña:** la persona tendrá que cambiarla al entrar y se cierran sus sesiones. Comunícasela por un canal seguro.
+- **Desactivar usuario:** corta sus sesiones al instante. No puedes desactivar tu propia cuenta ni quitar el rol al último administrador; la pantalla te lo dice con el motivo.
+
+**Bloqueos y acceso de emergencia.**
+- **Cuentas:** botón «Desbloquear» junto a cada usuario. Atlas Rent no indica qué cuentas están bloqueadas; desbloquear una que no lo está no cambia nada.
+- **IPs:** escribe la dirección bloqueada y pulsa «Desbloquear IP».
+- **Acceso de emergencia:** para un administrador que perdió su dispositivo y sus códigos. Un administrador lo pide (con motivo de al menos 10 caracteres) y **otro distinto** lo aprueba pegando el identificador de la solicitud. Al aprobar sale un código de un solo uso: entrégalo por un canal seguro, no se vuelve a mostrar.
+
+**Configuración.** Pestañas:
+- **Series:** número, prefijo, moneda, tipo y condiciones de pago. Si la serie ya emitió números, no se puede cambiar su moneda, prefijo ni tipo: crea una serie nueva. «Dar de baja» la deja de ofrecer en documentos nuevos; lo emitido se conserva.
+- **Comprobantes:** el rango autorizado, su vencimiento y el siguiente número. Avisa cuando un rango está agotado, vencido, por agotarse o falta por configurar: sin rango no se puede emitir.
+- **Impuestos, Cobros y Subempresas:** ITBIS, retenciones, formas de pago, cuentas receptoras y subempresas. Los porcentajes los pones tú; la aplicación no trae ninguno.
+- **Tipo de cambio:** histórico y carga a mano cuando la fuente automática no trajo el valor de un día (hasta 6 decimales). Solo sirve para informes.
+- **Ajustes:** tolerancias de cambio, modo y días de los recordatorios, y si el segundo factor es obligatorio también para gerentes.
+- **Mensajes:** plantillas de correo por tipo e idioma, en texto plano.
+- **Agentes de IA:** tokens para que un agente consulte datos. Solo admiten lectura o propuestas. **El token se muestra una sola vez** al emitirlo: cópialo entonces. «Revocar» lo invalida al instante.
+
 ## 16. Preguntas frecuentes
 - **Me equivoqué en una factura emitida.** El gerente la modifica (si no tiene comprobante) o la anula y emite otra.
 - **No veo un botón.** Tu usuario no tiene ese permiso.

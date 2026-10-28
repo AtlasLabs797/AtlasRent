@@ -67,10 +67,9 @@ export function Agentes(): JSX.Element {
             columns={[
               { key: 'nombre', label: t.columnas.nombre },
               { key: 'usuarioId', label: t.columnas.propietario, render: (r: TokenAgente) => <span className="mono">{propietario(r.usuarioId)}</span> },
-              { key: 'acciones', label: t.columnas.acciones, render: (r: TokenAgente) => <span className="mono">{r.acciones.join(', ')}</span> },
+              { key: 'acciones', label: t.columnas.acciones, render: (r: TokenAgente) => <span className="mono" style={{ whiteSpace: 'normal', font: 'var(--type-caption)' }}>{r.acciones.join(' · ')}</span> },
               { key: 'caduca', label: t.columnas.caduca, align: 'right', render: (r: TokenAgente) => <span className="mono">{r.caduca ? formatearMarca(r.caduca) : '—'}</span> },
               { key: 'ultimoUso', label: t.columnas.ultimoUso, align: 'right', render: (r: TokenAgente) => <span className="mono">{r.ultimoUso ? formatearMarca(r.ultimoUso) : t.nuncaUsado}</span> },
-              { key: 'limite', label: t.columnas.limite, align: 'right', render: (r: TokenAgente) => <span className="mono">{r.limiteConsultasDia}</span> },
               {
                 key: 'estado',
                 label: t.columnas.estado,
