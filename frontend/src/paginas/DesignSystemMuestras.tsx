@@ -252,7 +252,7 @@ export function MuestraAmpliada(): JSX.Element {
           <AgentBadge agent="cobros" />
           <AgentBadge agent="migracion" />
         </div>
-        <ApprovalCard agent="Agente de cobros" action={m.ia.accion} reason={m.ia.motivo} record="FAC-A-2026-00410" current="1.250,00 DOP" proposed="1.300,00 DOP" origin={m.ia.origen} risk="medio" requestedAt="hoy 09:12" />
+        <ApprovalCard agent="Agente de cobros" action={m.ia.accion} reason={m.ia.motivo} record="FAC-A-2026-00410" current="1.250,00 DOP" proposed="1.300,00 DOP" origin={m.ia.origen} risk="medio" requestedAt="hoy 09:12" onEdit={() => {}} />
         <ChatPanel
           style={{ position: 'static', width: '100%', maxWidth: 420, height: 320 }}
           messages={[

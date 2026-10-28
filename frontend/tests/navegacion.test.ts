@@ -40,7 +40,7 @@ test('el menú no enlaza a rutas que no existen: las rutas salen del registro de
   for (const modulo of MODULOS) {
     for (const ruta of modulo.rutas) rutasMontadas.add(ruta.path === '' ? '/' : `/${ruta.path}`);
   }
-  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/clientes', '/clientes/:id', '/clientes/prospectos', '/componentes', '/cuenta', '/informes', '/unidades', '/unidades/:id']);
+  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/bandeja', '/clientes', '/clientes/:id', '/clientes/prospectos', '/componentes', '/cuenta', '/envios', '/informes', '/unidades', '/unidades/:id']);
 
   // App.tsx no declara rutas de módulo a mano: las monta del registro (si no, el menú y el
   // enrutador podrían divergir).
@@ -99,7 +99,7 @@ test('un módulo sin pantalla no aparece en la barra lateral', () => {
       `${clave} no tiene pantalla y no debe ser pulsable`,
     );
   }
-  assert.deepEqual(conPantalla, ['panel', 'clientes', 'unidades', 'informes', 'asistente', 'componentes']);
+  assert.deepEqual(conPantalla, ['panel', 'clientes', 'unidades', 'bandeja', 'envios', 'informes', 'asistente', 'componentes']);
 });
 
 test('los permisos de la API filtran el menú: el empleado no ve Informes y el admin sí', () => {

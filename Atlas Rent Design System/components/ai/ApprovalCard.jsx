@@ -21,7 +21,7 @@ export function ApprovalCard({ agent, action, reason, record, current, proposed,
     </div>
     <div className="ar-approval__foot">
       <Button variant="ghost" size="sm" onClick={onReject}>Rechazar</Button>
-      <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit}>Modificar y aprobar</Button>
+      {onEdit && <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit}>Modificar y aprobar</Button>}
       <Button size="sm" icon="check" onClick={onApprove}>Aprobar</Button>
     </div>
   </div>;

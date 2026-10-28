@@ -9,8 +9,10 @@
  */
 export { modulo as asistente } from './asistente/rutas.ts';
 export { modulo as clientes } from './clientes/rutas.ts';
+export { modulo as bandeja } from './bandeja/rutas.ts';
 export { modulo as componentes } from './componentes/rutas.ts';
 export { modulo as cuenta } from './cuenta/rutas.ts';
+export { modulo as envios } from './envios/rutas.ts';
 export { modulo as informes } from './informes/rutas.ts';
 export { modulo as panel } from './panel/rutas.ts';
 export { modulo as unidades } from './unidades/rutas.ts';
