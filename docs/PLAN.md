@@ -140,6 +140,7 @@ La auditoría con agentes del 26/10/2026 (base V-01.00) encontró 21 problemas d
 | AUD-07 | Tests que no prueban lo prometido: BUG-051 | Cada punto (a)-(f) corregido | AUD-01 | HECHA (28/10/2026) |
 | AUD-08 | Pantallas de acceso y administración que faltan: segundo factor TOTP en el login, alta de MFA y códigos de recuperación, break-glass, refresco de sesión en el cliente, cambio de contraseña, desbloqueo de cuentas/IP, usuarios y permisos, configuración, clientes, inmuebles/unidades/documentos | El admin entra por la UI; revisión en claro/oscuro | AUD-02 | PENDIENTE |
 | AUD-09 | Pantallas de operación que faltan: reservas, cotizaciones, contratos, calendario, inventario, bandeja de aprobaciones, cuentas/cobros/facturas/fianzas, propuestas de IA | Ídem | AUD-04, AUD-05, AUD-08 | PENDIENTE |
+| AUD-11 | Huecos de API que bloquean las pantallas de AUD-08/09: lectura de catálogos para cobrar y facturar, alertas abiertas (F2-10), auditoría (lectura), enums y decimales como texto, campos que faltan en facturas y cobros, listados de bloqueos y emergencias, conversión de prospecto | Cada hueco con test de API por rol; la UI deja de depender de `configuracion.editar` para cobrar y facturar | AUD-09 | EN CURSO |
 | AUD-10 | Documentación y revisión: API de F2 en DOC_TECNICA; revisión de seguridad de cierre de fases (PROCEDIMIENTOS §5) | API de F2 documentada; revisión de seguridad hecha y registrada | AUD-02..AUD-09 | PENDIENTE |
 
 ---
