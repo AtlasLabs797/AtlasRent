@@ -41,6 +41,7 @@ internal static class GuardadoAuditado
         Func<TEntidad, object> datosAuditoria,
         Func<Task>? antesDeGuardar = null,
         Func<Task>? despuesDeGuardar = null,
+        Func<TResultado, Task<TResultado>>? enriquecer = null,
         bool enTransaccionDelLlamador = false,
         CancellationToken ct = default)
         where TEntidad : class, IEntidadTrazada
@@ -93,6 +94,13 @@ internal static class GuardadoAuditado
         }, ct);
 
         var respuesta = proyectar(fila);
+
+        // Datos que la proyección síncrona no puede calcular; van antes de guardar la respuesta
+        // idempotente para que un reintento devuelva lo mismo.
+        if (enriquecer is not null)
+        {
+            respuesta = await enriquecer(respuesta);
+        }
 
         await idempotencia.RegistrarAsync(usuario, mutacion, respuesta, ct);
 

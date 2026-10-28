@@ -78,6 +78,34 @@ public sealed class RespuestasEnriquecidasApiTests(ContenedorBdFixture bd, ApiTe
     }
 
     [Fact]
+    public async Task LasRespuestasDeEscrituraTraenLosMismosDatosFiscalesQueElDetalle()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var admin = await AyudaFacturas.SesionAsync(bd, api, Roles.Admin, ct);
+        var hoy = await AyudaFacturas.HoyAsync(admin, ct);
+        var clienteId = await AyudaFacturas.CrearClienteAsync(admin, ct);
+        var serieFiscal = await AyudaComprobante.SerieFiscalAsync(admin, ct);
+        await AyudaComprobante.NumeradorAsync(admin, serieFiscal, hoy, ct);
+        var borrador = await AyudaComprobante.BorradorAsync(admin, clienteId, serieFiscal, ct);
+
+        var emitida = await AyudaRetenciones.EmitirAsync(admin, borrador, ct);
+        emitida.GetProperty("comprobanteFiscal").GetString().Should().NotBeNullOrWhiteSpace(
+            "la respuesta de emitir ya trae el comprobante que acaba de asignar");
+        emitida.GetProperty("comprobanteFiscalId").GetGuid().Should().NotBeEmpty();
+
+        var detalle = await LeerAsync(admin, $"/api/v1/facturas/{borrador:D}", ct);
+        emitida.GetProperty("comprobanteFiscal").GetString()
+            .Should().Be(detalle.GetProperty("comprobanteFiscal").GetString());
+
+        // Otra escritura sobre la emitida (referencia de e-factura) tampoco pierde el dato.
+        var referencia = await admin.PutAsync(
+            $"/api/v1/facturas/{borrador:D}/referencia-efactura", new { referencia = "E31-PRUEBA" }, ct);
+        referencia.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await referencia.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("comprobanteFiscal")
+            .GetString().Should().Be(detalle.GetProperty("comprobanteFiscal").GetString());
+    }
+
+    [Fact]
     public async Task LaFacturaQueRetieneDevuelveElIdDeSuComprobanteDeRetencion()
     {
         var ct = TestContext.Current.CancellationToken;

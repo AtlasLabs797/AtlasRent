@@ -168,31 +168,58 @@ public sealed class ServicioFacturas(
         var ajustados = await cobros.AjustadoPorFacturaAsync([factura.Id], ct);
         var sinComprobante = await retenciones.SinComprobanteAsync([factura.Id], ct);
 
+        return await ConDatosFiscalesAsync(
+            ConCobro(
+                ARespuesta(factura),
+                cobrados.GetValueOrDefault(factura.Id),
+                ajustados.GetValueOrDefault(factura.Id),
+                sinComprobante.Contains(factura.Id)),
+            factura.ModificadaAt,
+            ct);
+    }
+
+    /// <summary>
+    /// Completa con los datos fiscales una respuesta de escritura (emitir, modificar, anular, líneas,
+    /// referencia de e-factura) para que diga lo mismo que el detalle. <c>ModificadaAt</c> se lee de la
+    /// base porque la entidad de la que sale la respuesta ya se guardó en la misma transacción.
+    /// </summary>
+    private async Task<FacturaRespuesta> EnriquecerEscrituraAsync(FacturaRespuesta r, CancellationToken ct)
+    {
+        var modificadaAt = await contexto.Factura.AsNoTracking()
+            .Where(f => f.Id == r.Id)
+            .Select(f => f.ModificadaAt)
+            .FirstOrDefaultAsync(ct);
+
+        return await ConDatosFiscalesAsync(r, modificadaAt, ct);
+    }
+
+    private async Task<FacturaRespuesta> ConDatosFiscalesAsync(
+        FacturaRespuesta respuesta,
+        DateTimeOffset? modificadaAt,
+        CancellationToken ct)
+    {
+        var facturaId = respuesta.Id;
+
         var comprobanteFiscal = await contexto.ComprobanteFiscal.AsNoTracking()
-            .Where(c => c.FacturaId == factura.Id)
+            .Where(c => c.FacturaId == facturaId)
             .Select(c => new { c.Id, c.Tipo, c.Numero })
             .FirstOrDefaultAsync(ct);
 
         var comprobanteRetencionId = await contexto.ComprobanteRetencion.AsNoTracking()
-            .Where(c => c.FacturaId == factura.Id)
+            .Where(c => c.FacturaId == facturaId)
             .Select(c => (Guid?)c.Id)
             .FirstOrDefaultAsync(ct);
 
         // Mismo criterio que la vista de cuentas: un envío fallido o pendiente no cuenta.
-        var modificadaAt = factura.ModificadaAt;
         var modificadaTrasEnvio = modificadaAt != null
             && await contexto.Envio.AsNoTracking().AnyAsync(e =>
                 e.TipoDocumento == TipoDocumentoEnvio.Factura
-                && e.DocumentoId == factura.Id
+                && e.DocumentoId == facturaId
                 && e.Estado != EstadoEnvio.Fallido
                 && e.Estado != EstadoEnvio.Pendiente
                 && (e.DocumentoModificadoAt == null || modificadaAt > e.DocumentoModificadoAt), ct);
 
-        return ConCobro(
-            ARespuesta(factura),
-            cobrados.GetValueOrDefault(factura.Id),
-            ajustados.GetValueOrDefault(factura.Id),
-            sinComprobante.Contains(factura.Id)) with
+        return respuesta with
         {
             ComprobanteFiscal = comprobanteFiscal is null
                 ? null
@@ -519,6 +546,7 @@ public sealed class ServicioFacturas(
                 RecalcularTotales(factura);
                 return Task.CompletedTask;
             },
+            enriquecer: r => EnriquecerEscrituraAsync(r, ct),
             ct: ct);
     }
 
@@ -643,6 +671,7 @@ public sealed class ServicioFacturas(
                 await retenciones.ReservarEnEmisionAsync(factura, usuario, ct);
             },
             enTransaccionDelLlamador: true,
+            enriquecer: r => EnriquecerEscrituraAsync(r, ct),
             ct: ct);
 
         if (transaccion is not null)
@@ -755,6 +784,7 @@ public sealed class ServicioFacturas(
             mutacion,
             proyectar: ARespuesta,
             datosAuditoria: c => DatosAuditoria(c),
+            enriquecer: r => EnriquecerEscrituraAsync(r, ct),
             ct: ct);
     }
 
@@ -828,6 +858,7 @@ public sealed class ServicioFacturas(
             },
             antesDeGuardar: async () => await AnularEnTransaccionAsync(factura, motivo, usuario, ip, devueltos, ct),
             enTransaccionDelLlamador: true,
+            enriquecer: r => EnriquecerEscrituraAsync(r, ct),
             ct: ct);
 
         await transaccion.CommitAsync(ct);
@@ -1680,6 +1711,7 @@ public sealed class ServicioFacturas(
                 Nueva = referencia,
             }),
             enTransaccionDelLlamador: false,
+            enriquecer: r => EnriquecerEscrituraAsync(r, ct),
             ct: ct);
 
         return respuesta;
@@ -2083,6 +2115,7 @@ public sealed class ServicioFacturas(
             mutacion,
             proyectar: ARespuesta,
             datosAuditoria: c => DatosAuditoria(c),
+            enriquecer: r => EnriquecerEscrituraAsync(r, ct),
             ct: ct);
     }
 
