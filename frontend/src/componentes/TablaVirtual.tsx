@@ -10,7 +10,7 @@ export interface TablaVirtualProps<Fila> {
   onRowClick?: (fila: Fila) => void;
   /** Alto visible de la tabla en px. El cuerpo hace scroll dentro; la cabecera queda fija. */
   alto?: number;
-  /** Alto de fila: el de `DataTable` (44px). */
+  /** Alto estimado de fila hasta que se mide la real (el DS la fija en su CSS). */
   altoFila?: number;
   empty?: string;
 }
@@ -28,7 +28,7 @@ export function TablaVirtual<Fila extends Record<string, unknown>>({
   rowKey = 'id',
   onRowClick,
   alto = 480,
-  altoFila = 44,
+  altoFila = 56,
   empty = 'Sin resultados',
 }: TablaVirtualProps<Fila>): JSX.Element {
   const contenedor = useRef<HTMLDivElement>(null);
@@ -74,8 +74,8 @@ export function TablaVirtual<Fila extends Record<string, unknown>>({
                   <tr
                     key={String(fila[rowKey] ?? item.index)}
                     data-index={item.index}
+                    ref={virtualizador.measureElement}
                     className={onRowClick ? 'is-clickable' : ''}
-                    style={{ height: altoFila }}
                     onClick={onRowClick ? () => onRowClick(fila) : undefined}
                   >
                     {columns.map((columna) => (

@@ -195,7 +195,7 @@ export function MuestraAmpliada(): JSX.Element {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-6)', alignItems: 'center' }}>
           <ProvenanceTag origin="factusol" />
           <ProvenanceTag origin="agente" />
-          <RestrictedValue>
+          <RestrictedValue allowed>
             <Money amount="1250.00" currency="USD" />
           </RestrictedValue>
           <RestrictedValue label={m.datos.soloGerencia} />

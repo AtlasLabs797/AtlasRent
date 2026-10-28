@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { useForm } from 'react-hook-form';
 import { confirmarAltaMfa, iniciarAltaMfa, type ActivacionMfa } from '../api/auth';
+import { aErrorApi } from '../api/errores';
 import { aplicarErroresApi } from '../api/formularios';
 import { Button } from '../design-system/components/core/Button';
 import { Alert } from '../design-system/components/feedback/Alert';
@@ -55,7 +56,8 @@ export function AltaMfa({ alTerminar, textoContinuar = t.continuar }: { alTermin
     try {
       setCodigos(await confirmarAltaMfa(codigo.trim()));
     } catch (e) {
-      setGeneral(aplicarErroresApi(e, setError, ['codigo'], t.invalido) ?? t.invalido);
+      // 401 = código incorrecto: el texto del producto explica mejor que el de la API por qué mirar la hora.
+      setGeneral(aErrorApi(e).status === 401 ? t.invalido : aplicarErroresApi(e, setError, ['codigo'], t.invalido));
     }
   }
 

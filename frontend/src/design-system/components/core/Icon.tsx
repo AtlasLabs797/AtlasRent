@@ -16,6 +16,16 @@ export interface IconProps {
   className?: string;
 }
 
+/**
+ * lucide-react 1.x quitó el sufijo numérico y renombró algunos iconos que el design system usa con su
+ * nombre antiguo. Sin este mapa caen en el círculo de reserva sin avisar.
+ */
+const ALIAS: Record<string, string> = {
+  'trash-2': 'trash',
+  'building-2': 'building',
+  'file-signature': 'file-pen-line',
+};
+
 /** "chevron-right" → "ChevronRight", que es como lucide-react exporta cada icono. */
 function nombreExportado(name: string): string {
   return name
@@ -26,7 +36,7 @@ function nombreExportado(name: string): string {
 
 export function Icon({ name, size = 16, color, style, className = '' }: IconProps): JSX.Element {
   const catalogo = icons as unknown as Record<string, LucideIcon>;
-  const Componente = catalogo[nombreExportado(name)] ?? Circle;
+  const Componente = catalogo[nombreExportado(ALIAS[name] ?? name)] ?? Circle;
   return (
     <Componente
       aria-hidden="true"
