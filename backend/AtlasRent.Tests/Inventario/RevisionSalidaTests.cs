@@ -79,7 +79,7 @@ public sealed class RevisionSalidaTests(ContenedorBdFixture bd, ApiTestFactoryBl
         var cuerpo = await leida.Content.ReadFromJsonAsync<JsonElement>(ct);
         cuerpo.GetProperty("id").GetGuid().Should().Be(primera.GetProperty("id").GetGuid());
         AyudaInventario.Estados(cuerpo).Should().AllBe("Presente");
-        cuerpo.GetProperty("importePropuesto").GetDecimal().Should().Be(0m);
+        cuerpo.GetProperty("importePropuesto").LeerDecimal().Should().Be(0m);
     }
 
     /// <summary>
@@ -110,7 +110,7 @@ public sealed class RevisionSalidaTests(ContenedorBdFixture bd, ApiTestFactoryBl
             ct: ct);
 
         firmada.GetProperty("contratoId").GetGuid().Should().Be(contratoId);
-        firmada.GetProperty("importePropuesto").GetDecimal().Should().Be(
+        firmada.GetProperty("importePropuesto").LeerDecimal().Should().Be(
             12_500m, "el importe del faltante queda en la revisión, que es contra lo que liquida F2-09");
 
         var lineas = firmada.GetProperty("lineas").EnumerateArray().ToList();

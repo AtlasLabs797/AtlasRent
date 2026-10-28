@@ -19,7 +19,7 @@ test('cuentas: el panel de cobro en otra moneda convierte, simula y registra con
   conSesion(api);
   catalogos(api, true);
   api.responder('GET', '/cuentas', { body: cuentasRespuesta(true) });
-  api.responder('GET', '/tipos-cambio/actual', { body: { fecha: '2026-10-28', moneda: 'DOP', valor: 59.5, id: null, fuente: 'Manual' } });
+  api.responder('GET', '/tipos-cambio/actual', { body: { fecha: '2026-10-28', moneda: 'DOP', valor: '59.500000', id: null, fuente: 'Manual' } });
   api.responder('POST', '/cobros/simular', { body: SIMULACION });
   api.responder('POST', '/cobros', { body: COBRO });
   const claves: string[] = [];
@@ -108,8 +108,8 @@ test('factura: ficha, anular con efecto sobre los cobros y emitir con comprobant
   api.responder('GET', `/facturas/${FACTURA_ID}`, { body: FACTURA });
   api.responder('POST', `/facturas/${FACTURA_ID}/simular-anulacion`, {
     body: {
-      facturaId: FACTURA_ID, numero: 412, estado: 'Emitida', netoACobrar: 1000, comprobanteFiscalSeAnula: true, numeroSeConserva: true,
-      cobrosQueSeAnulan: [{ cobroId: COBRO_ID, fechaEfectiva: '2026-10-10', moneda: 'USD', importeRecibido: 400, importeDeEstaFactura: 400, importeQueSigueVigente: 0, cambioDelSaldoAFavor: 0, seAnulaEntero: true }],
+      facturaId: FACTURA_ID, numero: 412, estado: 'Emitida', netoACobrar: '1000.00', comprobanteFiscalSeAnula: true, numeroSeConserva: true,
+      cobrosQueSeAnulan: [{ cobroId: COBRO_ID, fechaEfectiva: '2026-10-10', moneda: 'USD', importeRecibido: '400.00', importeDeEstaFactura: '400.00', importeQueSigueVigente: '0.00', cambioDelSaldoAFavor: '0.00', seAnulaEntero: true }],
       cobrosQueSeToCan: [],
     },
   });
@@ -134,7 +134,7 @@ test('factura: ficha, anular con efecto sobre los cobros y emitir con comprobant
 
 test('factura en borrador: emitir enseña el motivo del 409', async ({ page, api }) => {
   conSesion(api);
-  api.responder('GET', `/facturas/${FACTURA_ID}`, { body: { ...FACTURA, estado: 'Borrador', numero: null, fechaEmision: null, pendiente: 1000 } });
+  api.responder('GET', `/facturas/${FACTURA_ID}`, { body: { ...FACTURA, estado: 'Borrador', numero: null, fechaEmision: null, pendiente: '1000.00' } });
   api.responder('POST', `/facturas/${FACTURA_ID}/emitir`, problema(409, 'VAL-409', 'No se puede guardar el cambio', 'El numerador fiscal de la serie 3 está agotado.'));
 
   await page.goto(`/facturas/${FACTURA_ID}`);
@@ -148,16 +148,16 @@ test('facturación periódica: simula, genera y enseña las fallidas con su moti
   catalogos(api, true);
   const item = {
     contratoId: '12345678-aaaa-bbbb-cccc-000000000001', clienteId: 'c', unidadId: 'u', moneda: 'USD', periodoInicio: '2026-11-01', periodoFin: '2026-11-30',
-    diasDelMes: 30, diasFacturables: 30, renta: 1000, importe: 1000, prorrateado: false, vencimiento: '2026-11-05', serieId: 's', serieNumero: 1,
+    diasDelMes: 30, diasFacturables: 30, renta: '1000.00', importe: '1000.00', prorrateado: false, vencimiento: '2026-11-05', serieId: 's', serieNumero: 1,
     serieGeneraComprobante: false, yaExiste: false, facturaExistenteId: null, facturaExistenteNumero: null, motivoOmision: null, facturaId: null, facturaNumero: null, seEmite: true,
   };
   api.responder('POST', '/facturas/periodicas/simular', {
-    body: { periodo: '2026-11-01', periodoInicio: '2026-11-01', periodoFin: '2026-11-30', diasDelMes: 30, serieId: 's', serieNumero: 1, serieTipo: 'Normal', serieGeneraComprobante: false, importeTotal: 1000, items: [item] },
+    body: { periodo: '2026-11-01', periodoInicio: '2026-11-01', periodoFin: '2026-11-30', diasDelMes: 30, serieId: 's', serieNumero: 1, serieTipo: 'Normal', serieGeneraComprobante: false, importeTotal: '1000.00', items: [item] },
   });
   api.responder('POST', '/facturas/periodicas/generar', {
     body: {
       periodo: '2026-11-01', periodoInicio: '2026-11-01', periodoFin: '2026-11-30', serieId: 's', serieNumero: 1, serieGeneraComprobante: false, contratosIndicados: true,
-      creadas: 0, omitidas: 0, importeEmitido: 0, facturas: [], omitidos: [], fallidas: 1, fallidos: [{ contratoId: item.contratoId, motivo: 'La serie no admite la moneda del contrato.' }],
+      creadas: 0, omitidas: 0, importeEmitido: '0.00', facturas: [], omitidos: [], fallidas: 1, fallidos: [{ contratoId: item.contratoId, motivo: 'La serie no admite la moneda del contrato.' }],
     },
   });
 
@@ -194,7 +194,7 @@ test('fianza: resumen y devolución parcial exige motivo', async ({ page, api })
   conSesion(api);
   api.responder('GET', `/fianzas/${FIANZA_ID}`, {
     body: {
-      fianza: { id: FIANZA_ID, contratoId: 'bbbbbbbb-0000-0000-0000-000000000001', importeExigido: 1000, moneda: 'USD', numeroFianzas: 1, cobrado: 1000, devuelto: 0, descontado: 0, saldo: 1000, estado: 'Retenida', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-01-01T00:00:00Z' },
+      fianza: { id: FIANZA_ID, contratoId: 'bbbbbbbb-0000-0000-0000-000000000001', importeExigido: '1000.00', moneda: 'USD', numeroFianzas: 1, cobrado: '1000.00', devuelto: '0.00', descontado: '0.00', saldo: '1000.00', estado: 'Retenida', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-01-01T00:00:00Z' },
       devoluciones: [],
     },
   });

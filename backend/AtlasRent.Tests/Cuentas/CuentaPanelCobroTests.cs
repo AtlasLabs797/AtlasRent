@@ -63,8 +63,8 @@ public sealed class CuentaPanelCobroTests(ContenedorBdFixture bd, ApiTestFactory
         var propuestas = Propuestas(simulacion);
         propuestas.Should().ContainSingle();
         propuestas[0].GetProperty("facturaId").GetGuid().Should().Be(marcada);
-        propuestas[0].GetProperty("importe").GetDecimal().Should().Be(400m, "su pendiente entero");
-        propuestas[0].GetProperty("pendienteAntes").GetDecimal().Should().Be(400m);
+        propuestas[0].GetProperty("importe").LeerDecimal().Should().Be(400m, "su pendiente entero");
+        propuestas[0].GetProperty("pendienteAntes").LeerDecimal().Should().Be(400m);
 
         var ids = Propuestas(simulacion)
             .Select(p => p.GetProperty("facturaId").GetGuid())
@@ -106,7 +106,7 @@ public sealed class CuentaPanelCobroTests(ContenedorBdFixture bd, ApiTestFactory
 
         propuestas.Should().ContainSingle("el importe solo cubre la factura más antigua");
         propuestas[0].GetProperty("facturaId").GetGuid().Should().Be(antigua);
-        propuestas[0].GetProperty("importe").GetDecimal().Should().Be(300m);
+        propuestas[0].GetProperty("importe").LeerDecimal().Should().Be(300m);
         propuestas[0].GetProperty("facturaId").GetGuid().Should().NotBe(reciente);
     }
 
@@ -145,12 +145,12 @@ public sealed class CuentaPanelCobroTests(ContenedorBdFixture bd, ApiTestFactory
 
         propuestas.Should().HaveCount(2);
         propuestas[0].GetProperty("facturaId").GetGuid().Should().Be(primera);
-        propuestas[0].GetProperty("importe").GetDecimal().Should().Be(300m, "entera");
+        propuestas[0].GetProperty("importe").LeerDecimal().Should().Be(300m, "entera");
         propuestas[1].GetProperty("facturaId").GetGuid().Should().Be(segunda);
-        propuestas[1].GetProperty("importe").GetDecimal().Should().Be(200m, "lo que queda del cobro");
+        propuestas[1].GetProperty("importe").LeerDecimal().Should().Be(200m, "lo que queda del cobro");
 
-        simulacion.GetProperty("totalAsignado").GetDecimal().Should().Be(500m);
-        simulacion.GetProperty("excedente").GetDecimal().Should().Be(0m);
+        simulacion.GetProperty("totalAsignado").LeerDecimal().Should().Be(500m);
+        simulacion.GetProperty("excedente").LeerDecimal().Should().Be(0m);
     }
 
     /// <summary>

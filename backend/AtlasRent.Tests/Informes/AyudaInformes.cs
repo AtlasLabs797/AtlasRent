@@ -67,18 +67,18 @@ internal static class AyudaInformes
     /// espera quien lee el gráfico.
     /// </summary>
     public static decimal Consolidado(this JsonElement bloque) =>
-        bloque.GetProperty("consolidadoUsd").GetDecimal();
+        bloque.GetProperty("consolidadoUsd").LeerDecimal();
 
-    public static decimal Usd(this JsonElement bloque) => bloque.GetProperty("usd").GetDecimal();
+    public static decimal Usd(this JsonElement bloque) => bloque.GetProperty("usd").LeerDecimal();
 
-    public static decimal Dop(this JsonElement bloque) => bloque.GetProperty("dop").GetDecimal();
+    public static decimal Dop(this JsonElement bloque) => bloque.GetProperty("dop").LeerDecimal();
 
     /// <summary>Un número de la serie mensual, para el gráfico.</summary>
     public static decimal SerieDe(JsonElement resumen, string mes, string columna) =>
         resumen.GetProperty("serieMensual").EnumerateArray()
             .Single(s => s.GetProperty("mes").GetString() == mes)
             .GetProperty(columna)
-            .GetDecimal();
+            .LeerDecimal();
 
     /// <summary>Un día de negocio de la respuesta, en su forma de la API.</summary>
     public static DateOnly Fecha(JsonElement elemento) =>

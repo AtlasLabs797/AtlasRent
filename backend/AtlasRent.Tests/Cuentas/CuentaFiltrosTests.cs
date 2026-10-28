@@ -272,7 +272,7 @@ public sealed class CuentaFiltrosTests(ContenedorBdFixture bd, ApiTestFactoryBlo
         filas.Should().ContainSingle(f => f.GetProperty("id").GetGuid() == tocada);
         AyudaCuentas.Contiene(vista, normal).Should().BeFalse();
         filas[0].GetProperty("modificada").GetBoolean().Should().BeTrue();
-        filas[0].GetProperty("total").GetDecimal().Should().Be(450m, "y con el importe nuevo");
+        filas[0].GetProperty("total").LeerDecimal().Should().Be(450m, "y con el importe nuevo");
     }
 
     /// <summary>Las fianzas entran por defecto y se pueden quitar.</summary>

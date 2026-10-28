@@ -88,7 +88,7 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
 
         // El resultado va como número porque el enum está mapeado a entero (docs/DOC_TECNICA §4.1):
         // Aprobada es 2.
-        fichaResuelta.GetProperty("solicitudes")[0].GetProperty("resultado").GetInt32().Should().Be(2);
+        fichaResuelta.GetProperty("solicitudes")[0].GetProperty("resultado").GetString().Should().Be("Aprobada");
         fichaResuelta.GetProperty("solicitudes")[0].GetProperty("resueltoPorId").ValueKind
             .Should().Be(JsonValueKind.String, "quién resolvió queda escrito, no solo cuándo");
     }
@@ -607,8 +607,8 @@ public sealed class BandejaAprobacionesTests(ContenedorBdFixture bd, ApiTestFact
                 DateOnly.Parse(e.GetProperty("fechaFinVigente").GetString()!, CultureInfo.InvariantCulture),
                 e.GetProperty("rentaVigente").ValueKind == JsonValueKind.Null
                     ? null
-                    : e.GetProperty("rentaVigente").GetDecimal(),
-                e.GetProperty("rentaPropuesta").GetDecimal(),
+                    : e.GetProperty("rentaVigente").LeerDecimal(),
+                e.GetProperty("rentaPropuesta").LeerDecimal(),
                 e.GetProperty("moneda").GetString()!,
                 e.GetProperty("hayCambioDeRenta").GetBoolean(),
                 e.GetProperty("huellaContenido").GetString()!,

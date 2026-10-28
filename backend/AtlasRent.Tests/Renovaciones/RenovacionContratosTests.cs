@@ -627,14 +627,14 @@ public sealed class RenovacionContratosTests(ContenedorBdFixture bd, ApiTestFact
             await empleado.GetAsync($"/api/v1/contratos/{contratoId:D}/incrementos", ct), ct);
         incremento.GetArrayLength().Should().Be(1);
         incremento[0].GetProperty("tipo").GetString().Should().Be("Porcentaje");
-        incremento[0].GetProperty("porcentaje").GetDecimal().Should().Be(10m);
+        incremento[0].GetProperty("porcentaje").LeerDecimal().Should().Be(10m);
         incremento[0].GetProperty("importe").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
         incremento[0].GetProperty("aplicado").GetBoolean().Should().BeTrue();
 
         var bloques = await AyudaReserva.Json(
             await gerente.GetAsync($"/api/v1/contratos/{contratoId:D}/bloques", ct), ct);
         bloques.GetArrayLength().Should().Be(1);
-        bloques[0].GetProperty("renta").GetDecimal().Should().Be(55_000m);
+        bloques[0].GetProperty("renta").LeerDecimal().Should().Be(55_000m);
 
         // Los tres roles leen: `contrato.borrador` está en el techo de los tres (matriz de §2).
         using var admin = await SesionAsync(Roles.Admin, ct);

@@ -255,7 +255,7 @@ test('reservas: facturar una corta con serie (admin) emite y avisa de que el ant
   api.responder('GET', `/reservas/${RESERVA_ID}`, { body: reservaDetalle() });
   api.responder('GET', '/config/series', { body: pagina([{ id: 'se1', numero: 1, prefijo: 'A', moneda: 'USD', activa: true }]) });
   api.responder('POST', `/reservas/${RESERVA_ID}/factura`, {
-    body: { facturaId: 'fa1', reservaId: RESERVA_ID, numero: 412, total: 120, moneda: 'USD', vencimiento: '2026-11-03', anticipoAviso: 'La reserva tiene un anticipo anotado de 30,00 USD: es una nota, no un cobro.' },
+    body: { facturaId: 'fa1', reservaId: RESERVA_ID, numero: 412, total: '120.00', moneda: 'USD', vencimiento: '2026-11-03', anticipoAviso: 'La reserva tiene un anticipo anotado de 30,00 USD: es una nota, no un cobro.' },
   });
   await page.goto(`/reservas/${RESERVA_ID}`);
   await page.getByRole('button', { name: 'Facturar reserva' }).click();
@@ -270,7 +270,7 @@ test('reservas: facturar una corta con serie (admin) emite y avisa de que el ant
 
 test('contratos: el listado entiende el estado numérico y la ficha enseña el Stepper del flujo', async ({ page, api }) => {
   conSesion(api);
-  api.responder('GET', '/contratos', { body: pagina([contratoResumen(), contratoResumen({ id: 'c2', estado: 5, unidad: 'B-202', fechaBajaProgramada: '2026-12-31' })]) });
+  api.responder('GET', '/contratos', { body: pagina([contratoResumen(), contratoResumen({ id: 'c2', estado: 'BajaProgramada', unidad: 'B-202', fechaBajaProgramada: '2026-12-31' })]) });
   api.responder('GET', `/contratos/${CONTRATO_ID}`, { body: contratoDetalle('Activo') });
   await page.goto('/contratos');
   await expect(page.getByRole('heading', { name: 'Contratos', level: 1 })).toBeVisible();
@@ -300,8 +300,8 @@ test('contratos: aprobar y rechazar solo con contrato.estado; el empleado ve el 
 test('contratos: el gerente aprueba y rechaza con comentario obligatorio', async ({ page, api }) => {
   conSesion(api);
   api.responder('GET', `/contratos/${CONTRATO_ID}`, { body: contratoDetalle('PendienteAprobacion') });
-  api.responder('POST', `/contratos/${CONTRATO_ID}/rechazo`, { body: contratoResumen({ estado: 1 }) });
-  api.responder('POST', `/contratos/${CONTRATO_ID}/aprobacion`, { body: contratoResumen({ estado: 3 }) });
+  api.responder('POST', `/contratos/${CONTRATO_ID}/rechazo`, { body: contratoResumen({ estado: 'Borrador' }) });
+  api.responder('POST', `/contratos/${CONTRATO_ID}/aprobacion`, { body: contratoResumen({ estado: 'Aprobado' }) });
   await page.goto(`/contratos/${CONTRATO_ID}`);
   await page.getByRole('button', { name: 'Rechazar' }).click();
   const dialogo = page.getByRole('dialog');
@@ -318,7 +318,7 @@ test('contratos: el gerente aprueba y rechaza con comentario obligatorio', async
 test('contratos: la baja se programa en cualquier fecha desde hoy; finalizar no está disponible hasta que llegue la fecha', async ({ page, api }) => {
   conSesion(api);
   api.responder('GET', `/contratos/${CONTRATO_ID}`, { body: contratoDetalle('Activo') });
-  api.responder('POST', `/contratos/${CONTRATO_ID}/baja`, { body: contratoResumen({ estado: 5 }) });
+  api.responder('POST', `/contratos/${CONTRATO_ID}/baja`, { body: contratoResumen({ estado: 'BajaProgramada' }) });
   await page.goto(`/contratos/${CONTRATO_ID}`);
   await page.getByRole('button', { name: 'Dar de baja' }).click();
   const dialogo = page.getByRole('dialog');
@@ -362,7 +362,7 @@ test('contratos: incrementos con fecha, cuerpo con porcentaje o importe y cancel
   api.responder('POST', `/contratos/${CONTRATO_ID}/incrementos`, { status: 201, body: incrementos[0] });
   await page.goto(`/contratos/${CONTRATO_ID}`);
   await page.getByRole('tab', { name: /Incrementos/ }).click();
-  await expect(page.getByText('5 %')).toBeVisible();
+  await expect(page.getByText('5,00 %')).toBeVisible();
   await expect(page.getByText('Aplicado')).toBeVisible();
   await page.getByRole('button', { name: 'Nuevo incremento' }).click();
   await page.getByLabel(/^Porcentaje \(un 5 % es 5\)/).fill('4,5');
@@ -377,7 +377,7 @@ test('contratos: inventario congelado y revisión de salida firmada entera, con 
   api.responder('GET', `/contratos/${CONTRATO_ID}`, { body: contratoDetalle('Finalizado', { fechaFinReal: '2026-10-01' }) });
   api.responder('GET', `/contratos/${CONTRATO_ID}/inventario`, { body: inventario });
   api.responder('GET', `/contratos/${CONTRATO_ID}/revision-inventario`, problema(404, 'SEG-009', 'No encontrado', 'El contrato no tiene revisión de inventario firmada todavía.'));
-  api.responder('POST', `/contratos/${CONTRATO_ID}/revision-inventario`, { status: 201, body: { id: 'rv', contratoId: CONTRATO_ID, firmadaAt: '2026-10-02T15:00:00Z', firmadaPorId: null, importePropuesto: 45.1, observacion: null, lineas: [] } });
+  api.responder('POST', `/contratos/${CONTRATO_ID}/revision-inventario`, { status: 201, body: { id: 'rv', contratoId: CONTRATO_ID, firmadaAt: '2026-10-02T15:00:00Z', firmadaPorId: null, importePropuesto: '45.10', observacion: null, lineas: [] } });
   await page.goto(`/contratos/${CONTRATO_ID}`);
   await page.getByRole('tab', { name: /Inventario y salida/ }).click();
   await expect(page.getByText('Lámpara de pie').first()).toBeVisible();

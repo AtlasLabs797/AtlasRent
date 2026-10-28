@@ -70,10 +70,10 @@ public sealed class CuentaColumnasTests(ContenedorBdFixture bd, ApiTestFactoryBl
         factura.GetProperty("unidad").GetString().Should().NotBeNullOrWhiteSpace();
         factura.GetProperty("concepto").GetString().Should().NotBeNullOrWhiteSpace();
         factura.GetProperty("moneda").GetString().Should().Be(nameof(Moneda.USD));
-        factura.GetProperty("total").GetDecimal().Should().Be(300m);
-        factura.GetProperty("retencion").GetDecimal().Should().Be(0m);
-        factura.GetProperty("cobrado").GetDecimal().Should().Be(0m);
-        factura.GetProperty("pendiente").GetDecimal().Should().Be(300m);
+        factura.GetProperty("total").LeerDecimal().Should().Be(300m);
+        factura.GetProperty("retencion").LeerDecimal().Should().Be(0m);
+        factura.GetProperty("cobrado").LeerDecimal().Should().Be(0m);
+        factura.GetProperty("pendiente").LeerDecimal().Should().Be(300m);
         factura.GetProperty("saldoADevolver").ValueKind.Should().Be(JsonValueKind.Null);
         factura.GetProperty("vencimiento").GetString().Should().Be(escenario.Hoy.AddDays(10).ToString("yyyy-MM-dd"));
         factura.GetProperty("diasVencida").GetInt32().Should().Be(0);
@@ -87,7 +87,7 @@ public sealed class CuentaColumnasTests(ContenedorBdFixture bd, ApiTestFactoryBl
         var proforma = filas.Single(f => f.GetProperty("id").GetGuid() == proformaId);
 
         proforma.GetProperty("tipo").GetString().Should().Be("Proforma");
-        proforma.GetProperty("total").GetDecimal().Should().Be(900m, "su importe sí se ve");
+        proforma.GetProperty("total").LeerDecimal().Should().Be(900m, "su importe sí se ve");
         proforma.GetProperty("comprobanteTipo").ValueKind.Should().Be(JsonValueKind.Null);
         proforma.GetProperty("comprobanteNumero").ValueKind.Should().Be(JsonValueKind.Null);
         proforma.GetProperty("retencion").ValueKind.Should().Be(JsonValueKind.Null, "no hay retención que pedir");
@@ -109,9 +109,9 @@ public sealed class CuentaColumnasTests(ContenedorBdFixture bd, ApiTestFactoryBl
         fianza.GetProperty("serieNumero").ValueKind.Should().Be(JsonValueKind.Null);
         fianza.GetProperty("numero").ValueKind.Should().Be(JsonValueKind.Null);
         fianza.GetProperty("comprobanteTipo").ValueKind.Should().Be(JsonValueKind.Null);
-        fianza.GetProperty("total").GetDecimal().Should().Be(500m, "el total de la fianza es lo exigido");
+        fianza.GetProperty("total").LeerDecimal().Should().Be(500m, "el total de la fianza es lo exigido");
         fianza.GetProperty("retencion").ValueKind.Should().Be(JsonValueKind.Null, "una fianza no retiene");
-        fianza.GetProperty("saldoADevolver").GetDecimal().Should().Be(0m);
+        fianza.GetProperty("saldoADevolver").LeerDecimal().Should().Be(0m);
         fianza.GetProperty("vencimiento").ValueKind.Should().Be(JsonValueKind.Null, "una fianza no vence");
         fianza.GetProperty("diasVencida").ValueKind.Should().Be(JsonValueKind.Null);
         fianza.GetProperty("vencida").ValueKind.Should().Be(JsonValueKind.Null);
@@ -176,8 +176,8 @@ public sealed class CuentaColumnasTests(ContenedorBdFixture bd, ApiTestFactoryBl
             .Should().BeTrue("la reserva con anticipo anotado se marca con un icono");
 
         // La fila es de dinero: la factura existe y se ve con su total y su pendiente.
-        fila.GetProperty("total").GetDecimal().Should().Be(500m);
-        fila.GetProperty("pendiente").GetDecimal().Should().Be(500m, "el anticipo es una nota, no un cobro (D10)");
+        fila.GetProperty("total").LeerDecimal().Should().Be(500m);
+        fila.GetProperty("pendiente").LeerDecimal().Should().Be(500m, "el anticipo es una nota, no un cobro (D10)");
         fila.GetProperty("estadoEnvio").ValueKind.Should().Be(JsonValueKind.Null);
     }
 

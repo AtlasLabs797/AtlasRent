@@ -98,7 +98,7 @@ export const claveTarifa = (m: ModalidadAlquiler, moneda: Moneda): string => `${
 export function valoresUnidad(u?: Partial<Unidad> | null): ValoresUnidad {
   const tarifas: Record<string, string> = {};
   for (const t of u?.tarifas ?? []) tarifas[claveTarifa(t.modalidad, t.moneda)] = normalizarDecimal(t.importe);
-  const num = (n: number | null | undefined) => (n == null ? '' : String(n));
+  const num = (n: number | string | null | undefined) => (n == null ? '' : String(n));
   return {
     nombre: u?.nombre ?? '',
     tipo: u?.tipo ?? 'Apartamento',

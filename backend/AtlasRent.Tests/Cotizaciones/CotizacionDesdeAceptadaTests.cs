@@ -60,13 +60,13 @@ public sealed class CotizacionDesdeAceptadaTests(ContenedorBdFixture bd, ApiTest
         copiados.GetProperty("clienteId").GetGuid().Should().Be(clienteId);
         copiados.GetProperty("unidadId").GetGuid().Should().Be(unidadId, "la unidad cotizada viene copiada");
         copiados.GetProperty("moneda").GetString().Should().Be("DOP");
-        copiados.GetProperty("total").GetDecimal().Should().Be(45000m);
+        copiados.GetProperty("total").LeerDecimal().Should().Be(45000m);
 
         var linea = copiados.GetProperty("lineas")[0];
         linea.GetProperty("descripcion").GetString().Should().Be("Mensualidad");
-        linea.GetProperty("cantidad").GetDecimal().Should().Be(1m);
-        linea.GetProperty("precioUnitario").GetDecimal().Should().Be(45000m);
-        linea.GetProperty("importe").GetDecimal().Should().Be(45000m);
+        linea.GetProperty("cantidad").LeerDecimal().Should().Be(1m);
+        linea.GetProperty("precioUnitario").LeerDecimal().Should().Be(45000m);
+        linea.GetProperty("importe").LeerDecimal().Should().Be(45000m);
     }
 
     /// <summary>

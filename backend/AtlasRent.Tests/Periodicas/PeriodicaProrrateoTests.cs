@@ -72,7 +72,7 @@ public sealed class PeriodicaProrrateoTests(ContenedorBdFixture bd, ApiTestFacto
         item.GetProperty("diasDelMes").GetInt32().Should().Be(diasDelMes);
         item.GetProperty("diasFacturables").GetInt32().Should().Be(diasFacturables);
         item.GetProperty("prorrateado").GetBoolean().Should().BeTrue();
-        item.GetProperty("importe").GetDecimal().Should().Be(importeEsperado);
+        item.GetProperty("importe").LeerDecimal().Should().Be(importeEsperado);
 
         // Y lo que sale de verdad, leído de la factura en la base.
         await AyudaPeriodicas.GenerarAsync(
@@ -109,7 +109,7 @@ public sealed class PeriodicaProrrateoTests(ContenedorBdFixture bd, ApiTestFacto
         item.GetProperty("diasFacturables").GetInt32().Should().Be(31);
         item.GetProperty("diasDelMes").GetInt32().Should().Be(31);
         item.GetProperty("prorrateado").GetBoolean().Should().BeFalse("no hay nada que prorratear");
-        item.GetProperty("importe").GetDecimal().Should().Be(renta);
+        item.GetProperty("importe").LeerDecimal().Should().Be(renta);
 
         await AyudaPeriodicas.GenerarAsync(admin, AyudaPeriodicas.Peticion(periodo, serieId, [contratoId]), ct);
 

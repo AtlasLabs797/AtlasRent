@@ -20,8 +20,8 @@ import type { Unidad } from '../src/modulos/unidades/tipos.ts';
 const unidad: Unidad = {
   id: 'u1', inmuebleId: 'i1', nombre: 'Apto 2B', tipo: 'Apartamento', propietariaId: 'prop-1', facturadoraPorDefectoId: 'fact-1',
   estadoManual: 'Mantenimiento', modalidades: ['Mensual', 'DiaCompleto'],
-  tarifas: [{ modalidad: 'Mensual', moneda: 'USD', importe: 1250.5 }, { modalidad: 'DiaCompleto', moneda: 'DOP', importe: 8000 }],
-  metrosCuadrados: 82.5, capacidad: 4, habitaciones: 2, banos: 1.5, medidor: null, notas: null, activo: true, createdAt: '2026-10-01T00:00:00Z',
+  tarifas: [{ modalidad: 'Mensual', moneda: 'USD', importe: '1250.50' }, { modalidad: 'DiaCompleto', moneda: 'DOP', importe: '8000.00' }],
+  metrosCuadrados: '82.50', capacidad: 4, habitaciones: 2, banos: '1.50', medidor: null, notas: null, activo: true, createdAt: '2026-10-01T00:00:00Z',
 };
 
 test('los importes de tarifa viajan como string decimal con 2 decimales, sin coma flotante', () => {

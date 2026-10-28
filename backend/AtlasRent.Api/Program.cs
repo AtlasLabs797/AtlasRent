@@ -234,6 +234,9 @@ builder.Services.AddControllers(opciones =>
     // no solo en los que llevan el atributo (que ya no hace falta, pero no estorba).
     json.JsonSerializerOptions.UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow;
     json.JsonSerializerOptions.Converters.Add(new AtlasRent.Api.DTOs.ImporteJsonConverter());
+    // Todo enum sale como texto; en la entrada se siguen aceptando enteros. Los atributos por tipo o
+    // campo mandan sobre este conversor global.
+    json.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
 });
 
 // F1-12: copia de seguridad cifrada de la base de datos y de los documentos, con rotación. El

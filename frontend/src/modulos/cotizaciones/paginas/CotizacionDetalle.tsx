@@ -1,3 +1,4 @@
+import { formatearNumero } from '../../../dominio/dinero.ts';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { aErrorApi } from '../../../api/errores';
@@ -119,7 +120,7 @@ export default function CotizacionDetalle() {
             rowKey="posicion"
             columns={[
               { key: 'descripcion', label: t.formulario.descripcion },
-              { key: 'cantidad', label: t.formulario.cantidad, align: 'right', render: (l: CotizacionLinea) => <span className="mono">{l.cantidad}</span> },
+              { key: 'cantidad', label: t.formulario.cantidad, align: 'right', render: (l: CotizacionLinea) => <span className="mono">{formatearNumero(l.cantidad)}</span> },
               { key: 'precio', label: t.formulario.precio, align: 'right', render: (l: CotizacionLinea) => <Money amount={l.precioUnitario} currency={c.moneda} /> },
               { key: 'importe', label: t.formulario.importe, align: 'right', render: (l: CotizacionLinea) => <Money amount={l.importe} currency={c.moneda} /> },
             ]}

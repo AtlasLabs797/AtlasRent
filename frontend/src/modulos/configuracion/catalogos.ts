@@ -82,7 +82,7 @@ export const ITBIS: DefinicionCatalogo = {
   ],
   columnas: [
     { key: 'nombre', etiqueta: t.impuestos.itbis.columnas.nombre, formato: texto('nombre') },
-    { key: 'porcentaje', etiqueta: t.impuestos.itbis.columnas.porcentaje, align: 'right', mono: true, formato: (f) => formatearPorcentaje(f.porcentaje as number) },
+    { key: 'porcentaje', etiqueta: t.impuestos.itbis.columnas.porcentaje, align: 'right', mono: true, formato: (f) => formatearPorcentaje(f.porcentaje as string) },
   ],
 };
 
@@ -103,7 +103,7 @@ export const RETENCIONES: DefinicionCatalogo = {
   ],
   columnas: [
     { key: 'nombre', etiqueta: t.impuestos.retencion.columnas.nombre, formato: texto('nombre') },
-    { key: 'porcentaje', etiqueta: t.impuestos.retencion.columnas.porcentaje, align: 'right', mono: true, formato: (f) => formatearPorcentaje(f.porcentaje as number) },
+    { key: 'porcentaje', etiqueta: t.impuestos.retencion.columnas.porcentaje, align: 'right', mono: true, formato: (f) => formatearPorcentaje(f.porcentaje as string) },
     { key: 'base', etiqueta: t.impuestos.retencion.columnas.base, formato: (f) => (t.impuestos.bases as Record<string, string>)[String(f.base)] ?? String(f.base) },
     { key: 'esDefecto', etiqueta: t.impuestos.retencion.columnas.defecto, formato: (f) => (f.esDefecto ? t.comun.si : t.comun.no) },
   ],

@@ -7,8 +7,8 @@ import { normalizarDecimal } from '../../dominio/dinero.ts';
  * tecleado. Redondeo half-up (`MidpointRounding.AwayFromZero`) como el backend.
  */
 
-/** Lo que llega de la API (JSON number) o se teclea (string). Siempre se pasa por `aDecimal` antes de operar. */
-export type Importe = string | number;
+/** Lo que llega de la API o se teclea (string decimal). Siempre se pasa por `aDecimal` antes de operar. */
+export type Importe = string;
 
 const DIEZ = 10n;
 

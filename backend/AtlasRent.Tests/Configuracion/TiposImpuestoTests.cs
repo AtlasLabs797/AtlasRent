@@ -249,7 +249,7 @@ public sealed class TiposImpuestoTests(ContenedorBdFixture bd, ApiTestFactory ap
         }
 
         return filas.Should().ContainSingle(t => t.GetProperty("id").GetGuid() == id)
-            .Which.GetProperty("porcentaje").GetDecimal();
+            .Which.GetProperty("porcentaje").LeerDecimal();
     }
 
     /// <summary>

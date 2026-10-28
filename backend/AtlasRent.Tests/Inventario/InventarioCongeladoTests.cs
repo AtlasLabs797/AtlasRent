@@ -60,7 +60,7 @@ public sealed class InventarioCongeladoTests(ContenedorBdFixture bd, ApiTestFact
         elementos.Select(e => e.GetProperty("nombre").GetString()).Should().Equal(
             TresElementos.Select(e => e.Nombre),
             "la copia sale en el orden en que el empleado los escribió");
-        elementos.Select(e => e.GetProperty("cantidad").GetDecimal()).Should().Equal(
+        elementos.Select(e => e.GetProperty("cantidad").LeerDecimal()).Should().Equal(
             TresElementos.Select(e => e.Cantidad));
         elementos.Select(e => e.GetProperty("notas").GetString()).Should().Equal(
             TresElementos.Select(e => e.Notas));
@@ -83,7 +83,7 @@ public sealed class InventarioCongeladoTests(ContenedorBdFixture bd, ApiTestFact
         baseActual.StatusCode.Should().Be(HttpStatusCode.OK, await baseActual.Cuerpo());
         var trasEditar = await Elementos(baseActual, ct);
         trasEditar[0].GetProperty("nombre").GetString().Should().Be("Colchón de dos plazas");
-        trasEditar[0].GetProperty("cantidad").GetDecimal().Should().Be(3);
+        trasEditar[0].GetProperty("cantidad").LeerDecimal().Should().Be(3);
 
         // Pero la copia congelada sigue con lo que había el día de la entrada.
         var trasActivar = await AyudaInventario.InventarioContratoAsync(empleado, contratoId, ct);
@@ -92,7 +92,7 @@ public sealed class InventarioCongeladoTests(ContenedorBdFixture bd, ApiTestFact
         copia.Select(e => e.GetProperty("nombre").GetString()).Should().Equal(
             TresElementos.Select(e => e.Nombre),
             "editar el inventario base no reescribe lo que ya se firmó");
-        copia.Select(e => e.GetProperty("cantidad").GetDecimal()).Should().Equal(
+        copia.Select(e => e.GetProperty("cantidad").LeerDecimal()).Should().Equal(
             TresElementos.Select(e => e.Cantidad));
         copia.Select(e => e.GetProperty("notas").GetString()).Should().Equal(
             TresElementos.Select(e => e.Notas));
@@ -169,7 +169,7 @@ public sealed class InventarioCongeladoTests(ContenedorBdFixture bd, ApiTestFact
         trasFirmar.Should().HaveCount(3, "firmar la revisión no borra la foto que se firmó");
         trasFirmar.Select(e => e.GetProperty("nombre").GetString()).Should().Equal(
             TresElementos.Select(e => e.Nombre));
-        trasFirmar.Select(e => e.GetProperty("cantidad").GetDecimal()).Should().Equal(
+        trasFirmar.Select(e => e.GetProperty("cantidad").LeerDecimal()).Should().Equal(
             TresElementos.Select(e => e.Cantidad));
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);

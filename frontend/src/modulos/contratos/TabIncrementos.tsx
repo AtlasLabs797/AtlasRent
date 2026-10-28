@@ -1,3 +1,4 @@
+import { formatearNumero } from '../../dominio/dinero.ts';
 import { useEffect, useState, type JSX } from 'react';
 import { Button } from '../../design-system/components/core/Button';
 import { Badge } from '../../design-system/components/core/Badge';
@@ -55,7 +56,7 @@ export function TabIncrementos({ contratoId, moneda, puedeEscribir, permitido }:
               key: 'valor',
               label: t.columnas.valor,
               align: 'right',
-              render: (i: Incremento) => (i.tipo === 'Porcentaje' ? <span className="mono">{i.porcentaje} %</span> : <Money amount={i.importe ?? 0} currency={moneda} />),
+              render: (i: Incremento) => (i.tipo === 'Porcentaje' ? <span className="mono">{formatearNumero(i.porcentaje ?? '0')} %</span> : <Money amount={i.importe ?? '0'} currency={moneda} />),
             },
             { key: 'vigencia', label: t.columnas.vigencia, align: 'right', render: (i: Incremento) => <span className="mono">{formatearFecha(i.fechaVigencia)}</span> },
             {

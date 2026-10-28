@@ -91,8 +91,8 @@ public sealed class CobroCambioMonedaTests(ContenedorBdFixture bd, ApiTestFactor
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         leida.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(0m);
-        leida.GetProperty("cobrado").GetDecimal().Should().Be(1_000m);
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
+        leida.GetProperty("cobrado").LeerDecimal().Should().Be(1_000m);
     }
 
     /// <summary>
@@ -209,7 +209,7 @@ public sealed class CobroCambioMonedaTests(ContenedorBdFixture bd, ApiTestFactor
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         leida.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(pendiente);
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(pendiente);
     }
 
     /// <summary>
@@ -248,7 +248,7 @@ public sealed class CobroCambioMonedaTests(ContenedorBdFixture bd, ApiTestFactor
         var cobroId = (await equivocado.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
 
         var despuesDePagarMal = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
-        despuesDePagarMal.GetProperty("pendiente").GetDecimal().Should().Be(0.17m);
+        despuesDePagarMal.GetProperty("pendiente").LeerDecimal().Should().Be(0.17m);
 
         // Se anula el cobro con su motivo y se vuelve a registrar el mismo dinero con el cambio real.
         var anulacion = await sesion.PostAsync(
@@ -267,8 +267,8 @@ public sealed class CobroCambioMonedaTests(ContenedorBdFixture bd, ApiTestFactor
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         leida.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(0m);
-        leida.GetProperty("ajustado").GetDecimal().Should().Be(0m, "no hizo falta ajustar: se corrigió el cambio");
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
+        leida.GetProperty("ajustado").LeerDecimal().Should().Be(0m, "no hizo falta ajustar: se corrigió el cambio");
 
         (await AyudaCobros.AjustesAsync(bd, facturaId, ct))
             .Should().BeEmpty("la segunda salida de §3.10.2 no deja rastro de ajuste");
@@ -373,7 +373,7 @@ public sealed class CobroCambioMonedaTests(ContenedorBdFixture bd, ApiTestFactor
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
         leida.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
-        leida.GetProperty("ajustado").GetDecimal().Should().Be(0m);
+        leida.GetProperty("ajustado").LeerDecimal().Should().Be(0m);
     }
 
     /// <summary>

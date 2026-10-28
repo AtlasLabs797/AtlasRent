@@ -29,8 +29,8 @@ export interface InmuebleResumen {
 export interface Tarifa {
   modalidad: ModalidadAlquiler;
   moneda: Moneda;
-  /** La API serializa el decimal como número JSON; para mostrarlo se pasa por `formatearImporte`. */
-  importe: number | string;
+  /** String decimal (AGENTS §6); para mostrarlo se pasa por `formatearImporte`. */
+  importe: string;
 }
 
 export interface Unidad {
@@ -43,10 +43,10 @@ export interface Unidad {
   estadoManual: EstadoUnidad;
   modalidades: ModalidadAlquiler[];
   tarifas: Tarifa[];
-  metrosCuadrados: number | null;
+  metrosCuadrados: string | null;
   capacidad: number | null;
   habitaciones: number | null;
-  banos: number | null;
+  banos: string | null;
   medidor: string | null;
   notas: string | null;
   activo: boolean;

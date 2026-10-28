@@ -80,8 +80,8 @@ public sealed class CobroAuditoriaCobrosTests(ContenedorBdFixture bd, ApiTestFac
                 cuerpos.Add(await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct));
             }
 
-            cuerpos.Sum(c => c.GetProperty("totalAsignado").GetDecimal()).Should().Be(1_000m);
-            cuerpos.Sum(c => c.GetProperty("excedente").GetDecimal())
+            cuerpos.Sum(c => c.GetProperty("totalAsignado").LeerDecimal()).Should().Be(1_000m);
+            cuerpos.Sum(c => c.GetProperty("excedente").LeerDecimal())
                 .Should().Be(1_000m, $"ronda {ronda}: el segundo cobro no tenía deuda y su dinero es saldo a favor");
         }
     }

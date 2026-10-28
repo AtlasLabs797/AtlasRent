@@ -80,10 +80,10 @@ public sealed class IncrementoContratoTests(ContenedorBdFixture bd, ApiTestFacto
         var listado = await AyudaReserva.Json(await empleado.GetAsync(ruta, ct), ct);
         listado.GetArrayLength().Should().Be(2);
         listado[0].GetProperty("tipo").GetString().Should().Be("Porcentaje");
-        listado[0].GetProperty("porcentaje").GetDecimal().Should().Be(5m);
+        listado[0].GetProperty("porcentaje").LeerDecimal().Should().Be(5m);
         listado[0].GetProperty("aplicado").GetBoolean().Should().BeFalse();
         listado[0].GetProperty("cancelado").GetBoolean().Should().BeFalse();
-        listado[1].GetProperty("importe").GetDecimal().Should().Be(1_500m);
+        listado[1].GetProperty("importe").LeerDecimal().Should().Be(1_500m);
 
         // Y el suelto, en su endpoint.
         var suelto = await AyudaReserva.Json(

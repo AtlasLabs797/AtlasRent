@@ -64,8 +64,8 @@ public sealed class FacturaDocumentosTests(ContenedorBdFixture bd, ApiTestFactor
         copia.Estado.Should().Be(EstadoFactura.Borrador, "una copia nunca nace emitida");
         copia.Numero.Should().BeNull("y por tanto no consume número");
         copia.ReferenciaEfactura.Should().BeNull();
-        copia.Total.Should().Be(original.GetProperty("total").GetDecimal());
-        copia.Retencion.Should().Be(original.GetProperty("retencion").GetDecimal());
+        copia.Total.Should().Be(original.GetProperty("total").LeerDecimal());
+        copia.Retencion.Should().Be(original.GetProperty("retencion").LeerDecimal());
 
         var copiaJson = await AyudaCobros.FacturaAsync(sesion, copiaId, ct);
         var lineasOriginal = original.GetProperty("lineas").EnumerateArray().ToList();
@@ -74,8 +74,8 @@ public sealed class FacturaDocumentosTests(ContenedorBdFixture bd, ApiTestFactor
         lineasCopia.Should().HaveCount(lineasOriginal.Count);
         lineasCopia.Select(l => l.GetProperty("tipo").GetString())
             .Should().BeEquivalentTo(lineasOriginal.Select(l => l.GetProperty("tipo").GetString()));
-        lineasCopia.Select(l => l.GetProperty("importe").GetDecimal())
-            .Should().BeEquivalentTo(lineasOriginal.Select(l => l.GetProperty("importe").GetDecimal()));
+        lineasCopia.Select(l => l.GetProperty("importe").LeerDecimal())
+            .Should().BeEquivalentTo(lineasOriginal.Select(l => l.GetProperty("importe").LeerDecimal()));
 
         lineasCopia.Select(l => GuidDe(l, "tipoItbisId"))
             .Should().BeEquivalentTo(lineasOriginal.Select(l => GuidDe(l, "tipoItbisId")));
@@ -154,7 +154,7 @@ public sealed class FacturaDocumentosTests(ContenedorBdFixture bd, ApiTestFactor
         emitida.StatusCode.Should().Be(HttpStatusCode.OK, await emitida.Cuerpo());
 
         var proforma = await emitida.Content.ReadFromJsonAsync<JsonElement>(ct);
-        var total = proforma.GetProperty("total").GetDecimal();
+        var total = proforma.GetProperty("total").LeerDecimal();
 
         var convertida = await sesion.PostAsync(
             $"/api/v1/facturas/{proformaId:D}/convertir-proforma",
@@ -170,7 +170,7 @@ public sealed class FacturaDocumentosTests(ContenedorBdFixture bd, ApiTestFactor
         factura.GetProperty("serieId").GetGuid().Should().Be(serieFiscal, "la serie fiscal es la que emite");
         factura.GetProperty("numero").GetInt32().Should().BePositive();
         factura.GetProperty("moneda").GetString().Should().Be(nameof(Moneda.USD), "D7: la moneda no se toca");
-        factura.GetProperty("total").GetDecimal().Should().Be(total, "D7: los importes no se tocan");
+        factura.GetProperty("total").LeerDecimal().Should().Be(total, "D7: los importes no se tocan");
 
         var filaProforma = await AyudaCiclo.FilaAsync(bd, proformaId, ct);
         filaProforma.Estado.Should().Be(EstadoFactura.Convertida);

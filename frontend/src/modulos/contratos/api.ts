@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { clienteHttp } from '../../api/cliente';
-import type { EstadoContratoApi, ReglaRenovacionApi, TipoAnexoApi } from '../operacion/etiquetas.ts';
+import type { EstadoContratoApi, ReglaRenovacionApi, ResultadoSolicitudApi, TipoAnexoApi } from '../operacion/etiquetas.ts';
 import type { Importe, MonedaApi, Pagina } from '../operacion/tipos.ts';
 import type { EstadoRevisionApi, TipoIncrementoApi, cuerpoCambio, cuerpoContrato, cuerpoIncremento, cuerpoRevision } from './modelo.ts';
 
@@ -15,8 +15,7 @@ export interface ContratoResumen {
   fechaFinVigente: string;
   renta: Importe;
   moneda: MonedaApi;
-  /** Número (valor del enum) en el listado, texto en la ficha: usa `estadoContrato()`. */
-  estado: string | number;
+  estado: EstadoContratoApi;
   estadoActualDesde: string | null;
   fechaBajaProgramada: string | null;
   createdAt: string;
@@ -34,7 +33,7 @@ export interface VersionContrato {
 
 export interface SolicitudAprobacion {
   id: string;
-  resultado: string | number;
+  resultado: ResultadoSolicitudApi;
   huellaContenido: string;
   solicitadoAt: string;
   resueltoPorId: string | null;

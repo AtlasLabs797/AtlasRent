@@ -5,16 +5,16 @@ import { parametrosDeFiltros, type FiltrosInformes } from './filtros';
 /**
  * Informes económicos y dashboard (F5-01, `docs/ESPECIFICACION.md` §3.15).
  *
- * Los importes llegan como números de la API: el consolidado en dólares lo hace el backend con el
+ * Los importes llegan como string decimal de la API: el consolidado en dólares lo hace el backend con el
  * tipo de cambio congelado de cada documento. Aquí no se suma, se resta ni se convierte nada
  * (AGENTS.md §6): un informe que recalcula dinero en el navegador deja de cuadrar con la vista única.
  */
 
 /** Bloque de dinero: las dos monedas por separado y el consolidado en dólares (D9). */
 export interface ImporteInforme {
-  usd: number;
-  dop: number;
-  consolidadoUsd: number;
+  usd: string;
+  dop: string;
+  consolidadoUsd: string;
 }
 
 /** Cobrado por destino: a factura, a fianza o saldo a favor del contrato. */
@@ -41,8 +41,8 @@ export interface BloquePendienteInforme {
 /** Un mes del gráfico, en `AAAA-MM`, ya consolidado en dólares. */
 export interface SerieMensualInforme {
   mes: string;
-  facturadoUsd: number;
-  cobradoUsd: number;
+  facturadoUsd: string;
+  cobradoUsd: string;
 }
 
 export interface InformeResumenRespuesta {

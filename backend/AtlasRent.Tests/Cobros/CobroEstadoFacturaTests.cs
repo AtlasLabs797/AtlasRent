@@ -44,8 +44,8 @@ public sealed class CobroEstadoFacturaTests(ContenedorBdFixture bd, ApiTestFacto
         var vencida = await AyudaCobros.EmitidaAsync(sesion, clienteId, contratoId, serieId, Moneda.USD, hoy.AddDays(-9), 500m, ct);
 
         var sinCobrar = await AyudaCobros.FacturaAsync(sesion, pagada, ct);
-        sinCobrar.GetProperty("cobrado").GetDecimal().Should().Be(0m);
-        sinCobrar.GetProperty("pendiente").GetDecimal().Should().Be(300m);
+        sinCobrar.GetProperty("cobrado").LeerDecimal().Should().Be(0m);
+        sinCobrar.GetProperty("pendiente").LeerDecimal().Should().Be(300m);
         sinCobrar.GetProperty("estadoCobro").GetString().Should().Be("Pendiente");
         sinCobrar.GetProperty("vencida").GetBoolean().Should().BeFalse();
 
@@ -59,8 +59,8 @@ public sealed class CobroEstadoFacturaTests(ContenedorBdFixture bd, ApiTestFacto
         primero.StatusCode.Should().Be(HttpStatusCode.OK, await primero.Cuerpo());
 
         var tercera = await AyudaCobros.FacturaAsync(sesion, vencida, ct);
-        tercera.GetProperty("cobrado").GetDecimal().Should().Be(200m);
-        tercera.GetProperty("pendiente").GetDecimal().Should().Be(300m);
+        tercera.GetProperty("cobrado").LeerDecimal().Should().Be(200m);
+        tercera.GetProperty("pendiente").LeerDecimal().Should().Be(300m);
         tercera.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
         tercera.GetProperty("vencida").GetBoolean().Should().BeTrue("su vencimiento fue hace nueve días");
 
@@ -75,14 +75,14 @@ public sealed class CobroEstadoFacturaTests(ContenedorBdFixture bd, ApiTestFacto
         segundo.StatusCode.Should().Be(HttpStatusCode.OK, await segundo.Cuerpo());
 
         var primera = await AyudaCobros.FacturaAsync(sesion, pagada, ct);
-        primera.GetProperty("cobrado").GetDecimal().Should().Be(300m);
-        primera.GetProperty("pendiente").GetDecimal().Should().Be(0m);
+        primera.GetProperty("cobrado").LeerDecimal().Should().Be(300m);
+        primera.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
         primera.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
         primera.GetProperty("vencida").GetBoolean().Should().BeFalse();
 
         var segunda = await AyudaCobros.FacturaAsync(sesion, parcial, ct);
-        segunda.GetProperty("cobrado").GetDecimal().Should().Be(200m);
-        segunda.GetProperty("pendiente").GetDecimal().Should().Be(200m);
+        segunda.GetProperty("cobrado").LeerDecimal().Should().Be(200m);
+        segunda.GetProperty("pendiente").LeerDecimal().Should().Be(200m);
         segunda.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
         segunda.GetProperty("vencida").GetBoolean().Should().BeFalse();
     }
@@ -112,8 +112,8 @@ public sealed class CobroEstadoFacturaTests(ContenedorBdFixture bd, ApiTestFacto
         cobro.StatusCode.Should().Be(HttpStatusCode.OK, await cobro.Cuerpo());
 
         var leida = await AyudaCobros.FacturaAsync(sesion, facturaId, ct);
-        leida.GetProperty("cobrado").GetDecimal().Should().Be(120m);
-        leida.GetProperty("pendiente").GetDecimal().Should().Be(180m);
+        leida.GetProperty("cobrado").LeerDecimal().Should().Be(120m);
+        leida.GetProperty("pendiente").LeerDecimal().Should().Be(180m);
         leida.GetProperty("estadoCobro").GetString().Should().Be("Parcial");
         leida.GetProperty("vencida").GetBoolean().Should().BeTrue();
     }
@@ -149,8 +149,8 @@ public sealed class CobroEstadoFacturaTests(ContenedorBdFixture bd, ApiTestFacto
         var fila = cuerpo.GetProperty("data").EnumerateArray()
             .Single(f => f.GetProperty("id").GetGuid() == facturaId);
 
-        fila.GetProperty("cobrado").GetDecimal().Should().Be(300m);
-        fila.GetProperty("pendiente").GetDecimal().Should().Be(0m);
+        fila.GetProperty("cobrado").LeerDecimal().Should().Be(300m);
+        fila.GetProperty("pendiente").LeerDecimal().Should().Be(0m);
         fila.GetProperty("estadoCobro").GetString().Should().Be("Pagada");
         fila.GetProperty("vencida").GetBoolean().Should().BeFalse();
     }

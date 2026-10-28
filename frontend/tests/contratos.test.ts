@@ -30,12 +30,12 @@ const valido: FormularioContrato = {
   clienteId: 'c', unidadId: 'u', facturadoraId: 'f', fechaInicio: '2026-11-01', renta: '1250,00', fianza: '2500', plantillaContratoId: 'ALQ-MENSUAL',
 };
 
-test('el estado numérico del resumen y el texto de la ficha dan el mismo estado', () => {
-  assert.equal(estadoContrato(4), 'Activo');
+test('el estado y el resultado llegan como texto; un valor desconocido no rompe', () => {
+  assert.equal(estadoContrato('Activo'), 'Activo');
   assert.equal(estadoContrato('BajaProgramada'), 'BajaProgramada');
-  assert.equal(estadoContrato(7), 'Liquidado');
-  assert.equal(estadoContrato(99), 'Borrador');
-  assert.equal(resultadoSolicitud(2), 'Aprobada');
+  assert.equal(estadoContrato('Liquidado'), 'Liquidado');
+  assert.equal(estadoContrato('Desconocido'), 'Borrador');
+  assert.equal(resultadoSolicitud('Aprobada'), 'Aprobada');
   assert.equal(resultadoSolicitud('Rechazada'), 'Rechazada');
 });
 

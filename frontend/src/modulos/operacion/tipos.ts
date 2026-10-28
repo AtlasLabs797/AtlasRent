@@ -1,9 +1,9 @@
 /**
  * Contratos de la API que comparten calendario, cotizaciones, reservas y contratos. Los importes
- * llegan como número JSON (el backend serializa `decimal` así) y salen como string decimal: ninguna
+ * viajan siempre como string decimal (el backend serializa `decimal` así): ninguna
  * aritmética de dinero en el frontend salvo la vista previa de `cotizaciones/calculo.ts`.
  */
-export type Importe = number | string;
+export type Importe = string;
 export type MonedaApi = 'USD' | 'DOP';
 export type ModalidadApi = 'Mensual' | 'MedioDia' | 'DiaCompleto';
 

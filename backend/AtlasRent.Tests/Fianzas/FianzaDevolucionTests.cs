@@ -58,7 +58,7 @@ public sealed class FianzaDevolucionTests(ContenedorBdFixture bd, ApiTestFactory
 
         var leida = await AyudaFianzas.LeerAsync(admin, fianzaId, ct);
         leida.GetProperty("estado").GetString().Should().Be(nameof(EstadoFianza.Devuelta));
-        leida.GetProperty("saldo").GetDecimal().Should().Be(0m);
+        leida.GetProperty("saldo").LeerDecimal().Should().Be(0m);
     }
 
     /// <summary>

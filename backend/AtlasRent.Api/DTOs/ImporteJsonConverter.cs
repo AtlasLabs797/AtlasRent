@@ -38,6 +38,11 @@ public sealed class ImporteJsonConverter : JsonConverter<decimal>
         return valor;
     }
 
+    /// <summary>
+    /// AGENTS.md §6: en TypeScript el dinero es un string decimal. Se escribe con cultura invariante
+    /// y la escala que trae el valor (<c>"1500.00"</c> de <c>numeric(18,2)</c>, seis decimales en un
+    /// tipo de cambio), sin pasar por <c>double</c> en el navegador.
+    /// </summary>
     public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options) =>
-        writer.WriteNumberValue(value);
+        writer.WriteStringValue(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
 }

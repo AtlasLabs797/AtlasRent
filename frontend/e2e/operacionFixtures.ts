@@ -53,13 +53,13 @@ export const unidad = {
   estadoManual: 'Disponible',
   modalidades: ['Mensual', 'MedioDia', 'DiaCompleto'],
   tarifas: [
-    { modalidad: 'Mensual', moneda: 'USD', importe: 1250.5 },
-    { modalidad: 'DiaCompleto', moneda: 'USD', importe: 120 },
+    { modalidad: 'Mensual', moneda: 'USD', importe: '1250.50' },
+    { modalidad: 'DiaCompleto', moneda: 'USD', importe: '120.00' },
   ],
-  metrosCuadrados: 62,
+  metrosCuadrados: '62.00',
   capacidad: 4,
   habitaciones: 2,
-  banos: 1,
+  banos: '1.00',
   medidor: null,
   notas: null,
   activo: true,
@@ -145,8 +145,8 @@ export function cotizacionResumen(sobre: Record<string, unknown> = {}) {
     unidadNombre: 'A-101',
     estado: 'Borrador',
     moneda: 'USD',
-    subtotal: 1500.01,
-    total: 1500.01,
+    subtotal: '1500.01',
+    total: '1500.01',
     lineas: 2,
     activo: true,
     createdAt: '2026-10-20T15:30:00Z',
@@ -160,8 +160,8 @@ export function cotizacionDetalle(sobre: Record<string, unknown> = {}) {
   return {
     ...resumen,
     lineas: [
-      { posicion: 1, descripcion: 'Renta mensual', cantidad: 1, precioUnitario: 1250.5, importe: 1250.5 },
-      { posicion: 2, descripcion: 'Limpieza inicial', cantidad: 2.5, precioUnitario: 99.8, importe: 249.51 },
+      { posicion: 1, descripcion: 'Renta mensual', cantidad: '1.00', precioUnitario: '1250.50', importe: '1250.50' },
+      { posicion: 2, descripcion: 'Limpieza inicial', cantidad: '2.50', precioUnitario: '99.80', importe: '249.51' },
     ],
   };
 }
@@ -182,8 +182,8 @@ export function reservaResumen(sobre: Record<string, unknown> = {}) {
     estado: 'Activa',
     modalidad: 'MedioDia',
     moneda: 'USD',
-    importe: 120,
-    anticipoImporte: 30,
+    importe: '120.00',
+    anticipoImporte: '30.00',
     fechaReserva: '2026-10-20',
     entradaPrevista: '2026-11-03',
     salidaPrevista: '2026-11-03',
@@ -227,10 +227,10 @@ export function contratoResumen(sobre: Record<string, unknown> = {}) {
     facturadoraId: FACTURADORA_ID,
     fechaInicio: '2026-01-01',
     fechaFinVigente: '2026-12-31',
-    renta: 1250.5,
+    renta: '1250.50',
     moneda: 'USD',
     // El listado manda el enum como número (sin conversor): 4 = Activo.
-    estado: 4,
+    estado: 'Activo',
     estadoActualDesde: '2026-01-01',
     fechaBajaProgramada: null,
     createdAt: '2025-12-20T15:30:00Z',
@@ -251,10 +251,10 @@ export function contratoDetalle(estado: string, sobre: Record<string, unknown> =
     duracionInicialMeses: 12,
     fechaFinInicial: '2026-12-31',
     fechaFinVigente: '2026-12-31',
-    renta: 1250.5,
+    renta: '1250.50',
     moneda: 'USD',
     diaPago: 5,
-    fianza: 2501,
+    fianza: '2501.00',
     reglaRenovacion: 'Anual',
     renovacionMeses: 12,
     plantillaContratoId: 'ALQ-MENSUAL',
@@ -266,22 +266,22 @@ export function contratoDetalle(estado: string, sobre: Record<string, unknown> =
     fechaBajaProgramada: null,
     fechaFinReal: null,
     observaciones: null,
-    versiones: [{ numero: 2, cambio: 'renta 1200.00 -> 1250.50', rentaAnterior: 1200, rentaNueva: 1250.5, moneda: 'USD', alcance: 'Facturas futuras', createdAt: '2026-06-01T14:00:00Z' }],
+    versiones: [{ numero: 2, cambio: 'renta 1200.00 -> 1250.50', rentaAnterior: '1200.00', rentaNueva: '1250.50', moneda: 'USD', alcance: 'Facturas futuras', createdAt: '2026-06-01T14:00:00Z' }],
     // Resultado sin conversor: número (2 = Aprobada).
-    solicitudes: [{ id: 's1', resultado: 2, huellaContenido: 'abc', solicitadoAt: '2025-12-27T15:00:00Z', resueltoPorId: null, resueltoAt: '2025-12-28T15:00:00Z', comentario: 'Conforme', motivoCaducidad: null }],
+    solicitudes: [{ id: 's1', resultado: 'Aprobada', huellaContenido: 'abc', solicitadoAt: '2025-12-27T15:00:00Z', resueltoPorId: null, resueltoAt: '2025-12-28T15:00:00Z', comentario: 'Conforme', motivoCaducidad: null }],
     createdAt: '2025-12-20T15:30:00Z',
     ...sobre,
   };
 }
 
 export const incrementos = [
-  { id: 'i1', tipo: 'Porcentaje', porcentaje: 5, importe: null, fechaVigencia: '2027-01-01', aplicado: false, aplicadoAt: null, cancelado: false, canceladoAt: null, rentaAntes: null, rentaDespues: null },
-  { id: 'i2', tipo: 'ImporteFijo', porcentaje: null, importe: 50, fechaVigencia: '2026-06-01', aplicado: true, aplicadoAt: '2026-06-01T04:00:00Z', cancelado: false, canceladoAt: null, rentaAntes: 1200, rentaDespues: 1250.5 },
+  { id: 'i1', tipo: 'Porcentaje', porcentaje: '5.00', importe: null, fechaVigencia: '2027-01-01', aplicado: false, aplicadoAt: null, cancelado: false, canceladoAt: null, rentaAntes: null, rentaDespues: null },
+  { id: 'i2', tipo: 'ImporteFijo', porcentaje: null, importe: '50.00', fechaVigencia: '2026-06-01', aplicado: true, aplicadoAt: '2026-06-01T04:00:00Z', cancelado: false, canceladoAt: null, rentaAntes: '1200.00', rentaDespues: '1250.50' },
 ];
 
 export const inventario = [
-  { id: 'it1', inventarioBaseId: null, nombre: 'Sofá', cantidad: 1, notas: null, orden: 1 },
-  { id: 'it2', inventarioBaseId: null, nombre: 'Lámpara de pie', cantidad: 2, notas: 'Una con pantalla beige', orden: 2 },
+  { id: 'it1', inventarioBaseId: null, nombre: 'Sofá', cantidad: '1.00', notas: null, orden: 1 },
+  { id: 'it2', inventarioBaseId: null, nombre: 'Lámpara de pie', cantidad: '2.00', notas: 'Una con pantalla beige', orden: 2 },
 ];
 
 export const plantilla = {

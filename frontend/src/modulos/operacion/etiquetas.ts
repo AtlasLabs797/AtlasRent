@@ -49,22 +49,15 @@ export const ESTADOS_CONTRATO: Record<EstadoContratoApi, EtiquetaEstado> = {
   Liquidado: { texto: 'Liquidado', tono: 'neutral' },
 };
 
-/**
- * `ContratoResumen.Estado` y `SolicitudAprobacionRespuesta.Resultado` salen del backend sin
- * conversor de enum: llegan como número (el valor del enum, empezando en 1). La ficha
- * (`ContratoRespuesta`) sí los manda como texto. Esta función acepta las dos formas.
- * TODO(A#): añadir `JsonConverter(typeof(JsonStringEnumConverter<…>))` a esos dos campos del DTO.
- */
-export function estadoContrato(valor: string | number): EstadoContratoApi {
-  if (typeof valor === 'number') return FLUJO_CONTRATO[valor - 1] ?? 'Borrador';
+/** Estado del contrato tal como llega (texto); un valor desconocido cae en Borrador. */
+export function estadoContrato(valor: string): EstadoContratoApi {
   return (FLUJO_CONTRATO as readonly string[]).includes(valor) ? (valor as EstadoContratoApi) : 'Borrador';
 }
 
 export type ResultadoSolicitudApi = 'Pendiente' | 'Aprobada' | 'Rechazada' | 'Caducada';
 const RESULTADOS: ResultadoSolicitudApi[] = ['Pendiente', 'Aprobada', 'Rechazada', 'Caducada'];
 
-export function resultadoSolicitud(valor: string | number): ResultadoSolicitudApi {
-  if (typeof valor === 'number') return RESULTADOS[valor - 1] ?? 'Pendiente';
+export function resultadoSolicitud(valor: string): ResultadoSolicitudApi {
   return (RESULTADOS as string[]).includes(valor) ? (valor as ResultadoSolicitudApi) : 'Pendiente';
 }
 

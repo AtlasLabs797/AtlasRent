@@ -59,14 +59,14 @@ public sealed class CobroRegistroTests(ContenedorBdFixture bd, ApiTestFactory ap
         var asignadas = propuesta.GetProperty("asignaciones").EnumerateArray().ToList();
         asignadas.Should().HaveCount(3);
         asignadas[0].GetProperty("facturaId").GetGuid().Should().Be(antigua, "la más antigua se paga primero");
-        asignadas[0].GetProperty("importe").GetDecimal().Should().Be(300m);
+        asignadas[0].GetProperty("importe").LeerDecimal().Should().Be(300m);
         asignadas[1].GetProperty("facturaId").GetGuid().Should().Be(media);
-        asignadas[1].GetProperty("importe").GetDecimal().Should().Be(300m);
+        asignadas[1].GetProperty("importe").LeerDecimal().Should().Be(300m);
         asignadas[2].GetProperty("facturaId").GetGuid().Should().Be(tardia);
-        asignadas[2].GetProperty("importe").GetDecimal().Should().Be(50m, "un cobro parcial no se salta a la siguiente");
+        asignadas[2].GetProperty("importe").LeerDecimal().Should().Be(50m, "un cobro parcial no se salta a la siguiente");
 
-        propuesta.GetProperty("totalAsignado").GetDecimal().Should().Be(650m);
-        propuesta.GetProperty("excedente").GetDecimal().Should().Be(0m);
+        propuesta.GetProperty("totalAsignado").LeerDecimal().Should().Be(650m);
+        propuesta.GetProperty("excedente").LeerDecimal().Should().Be(0m);
 
         var registrado = await sesion.PostAsync(
             "/api/v1/cobros",
@@ -163,7 +163,7 @@ public sealed class CobroRegistroTests(ContenedorBdFixture bd, ApiTestFactory ap
             ct);
 
         deMas.StatusCode.Should().Be(HttpStatusCode.OK, await deMas.Cuerpo());
-        (await deMas.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("excedente").GetDecimal()
+        (await deMas.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("excedente").LeerDecimal()
             .Should().Be(100m);
 
         (await AyudaCobros.SaldoAsync(bd, contratoId, Moneda.USD, ct))
@@ -179,8 +179,8 @@ public sealed class CobroRegistroTests(ContenedorBdFixture bd, ApiTestFactory ap
 
         conCredito.StatusCode.Should().Be(HttpStatusCode.OK, await conCredito.Cuerpo());
         var cuerpo = await conCredito.Content.ReadFromJsonAsync<JsonElement>(ct);
-        cuerpo.GetProperty("saldoFavorUsado").GetDecimal().Should().Be(100m);
-        cuerpo.GetProperty("excedente").GetDecimal().Should().Be(0m, "los 100 de crédito y los 50 nuevos cubren los 150");
+        cuerpo.GetProperty("saldoFavorUsado").LeerDecimal().Should().Be(100m);
+        cuerpo.GetProperty("excedente").LeerDecimal().Should().Be(0m, "los 100 de crédito y los 50 nuevos cubren los 150");
 
         (await AyudaCobros.SaldoAsync(bd, contratoId, Moneda.USD, ct))
             .Should().Be(0m, "el crédito gastado no queda de saldo");
@@ -234,7 +234,7 @@ public sealed class CobroRegistroTests(ContenedorBdFixture bd, ApiTestFactory ap
             ct);
 
         sinPedir.StatusCode.Should().Be(HttpStatusCode.OK, await sinPedir.Cuerpo());
-        (await sinPedir.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("saldoFavorUsado").GetDecimal()
+        (await sinPedir.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("saldoFavorUsado").LeerDecimal()
             .Should().Be(0m);
 
         (await AyudaCobros.SaldoAsync(bd, contratoId, Moneda.USD, ct))

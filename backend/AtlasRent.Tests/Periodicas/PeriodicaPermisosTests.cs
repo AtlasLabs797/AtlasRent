@@ -83,7 +83,7 @@ public sealed class PeriodicaPermisosTests(ContenedorBdFixture bd, ApiTestFactor
 
         // Para el que sí puede, la simulación responde el importe sin tocar nada.
         var simulacion = await AyudaPeriodicas.SimularAsync(admin, peticion, ct);
-        AyudaPeriodicas.UnItem(simulacion).GetProperty("importe").GetDecimal()
+        AyudaPeriodicas.UnItem(simulacion).GetProperty("importe").LeerDecimal()
             .Should().Be(AyudaPeriodicas.RentaDePrueba);
 
         await using var contexto = bd.CrearContexto(bd.CadenaApp);

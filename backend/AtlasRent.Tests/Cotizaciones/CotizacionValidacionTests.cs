@@ -36,9 +36,9 @@ public sealed class CotizacionValidacionTests(ContenedorBdFixture bd, ApiTestFac
             await gerente.GetAsync($"/api/v1/cotizaciones/{id:D}", ct), ct);
 
         var linea = cotizacion.GetProperty("lineas")[0];
-        linea.GetProperty("importe").GetDecimal().Should().Be(0.11m, "0,105 sube a 0,11, no baja a 0,10");
-        cotizacion.GetProperty("total").GetDecimal().Should().Be(0.11m, "el total es la suma de las líneas");
-        cotizacion.GetProperty("subtotal").GetDecimal().Should().Be(0.11m, "sin impuestos, el subtotal es el total");
+        linea.GetProperty("importe").LeerDecimal().Should().Be(0.11m, "0,105 sube a 0,11, no baja a 0,10");
+        cotizacion.GetProperty("total").LeerDecimal().Should().Be(0.11m, "el total es la suma de las líneas");
+        cotizacion.GetProperty("subtotal").LeerDecimal().Should().Be(0.11m, "sin impuestos, el subtotal es el total");
     }
 
     /// <summary>
@@ -66,9 +66,9 @@ public sealed class CotizacionValidacionTests(ContenedorBdFixture bd, ApiTestFac
             await gerente.GetAsync($"/api/v1/cotizaciones/{id:D}", ct), ct);
 
         cotizacion.GetProperty("lineas").EnumerateArray()
-            .Select(l => l.GetProperty("importe").GetDecimal())
+            .Select(l => l.GetProperty("importe").LeerDecimal())
             .Should().Equal([0.11m, 0.11m]);
-        cotizacion.GetProperty("total").GetDecimal().Should().Be(0.22m, "0,11 + 0,11");
+        cotizacion.GetProperty("total").LeerDecimal().Should().Be(0.22m, "0,11 + 0,11");
     }
 
     /// <summary>El total de varias líneas es la suma de sus importes, en el orden del documento.</summary>
@@ -92,9 +92,9 @@ public sealed class CotizacionValidacionTests(ContenedorBdFixture bd, ApiTestFac
         var cotizacion = await AyudaCotizacion.Json(
             await gerente.GetAsync($"/api/v1/cotizaciones/{id:D}", ct), ct);
 
-        cotizacion.GetProperty("lineas")[1].GetProperty("importe").GetDecimal()
+        cotizacion.GetProperty("lineas")[1].GetProperty("importe").LeerDecimal()
             .Should().Be(1351.65m, "3 × 450,55");
-        cotizacion.GetProperty("total").GetDecimal()
+        cotizacion.GetProperty("total").LeerDecimal()
             .Should().Be(25000m + 1351.65m + 500m);
         cotizacion.GetProperty("lineas").EnumerateArray()
             .Select(l => l.GetProperty("posicion").GetInt32())
@@ -213,7 +213,7 @@ public sealed class CotizacionValidacionTests(ContenedorBdFixture bd, ApiTestFac
             await gerente.GetAsync($"/api/v1/cotizaciones/{id:D}", ct), ct);
 
         cotizacion.GetProperty("lineas").GetArrayLength().Should().Be(2);
-        cotizacion.GetProperty("total").GetDecimal().Should().Be(30700m);
+        cotizacion.GetProperty("total").LeerDecimal().Should().Be(30700m);
     }
 
     /// <summary>La baja es lógica: la fila se queda, con su activo a false.</summary>

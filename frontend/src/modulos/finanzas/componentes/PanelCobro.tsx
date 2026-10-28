@@ -38,7 +38,7 @@ export interface PanelCobroProps {
 }
 
 /** Importe tecleado de 6 decimales sin ceros de relleno por encima de 2 ("59.500000" -> "59.50"). */
-function cambioParaMostrar(valor: string | number): string {
+function cambioParaMostrar(valor: string): string {
   return aDecimal(valor, 6).replace(/(\.\d{2}\d*?)0+$/, '$1');
 }
 
@@ -50,7 +50,7 @@ export function PanelCobro({ seleccion, onCerrar, onRegistrado }: PanelCobroProp
   const [form, setForm] = useState<FormularioCobro>(() => ({
     fechaEfectiva: fechaHoyNegocio(),
     monedaRecibida: filas[0]!.moneda,
-    importeRecibido: mismaMoneda ? sumarImportes(filas.map((f) => f.pendiente ?? 0)) : '',
+    importeRecibido: mismaMoneda ? sumarImportes(filas.map((f) => f.pendiente ?? '0')) : '',
     formaPagoId: '',
     cuentaReceptoraId: '',
     referencia: '',
@@ -159,7 +159,7 @@ export function PanelCobro({ seleccion, onCerrar, onRegistrado }: PanelCobroProp
               <span className="mono">
                 {f.tipo === 'Fianza' ? textosFinanzas.cuentas.tipos.Fianza : numeroDocumento(f.serieNumero, f.numero)} · {f.cliente}
               </span>
-              <Money amount={f.pendiente ?? 0} currency={f.moneda} />
+              <Money amount={f.pendiente ?? '0'} currency={f.moneda} />
             </div>
           ))}
         </section>

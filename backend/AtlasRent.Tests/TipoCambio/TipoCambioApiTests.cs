@@ -147,7 +147,7 @@ public sealed class TipoCambioApiTests(ContenedorBdFixture bd, ApiTestFactory ap
         dolar.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var cuerpo = await dolar.Content.ReadFromJsonAsync<JsonElement>(ct);
-        cuerpo.GetProperty("valor").GetDecimal().Should().Be(1m, "el dólar es la base de informes (D9)");
+        cuerpo.GetProperty("valor").LeerDecimal().Should().Be(1m, "el dólar es la base de informes (D9)");
         cuerpo.GetProperty("id").ValueKind.Should().Be(JsonValueKind.Null, "y no tiene fila");
 
         await using (var contexto = bd.CrearContexto(bd.CadenaApp))
