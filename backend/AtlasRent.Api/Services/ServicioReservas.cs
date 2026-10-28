@@ -370,10 +370,10 @@ public sealed class ServicioReservas(
     /// Cambios de estado por fecha (§3.4), una pasada diaria desde el trabajo de las 07:00.
     /// <list type="bullet">
     /// <item>Corta activa cuyo último día ya pasó: <c>Completada</c>.</item>
-    /// <item>Mensual activa cuya entrada prevista llegó (o pasó) y cuyo contrato enlazado sigue sin
-    /// activar: <c>EnConflicto</c>. Sigue bloqueando hasta que el gerente decida, y el aviso lo
-    /// escribe el barrido de avisos de operación. TODO(A1): una mensual sin ningún contrato enlazado
-    /// no pasa a conflicto (§3.4 habla de "el contrato sigue en borrador"); ¿debe hacerlo también?</item>
+    /// <item>Mensual activa cuya entrada prevista llegó (o pasó) sin contrato activado: tanto si su
+    /// contrato sigue sin activar como si no se llegó a crear ninguno (decisión del responsable,
+    /// 28/10/2026), pasa a <c>EnConflicto</c>. Sigue bloqueando hasta que el gerente decida, y el
+    /// aviso lo escribe el barrido de avisos de operación.</item>
     /// </list>
     /// Idempotente: la condición de estado hace que una segunda pasada no encuentre nada.
     /// </summary>
@@ -390,10 +390,6 @@ public sealed class ServicioReservas(
         var mensuales = await contexto.Reserva.AsNoTracking()
             .Where(r => r.Estado == EstadoReserva.Activa && r.Activo && r.Tipo == TipoReserva.Mensual
                 && r.EntradaPrevista <= hoy
-                && contexto.Contrato.Any(c => c.ReservaId == r.Id
-                    && (c.Estado == EstadoContrato.Borrador
-                        || c.Estado == EstadoContrato.PendienteAprobacion
-                        || c.Estado == EstadoContrato.Aprobado))
                 && !contexto.Contrato.Any(c => c.ReservaId == r.Id
                     && c.Estado != EstadoContrato.Borrador
                     && c.Estado != EstadoContrato.PendienteAprobacion

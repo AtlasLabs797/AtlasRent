@@ -123,6 +123,34 @@ public sealed class ContratoDesdeReservaTests(ContenedorBdFixture bd, ApiTestFac
             .Should().BeTrue("en conflicto sigue bloqueando hasta que el gerente decida (§3.4)");
     }
 
+    /// <summary>
+    /// Decisión del responsable (28/10/2026): una mensual cuya entrada llega sin ningún contrato
+    /// creado también pasa a conflicto, sigue bloqueando y la decide el gerente.
+    /// </summary>
+    [Fact]
+    public async Task LlegaLaEntradaSinNingunContratoLaReservaPasaAConflictoYSigueBloqueando()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (empleado, gerente) = await SesionesAsync(ct);
+        using var _1 = empleado;
+        using var _2 = gerente;
+        var clienteId = await AyudaReserva.ClienteAsync(empleado, ct);
+        var unidadId = await AyudaReserva.UnidadAsync(empleado, ct);
+        var reservaId = await AyudaReserva.CrearAsync(
+            empleado, AyudaReserva.Mensual(clienteId, unidadId, AyudaContrato.Dia(0)), ct);
+
+        await using (var alcance = api.Services.CreateAsyncScope())
+        {
+            await alcance.ServiceProvider.GetRequiredService<ServicioReservas>().ProcesarFechasAsync(ct);
+        }
+
+        await using var contexto = bd.CrearContexto(bd.CadenaApp);
+        (await contexto.Reserva.AsNoTracking().SingleAsync(r => r.Id == reservaId, ct)).Estado
+            .Should().Be(EstadoReserva.EnConflicto);
+        (await contexto.OcupacionRango.AsNoTracking().AnyAsync(r => r.OrigenId == reservaId && r.Bloquea, ct))
+            .Should().BeTrue("en conflicto sigue bloqueando hasta que el gerente decida (§3.4)");
+    }
+
     [Theory]
     [InlineData("Mantenimiento")]
     [InlineData("FueraDeServicio")]
