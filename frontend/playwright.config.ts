@@ -3,9 +3,10 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * E2E con la API simulada (`e2e/apiFalsa.ts`): no hace falta backend ni base de datos. Se sirve el
  * build con `vite preview` en un puerto fijo y Playwright lo cierra al terminar (AGENTS.md §12: ningún
- * servidor se queda vivo). Solo Chromium.
+ * servidor se queda vivo). Solo Chromium. `E2E_PUERTO` permite que dos ejecuciones en checkouts
+ * distintos no choquen por el puerto.
  */
-const PUERTO = 4173;
+const PUERTO = Number(process.env.E2E_PUERTO ?? 4173);
 
 export default defineConfig({
   testDir: 'e2e',
