@@ -10,6 +10,7 @@
 export { modulo as asistente } from './asistente/rutas.ts';
 export { modulo as calendario } from './calendario/rutas.ts';
 export { modulo as componentes } from './componentes/rutas.ts';
+export { modulo as contratos } from './contratos/rutas.ts';
 export { modulo as cotizaciones } from './cotizaciones/rutas.ts';
 export { modulo as cuenta } from './cuenta/rutas.ts';
 export { modulo as informes } from './informes/rutas.ts';
