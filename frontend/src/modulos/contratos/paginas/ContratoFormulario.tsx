@@ -17,7 +17,7 @@ import { textos } from '../../../i18n/textos';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
 import { useTransferencia } from '../../cotizaciones/api';
-import { useClientes, useInmuebles } from '../../operacion/api';
+import { useClientes, useInmuebles, useUnidades } from '../../operacion/api';
 import { MONEDAS, REGLAS_RENOVACION, type ReglaRenovacionApi } from '../../operacion/etiquetas';
 import { SelectorUnidad } from '../../operacion/Selectores';
 import type { MonedaApi, UnidadConInmueble } from '../../operacion/tipos';
@@ -64,6 +64,7 @@ export default function ContratoFormulario() {
   const inmuebles = useInmuebles();
   const plantillas = usePlantillas();
   const guardar = useGuardarContrato(id);
+  const { unidades } = useUnidades();
 
   const { register, handleSubmit, watch, setValue, reset } = useForm<FormularioContrato>({ defaultValues: CONTRATO_VACIO });
   const [fallo, setFallo] = useState<unknown>(null);
@@ -92,6 +93,16 @@ export default function ContratoFormulario() {
 
   const v = watch();
   const errores = validarContrato(v);
+
+  // Si la unidad llega precargada (reserva o cotización), la subempresa y la plantilla salen de sus valores por defecto.
+  useEffect(() => {
+    if (id || !v.unidadId || v.facturadoraId) return;
+    const u = unidades.find((x) => x.id === v.unidadId);
+    if (!u) return;
+    setValue('facturadoraId', u.facturadoraPorDefectoId);
+    const inmueble = inmuebles.data?.data.find((i) => i.id === u.inmuebleId);
+    if (inmueble?.plantillaContratoPorDefecto && v.plantillaContratoId === '') setValue('plantillaContratoId', inmueble.plantillaContratoPorDefecto);
+  }, [id, v.unidadId, v.facturadoraId, v.plantillaContratoId, unidades, inmuebles.data, setValue]);
   const opcionesCliente = useMemo(() => (clientes.data?.data ?? []).map((c) => ({ value: c.id, label: c.nombre, sub: c.email ?? undefined, meta: `CLI-${String(c.numero).padStart(5, '0')}` })), [clientes.data]);
   const opcionesPlantilla = (plantillas.data?.data ?? []).filter((p) => p.activa || p.codigo === v.plantillaContratoId).map((p) => ({ value: p.codigo, label: `${p.nombre} · ${p.codigo}` }));
 

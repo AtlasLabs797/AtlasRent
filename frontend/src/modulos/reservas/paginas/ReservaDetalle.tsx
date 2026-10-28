@@ -143,7 +143,7 @@ export default function ReservaDetalle() {
         )}
       </div>
 
-      <FormularioReservaDrawer open={editando} reserva={r} onCerrar={() => setEditando(false)} onGuardada={() => setEditando(false)} />
+      {editando && <FormularioReservaDrawer open reserva={r} onCerrar={() => setEditando(false)} onGuardada={() => setEditando(false)} />}
 
       {/* El DELETE no lleva motivo (ReservasController.Cancelar): diálogo simple. TODO(A#): ¿cancelar debe pedir motivo? */}
       <Dialog

@@ -89,14 +89,16 @@ export default function Cotizaciones() {
         )}
       </Card>
 
+      {creando && (
       <FormularioCotizacionDrawer
-        open={creando}
+        open
         onCerrar={() => setCreando(false)}
         onGuardada={(id) => {
           setCreando(false);
           navegar(`/cotizaciones/${id}`);
         }}
       />
+      )}
     </>
   );
 }

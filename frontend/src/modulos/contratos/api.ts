@@ -263,16 +263,18 @@ export interface PlantillaAnexo {
   updatedAt: string | null;
 }
 
-export function usePlantillas() {
+export function usePlantillas(habilitado = true) {
   return useQuery({
     queryKey: ['contratos', 'plantillas'],
+    enabled: habilitado,
     queryFn: async () => (await clienteHttp.get<Pagina<PlantillaContrato>>('/plantillas-contrato', { params: { pageSize: 200 } })).data,
   });
 }
 
-export function useAnexos() {
+export function useAnexos(habilitado = true) {
   return useQuery({
     queryKey: ['contratos', 'anexos'],
+    enabled: habilitado,
     queryFn: async () => (await clienteHttp.get<Pagina<PlantillaAnexo>>('/plantillas-anexo', { params: { pageSize: 200, todos: true } })).data,
   });
 }

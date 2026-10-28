@@ -161,7 +161,7 @@ export default function CotizacionDetalle() {
         )}
       </div>
 
-      <FormularioCotizacionDrawer open={editando} cotizacion={c} onCerrar={() => setEditando(false)} onGuardada={() => setEditando(false)} />
+      {editando && <FormularioCotizacionDrawer open cotizacion={c} onCerrar={() => setEditando(false)} onGuardada={() => setEditando(false)} />}
 
       {/* El DELETE no recibe motivo (CotizacionesController.Desactivar): por eso un diálogo simple y no ConfirmarDestructivo. TODO(A#): ¿la baja de una cotización debe llevar motivo? */}
       <Dialog

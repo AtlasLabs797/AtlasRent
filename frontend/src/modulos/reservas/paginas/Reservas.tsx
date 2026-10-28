@@ -135,8 +135,9 @@ export default function Reservas() {
         )}
       </Card>
 
+      {abierto && (
       <FormularioReservaDrawer
-        open={abierto}
+        open
         inicial={inicial}
         aviso={transferencia.data ? t.formulario.desdeCotizacion : transferencia.isError ? t.formulario.cotizacionNoCopiada : undefined}
         onCerrar={cerrar}
@@ -145,6 +146,7 @@ export default function Reservas() {
           navegar(`/reservas/${id}`);
         }}
       />
+      )}
     </>
   );
 }

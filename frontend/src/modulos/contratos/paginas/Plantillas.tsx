@@ -38,8 +38,8 @@ export default function Plantillas() {
   const [pestana, setPestana] = useState<'contratos' | 'anexos'>('contratos');
   const [editando, setEditando] = useState<Elemento | 'nuevo' | null>(null);
   const [desactivando, setDesactivando] = useState<Elemento | null>(null);
-  const plantillas = usePlantillas();
-  const anexos = useAnexos();
+  const plantillas = usePlantillas(pestana === 'contratos');
+  const anexos = useAnexos(pestana === 'anexos');
   const desactivarContrato = useDesactivarPlantilla('contrato');
   const desactivarAnexo = useDesactivarPlantilla('anexo');
   const escribe = puede(identidad, ACCIONES.contratoBorrador);

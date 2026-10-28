@@ -166,7 +166,7 @@ export default function ContratoFicha() {
         onCerrar={() => setDialogo(null)}
       />
       <DialogoBaja c={c} hoy={hoy} abierto={dialogo === 'baja'} onCerrar={() => setDialogo(null)} />
-      <DrawerCambio c={c} abierto={dialogo === 'cambio'} onCerrar={() => setDialogo(null)} />
+      {dialogo === 'cambio' && <DrawerCambio c={c} abierto onCerrar={() => setDialogo(null)} />}
     </>
   );
 }
@@ -256,7 +256,6 @@ function DialogoBaja({ c, hoy, abierto, onCerrar }: { c: ContratoDetalle; hoy: s
   const baja = useTransicion(c.id, 'baja');
   const [fecha, setFecha] = useState('');
   const [comentario, setComentario] = useState('');
-  const [intentado, setIntentado] = useState(false);
   const error = validarBaja(fecha, c.fechaInicio, hoy);
   const d = t.bajaDialogo;
   return (
@@ -267,13 +266,12 @@ function DialogoBaja({ c, hoy, abierto, onCerrar }: { c: ContratoDetalle; hoy: s
       confirmar={d.confirmar}
       tituloError={f.error}
       onConfirmar={async () => {
-        setIntentado(true);
         if (error) throw new Error(error);
         await baja.mutateAsync({ fechaFin: fecha, comentario: comentario.trim() === '' ? null : comentario.trim() });
       }}
       onCerrar={onCerrar}
     >
-      <DatePicker label={d.fecha} required min={fechaMinimaBaja(c.fechaInicio, hoy)} value={fecha} onChange={(e) => setFecha(e.target.value)} error={intentado ? (error ?? undefined) : undefined} />
+      <DatePicker label={d.fecha} required min={fechaMinimaBaja(c.fechaInicio, hoy)} value={fecha} onChange={(e) => setFecha(e.target.value)} />
       {fecha && !error && <span className="ar-hint">{d.preaviso.replace('{n}', String(diasDePreaviso(fecha, hoy)))}</span>}
       <Input id="baja-comentario" label={d.comentario} maxLength={1000} value={comentario} onChange={(e) => setComentario(e.target.value)} />
     </DialogoAccion>
