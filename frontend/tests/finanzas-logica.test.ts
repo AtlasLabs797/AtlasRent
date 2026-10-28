@@ -114,3 +114,11 @@ test('presentación: número de documento e insignias', () => {
   assert.equal(insigniaDeFila('Fianza', 'EnLiquidacion').status, 'devolucion');
   assert.equal(insigniaDeFila('Proforma', 'Emitida').label, 'Proforma');
 });
+
+test('fianza: el motivo es obligatorio con descuento o si la devolución no deja la fianza a cero', async () => {
+  const { motivoObligatorio } = await import('../src/modulos/finanzas/logica.ts');
+  assert.equal(motivoObligatorio('1000.00', '0', 1000), false);
+  assert.equal(motivoObligatorio('800.00', '0', 1000), true);
+  assert.equal(motivoObligatorio('900.00', '100.00', 1000), true);
+  assert.equal(motivoObligatorio('700.00', '300.00', 1000), true);
+});

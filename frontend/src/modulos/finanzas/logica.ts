@@ -1,4 +1,4 @@
-import { aDecimal, entradaADecimal, esPositivo } from './decimal.ts';
+import { aDecimal, compararImportes, entradaADecimal, esPositivo, sumarImportes, type Importe } from './decimal.ts';
 import type { CobroAsignacionSimulada, CobroPeticion, CuentaFila, Moneda } from './tipos.ts';
 
 /** Lógica pura de la vista de cuentas y del panel de cobro (sin React, para el Node Test Runner). */
@@ -257,4 +257,9 @@ export function insigniaDeFila(tipo: CuentaFila['tipo'], estado: string): Insign
     default:
       return { tone: 'neutral', label: estado };
   }
+}
+
+/** El motivo de una devolución de fianza es obligatorio si hay descuento o no deja la fianza a cero (§3.11). */
+export function motivoObligatorio(importe: string, descontado: string, saldo: Importe): boolean {
+  return compararImportes(descontado, '0') > 0 || compararImportes(sumarImportes([importe, descontado]), saldo) < 0;
 }
