@@ -13,12 +13,6 @@ namespace AtlasRent.Api.Services;
 /// prospecto no tiene número de cliente, se lo dan el día que se convierte y ese número no se
 /// reutiliza después.
 /// </para>
-/// <para>
-/// TODO(A#): convertir un prospecto en cliente. La especificación §3.2 dice que al pasarse recibe
-/// el número de cliente, y ese número tiene que salir de la misma secuencia para no repetirse. Es
-/// trabajo de la tarea de cotizaciones, que es la que sabe qué ocurre con el prospecto cuando deja
-/// de serlo.
-/// </para>
 /// </summary>
 public sealed class ServicioProspectos(
     AtlasRentDbContext contexto,

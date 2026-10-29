@@ -16,6 +16,16 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 
 ---
 
+## [29/10/2026 17:00] DECISION · AUD-11 · Respuestas del responsable a las preguntas abiertas (orquestador)
+- Qué: (1) La unidad implícita de un inmueble alquilado completo **solo se da de baja con el inmueble**. Como no está modelada, se abre AUD-12 en `docs/PLAN.md`; el `TODO(A#)` de `ServicioInmuebles` pasa a describir la regla. (2) El contrato **no necesita número visible** por ahora; se identifica por cliente, unidad y fecha de inicio. (3) Al convertir un prospecto, **sus reservas pasan al cliente** igual que sus cotizaciones: lo que estaba como supuesto en AUD-11 queda confirmado y sin cambios en el código. Se borra el `TODO(A#)` viejo de `ServicioProspectos`, porque la conversión ya existe.
+- Por qué: preguntas pendientes de la entrada de AUD-11; especificación §3.1 y §3.2.
+- Verificado: build Release `-warnaserror` (solo cambian comentarios y documentación).
+- Migraciones: no.
+- Riesgo / pendiente: AUD-12 PENDIENTE; mientras no se haga, un inmueble que se alquila completo no tiene unidad implícita (incumple §3.1).
+- Commit/PR: este commit.
+
+---
+
 ## [29/10/2026 16:10] SEC · AUD-10 · Documentación de la API de F2 y revisión de seguridad de cierre (orquestador)
 - Qué: (1) `docs/DOC_TECNICA.md` §6.12–§6.21: API de clientes, prospectos, inmuebles, calendario, cotizaciones, reservas, contratos, bandeja, plantillas, anexos e inventarios, y la de AUD-11; corregidas las frases de §6.5 y §6.7 que habían quedado viejas. (2) Revisión de seguridad de cierre (PROCEDIMIENTOS §5, alcance «todo» con foco en `d581cff..HEAD`) contra el checklist A de `docs/SEGURIDAD.md`: sin Críticos ni Altos; 2 Medios corregidos con test primero (SEC-031: un token de agente con `cliente.ver` veía y cerraba cualquier alerta; SEC-032: `"1,50"` entraba como 150,00) y Bajos registrados ABIERTOS (SEC-033: matriz de permisos que no recorre todos los endpoints y enmascarado de auditoría por lista negra; SEC-034: lectura del `[Accion]` distinta en los dos filtros, límite de login solo por IP, Serilog sin redacción, `AllowedHosts=*`). SEC-008 sigue ABIERTO y ahora cubre también las respuestas de convertir prospecto y reintentar envío. Paquetes: `dotnet list package --vulnerable --include-transitive` y `npm audit` (con y sin dev) sin vulnerabilidades.
 - Por qué: AUD-10 (PLAN); PROCEDIMIENTOS §5 al cerrar fase.

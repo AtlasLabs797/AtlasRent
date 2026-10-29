@@ -292,9 +292,9 @@ public sealed class ServicioInmuebles(
     /// Baja lógica de la unidad. Se rechaza (409) si tiene contratos sin finalizar o reservas vivas:
     /// dejarían de apuntar a algo alquilable.
     /// <para>
-    /// TODO(A#): la unidad implícita de un inmueble que se alquila completo todavía no existe en el
-    /// modelo (no hay marca que la distinga). Cuando exista, ¿se puede desactivar por separado o
-    /// solo junto con el inmueble?
+    /// La unidad implícita de un inmueble que se alquila completo solo se da de baja junto con el
+    /// inmueble (decisión del responsable, 29/10/2026). Todavía no existe en el modelo: llega con
+    /// AUD-12, que añade la marca y el 409 de la baja suelta.
     /// </para>
     /// </summary>
     private async Task<bool> TieneContratosOReservasVivosAsync(List<Guid> unidades, CancellationToken ct) =>

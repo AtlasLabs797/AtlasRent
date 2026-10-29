@@ -1263,7 +1263,7 @@ Cada tipo de alerta exige una acción para verse y cerrarse (`ServicioBandejaAle
 - `UnidadRespuesta` lleva `inmuebleNombre` en todas las respuestas (en listas, resuelto en bloque). `FianzaResumen` (lista, ficha y respuestas de mutación de fianzas) lleva `clienteId`, `clienteNombre`, `unidadId` y `unidadNombre`, con una consulta por página.
 - **BUG-057:** `DELETE /api/v1/inmuebles/{id}` aplica la misma regla a todas las unidades del inmueble (409 con contratos o reservas vivos).
 - Cambio de esquema: migración `20261028180005_ProspectoConvertidoACliente` (`prospecto.cliente_id` FK `Restrict` + `convertido_at`).
-- `TODO(A#)` abierto en el servicio: la «unidad implícita» de un inmueble que se alquila completo no está modelada; falta decidir si se puede desactivar por separado.
+- La «unidad implícita» de un inmueble que se alquila completo no está modelada. Por decisión del responsable (29/10/2026), solo se dará de baja junto con su inmueble; la modela AUD-12.
 
 #### 6.21.5 Cuentas por contrato
 
