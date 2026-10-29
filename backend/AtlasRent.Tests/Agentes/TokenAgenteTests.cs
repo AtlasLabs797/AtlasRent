@@ -413,6 +413,50 @@ public sealed class TokenAgenteTests(ContenedorBdFixture bd, ApiTestFactory api)
 
     // ------------------------------------------------------------------ ayuda
 
+    /// <summary>
+    /// AUD-10 (H-01): las alertas se declaran con <c>cliente.ver</c>, que un token de agente puede
+    /// llevar. El token de un administrador con solo esa acción no puede ver alertas de tipos cuya
+    /// acción no lleva (backup) ni cerrar ninguna: un agente no muta.
+    /// </summary>
+    [Fact]
+    public async Task UnTokenConClienteVerNoVeAlertasAjenasNiCierraNinguna()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await AyudaAuth.CrearUsuarioAsync(bd, Contrasena, rol: Roles.Admin, ct: ct);
+        var token = await TokenEnBaseAsync(admin.Id, [Acciones.ClienteVer], ct);
+        var backup = Guid.NewGuid();
+        var contrato = Guid.NewGuid();
+        await using (var contexto = bd.CrearContexto(bd.CadenaApp))
+        {
+            foreach (var (id, tipo) in new[] { (backup, "backup"), (contrato, "contrato") })
+            {
+                contexto.Alerta.Add(new Alerta
+                {
+                    Id = id,
+                    Tipo = tipo,
+                    Clave = $"{tipo}:{id:N}",
+                    Mensaje = "Alerta de prueba",
+                    OcurridoAt = DateTimeOffset.UtcNow,
+                    Repeticiones = 1,
+                });
+            }
+
+            await contexto.SaveChangesAsync(ct);
+        }
+
+        using var cliente = ClienteConToken(token);
+
+        var lista = await cliente.GetFromJsonAsync<JsonElement>("/api/v1/alertas?estado=todas&pageSize=200", ct);
+        var ids = lista.GetProperty("data").EnumerateArray().Select(a => a.GetProperty("id").GetGuid()).ToList();
+        ids.Should().NotContain(backup, "el token no lleva configuracion.editar");
+        ids.Should().Contain(contrato, "el token sí lleva cliente.ver");
+
+        (await cliente.PostAsync($"/api/v1/alertas/{contrato:D}/cerrar", null, ct))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await cliente.PostAsync($"/api/v1/alertas/{backup:D}/cerrar", null, ct))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     /// <summary>Acción con la que se audita toda llamada hecha con token de agente.</summary>
     private const string LlamadaDeAgenteAccion = "agente.peticion";
 

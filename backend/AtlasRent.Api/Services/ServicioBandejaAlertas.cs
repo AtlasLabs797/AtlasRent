@@ -19,6 +19,7 @@ public sealed class ServicioBandejaAlertas(
     AtlasRentDbContext contexto,
     IPolicyService politica,
     AuditoriaService auditoria,
+    ContextoSesion sesion,
     TimeProvider reloj)
 {
     public const string EstadoAbiertas = "abiertas";
@@ -88,7 +89,7 @@ public sealed class ServicioBandejaAlertas(
         {
             var permitidos = AccionPorTipo.Keys.Where(PuedeVer).ToList();
             var conocidos = AccionPorTipo.Keys.ToList();
-            var verDesconocidos = politica.Puede(Acciones.ConfiguracionEditar);
+            var verDesconocidos = Puede(Acciones.ConfiguracionEditar);
             consulta = consulta.Where(a => permitidos.Contains(a.Tipo)
                 || (verDesconocidos && !conocidos.Contains(a.Tipo)));
         }
@@ -114,7 +115,8 @@ public sealed class ServicioBandejaAlertas(
         var alerta = await contexto.Alerta.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, ct)
             ?? throw new KeyNotFoundException($"La alerta '{id:D}' no existe.");
 
-        if (!PuedeVer(alerta.Tipo))
+        // Un token de agente no muta (SEC-010/011): cerrar le está vedado aunque vea la alerta.
+        if (sesion.EsAgente || !PuedeVer(alerta.Tipo))
         {
             var recurso = $"alerta/{id:D}";
             var accion = AccionDe(alerta.Tipo);
@@ -153,7 +155,16 @@ public sealed class ServicioBandejaAlertas(
         return AFila(await contexto.Alerta.AsNoTracking().SingleAsync(a => a.Id == id, ct));
     }
 
-    private bool PuedeVer(string tipo) => politica.Puede(AccionDe(tipo));
+    private bool PuedeVer(string tipo) => Puede(AccionDe(tipo));
+
+    /// <summary>
+    /// AUD-10 (H-01): el endpoint se declara con <c>cliente.ver</c>, que un token de agente puede
+    /// llevar, así que el tipo se comprueba también contra las acciones del token y la lista blanca.
+    /// </summary>
+    private bool Puede(string accion) =>
+        politica.Puede(accion)
+        && (!sesion.EsAgente
+            || (Acciones.PermitidasAAgente.Contains(accion) && sesion.AgenteAcciones.Contains(accion)));
 
     private static string AccionDe(string tipo) =>
         AccionPorTipo.TryGetValue(tipo, out var accion) ? accion : Acciones.ConfiguracionEditar;
