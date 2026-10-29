@@ -22,14 +22,25 @@ public sealed class ImporteJsonConverter : JsonConverter<decimal>
     {
         // El frontend manda el dinero como texto decimal (AGENTS §6) y las opciones web admiten
         // números entre comillas: hay que leer los dos, o toda la entrada de importes da 400.
-        var valor = reader.TokenType == JsonTokenType.String
-            && decimal.TryParse(
+        // AUD-10 (H-02): solo signo y punto decimal. Con NumberStyles.Number, "1,50" se leía como 150
+        // (la coma es el separador de miles invariante), y un importe así no puede pasar en silencio.
+        decimal valor;
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            if (!decimal.TryParse(
                 reader.GetString(),
-                System.Globalization.NumberStyles.Number,
+                System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint,
                 System.Globalization.CultureInfo.InvariantCulture,
-                out var leido)
-            ? leido
-            : reader.GetDecimal();
+                out valor))
+            {
+                throw new JsonException("El importe debe ser un número con punto decimal, sin separador de miles.");
+            }
+        }
+        else
+        {
+            valor = reader.GetDecimal();
+        }
+
         if (Math.Abs(valor) > Maximo)
         {
             throw new JsonException($"El importe no puede pasar de {Maximo:0.00} en valor absoluto.");

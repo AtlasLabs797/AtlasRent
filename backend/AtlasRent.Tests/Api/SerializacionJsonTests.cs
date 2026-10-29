@@ -74,6 +74,21 @@ public sealed class SerializacionJsonTests(ContenedorBdFixture bd, ApiTestFactor
         enorme.Should().Throw<JsonException>("SEC-030: el tope sigue vigente");
     }
 
+    /// <summary>AUD-10 (H-02): "1,50" no puede leerse como 150 por el separador de miles.</summary>
+    [Theory]
+    [InlineData("\"1,50\"")]
+    [InlineData("\"1,500.00\"")]
+    [InlineData("\" 15\"")]
+    [InlineData("\"1e3\"")]
+    [InlineData("\"abc\"")]
+    public void UnImporteEnTextoSoloAdmiteSignoYPuntoDecimal(string json)
+    {
+        var leer = () => JsonSerializer.Deserialize<decimal>(json, OpcionesApi());
+
+        leer.Should().Throw<JsonException>();
+        JsonSerializer.Deserialize<decimal>("\"-1.50\"", OpcionesApi()).Should().Be(-1.50m);
+    }
+
     [Fact]
     public void LosEnumsSinAtributoSalenComoTextoYSeLeenDeTextoOEntero()
     {
