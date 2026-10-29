@@ -16,6 +16,8 @@ export interface UsuarioPermisos {
   id: string;
   rol: string;
   permisos: string[];
+  /** Acciones que trae el rol: lo máximo que se puede activar. */
+  techo: string[];
 }
 
 export interface UsuarioCreado {

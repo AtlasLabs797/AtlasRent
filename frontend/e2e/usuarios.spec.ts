@@ -26,10 +26,13 @@ const PERMISOS_GERENTE = [
   'ia.consultar', 'ia.proponer',
 ];
 
+// `techo` de GET /usuarios/{id}/permisos: lo que trae el rol (el gerente trae factura.anular; los permisos efectivos no).
+const TECHO_GERENTE = [...PERMISOS_GERENTE, 'factura.anular'];
+
 test('usuarios: listado, techo del rol y recorte de un permiso', async ({ page, api }) => {
   conSesion(api);
   api.responder('GET', '/usuarios', { body: USUARIOS });
-  api.responder('GET', `/usuarios/${GERENTE_ID}/permisos`, { body: { id: GERENTE_ID, rol: 'gerente', permisos: PERMISOS_GERENTE } });
+  api.responder('GET', `/usuarios/${GERENTE_ID}/permisos`, { body: { id: GERENTE_ID, rol: 'gerente', permisos: PERMISOS_GERENTE, techo: TECHO_GERENTE } });
   api.responder('PUT', `/usuarios/${GERENTE_ID}/permisos`, { status: 204 });
 
   await page.goto('/usuarios');
@@ -54,7 +57,9 @@ test('usuarios: el 400 de permiso fuera del techo y el 409 de un cambio de admin
   conSesion(api);
   api.responder('GET', '/usuarios', { body: USUARIOS });
   api.responder('GET', `/usuarios/${ADMIN_ID}/permisos`, {
-    body: { id: ADMIN_ID, rol: 'admin', permisos: ['configuracion.editar', 'mfa.obligatorio', 'seguridad.acceso_emergencia', 'factura.ver', 'sesion.ver'] },
+    body: { id: ADMIN_ID, rol: 'admin', permisos: ['configuracion.editar', 'mfa.obligatorio', 'seguridad.acceso_emergencia', 'factura.ver', 'sesion.ver'],
+      techo: ['configuracion.editar', 'mfa.obligatorio', 'seguridad.acceso_emergencia', 'factura.ver', 'sesion.ver'],
+    },
   });
   api.responder('PUT', `/usuarios/${ADMIN_ID}/rol`, problema(409, 'VAL-001', 'Cambio no permitido', 'No se puede quitar el rol de administrador al último administrador activo.'));
 
@@ -76,7 +81,7 @@ test('usuarios: alta con contraseña de 12 a 72 y restablecer contraseña', asyn
   conSesion(api);
   api.responder('GET', '/usuarios', { body: USUARIOS });
   api.responder('POST', '/usuarios', { body: { id: '44444444-4444-4444-4444-444444444444', nombreAcceso: 'lrosario', rol: 'empleado', contrasenaComprobada: true } });
-  api.responder('GET', `/usuarios/${GERENTE_ID}/permisos`, { body: { id: GERENTE_ID, rol: 'gerente', permisos: PERMISOS_GERENTE } });
+  api.responder('GET', `/usuarios/${GERENTE_ID}/permisos`, { body: { id: GERENTE_ID, rol: 'gerente', permisos: PERMISOS_GERENTE, techo: TECHO_GERENTE } });
   api.responder('PUT', `/usuarios/${GERENTE_ID}/password`, { body: { contrasenaComprobada: false } });
 
   await page.goto('/usuarios');

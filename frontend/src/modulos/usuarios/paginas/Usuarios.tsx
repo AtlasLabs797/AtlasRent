@@ -38,7 +38,7 @@ import {
   cuerpoAlta,
   emailValido,
   errorContrasena,
-  gruposDelRol,
+  gruposDelTecho,
   permisoBloqueado,
   recortadas,
   type ValoresAlta,
@@ -223,8 +223,9 @@ function DrawerDetalle({ usuario, onCerrar }: { usuario: UsuarioResumen; onCerra
   const esYo = yo?.id === usuario.id;
   const efectivos = permisos.data?.permisos ?? [];
   const rolReal = permisos.data?.rol ?? usuario.rol;
-  const grupos = gruposDelRol(rolReal);
-  const nRecortadas = permisos.data ? recortadas(rolReal, efectivos) : 0;
+  const techo = permisos.data?.techo ?? [];
+  const grupos = gruposDelTecho(techo);
+  const nRecortadas = permisos.data ? recortadas(techo, efectivos) : 0;
 
   return (
     <Drawer title={usuario.nombre} description={<span className="mono">{usuario.nombreAcceso}</span>} onClose={onCerrar} width={600}

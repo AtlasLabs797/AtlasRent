@@ -3,30 +3,35 @@ import { test } from 'node:test';
 import { ACCIONES } from '../src/permisos.ts';
 import { menuPermitido, puedeVerRuta } from '../src/navegacion/menu.ts';
 import {
-  TECHO_ROL,
   cuerpoAlta,
   cuerpoPermiso,
   errorContrasena,
-  gruposDelRol,
+  gruposDelTecho,
   permisoBloqueado,
   recortadas,
 } from '../src/modulos/usuarios/usuarios.ts';
 import { cuerpoAprobacion, cuerpoIp, cuerpoSolicitudEmergencia, esGuid, esIpValida } from '../src/modulos/bloqueos/bloqueos.ts';
 
-const acciones = (rol: string) => gruposDelRol(rol).flatMap((g) => [...g.acciones]);
+// Techo de ejemplo con la forma que devuelve la API (`techo` de GET /usuarios/{id}/permisos).
+const TECHO_EMPLEADO: string[] = [
+  ACCIONES.clienteVer, ACCIONES.clienteEditar, ACCIONES.contratoBorrador, ACCIONES.facturaVer, ACCIONES.facturaBorrador,
+  ACCIONES.cotizacionEnviar, ACCIONES.sesionVer, ACCIONES.sesionCerrar, ACCIONES.sesionPassword,
+];
+const TECHO_GERENTE: string[] = [...TECHO_EMPLEADO, ACCIONES.facturaEmitir, ACCIONES.facturaAnular, ACCIONES.informeVer];
+const acciones = (techo: string[]) => gruposDelTecho(techo).flatMap((g) => [...g.acciones]);
 
-test('el editor solo ofrece el techo del rol: el empleado no ve acciones de gerente ni de admin', () => {
-  const empleado = acciones('empleado');
+test('el editor solo ofrece el techo que manda la API: el empleado no ve acciones de gerente ni de admin', () => {
+  const empleado = acciones(TECHO_EMPLEADO);
   assert.ok(empleado.includes(ACCIONES.facturaBorrador));
   assert.ok(!empleado.includes(ACCIONES.facturaEmitir));
   assert.ok(!empleado.includes(ACCIONES.informeVer));
   assert.ok(!empleado.includes(ACCIONES.configuracionEditar));
-  for (const a of empleado) assert.ok(TECHO_ROL.empleado.includes(a));
+  for (const a of empleado) assert.ok(TECHO_EMPLEADO.includes(a));
 });
 
-test('las acciones de sesión no se ofrecen y el rol desconocido no ofrece nada', () => {
-  assert.ok(!acciones('admin').includes(ACCIONES.sesionVer));
-  assert.deepEqual(gruposDelRol('invitado'), []);
+test('las acciones de sesión no se ofrecen y un techo vacío no ofrece nada', () => {
+  assert.ok(!acciones([...TECHO_EMPLEADO, ACCIONES.configuracionEditar]).includes(ACCIONES.sesionVer));
+  assert.deepEqual(gruposDelTecho([]), []);
 });
 
 test('a un administrador no se le dejan quitar mfa.obligatorio ni el acceso de emergencia (SEC-025)', () => {
@@ -37,9 +42,9 @@ test('a un administrador no se le dejan quitar mfa.obligatorio ni el acceso de e
 });
 
 test('cuántos permisos tiene recortados un usuario respecto a su techo', () => {
-  const todos = acciones('gerente');
-  assert.equal(recortadas('gerente', todos), 0);
-  assert.equal(recortadas('gerente', todos.filter((a) => a !== ACCIONES.facturaAnular && a !== ACCIONES.informeVer)), 2);
+  const todos = acciones(TECHO_GERENTE);
+  assert.equal(recortadas(TECHO_GERENTE, todos), 0);
+  assert.equal(recortadas(TECHO_GERENTE, todos.filter((a) => a !== ACCIONES.facturaAnular && a !== ACCIONES.informeVer)), 2);
   assert.deepEqual(cuerpoPermiso('factura.anular', false), { accion: 'factura.anular', permitido: false });
 });
 

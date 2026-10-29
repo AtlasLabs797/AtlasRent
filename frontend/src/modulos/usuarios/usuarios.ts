@@ -15,26 +15,6 @@ export const CONTRASENA_MAXIMA = 72;
 
 const A = ACCIONES;
 
-/**
- * Techo de cada rol: copia de `MatrizPermisos.PorRol`. La API no lo expone, así que se replica aquí
- * para enseñar qué se puede quitar; la protección real es el backend, que rechaza con 400 activar algo
- * fuera del techo.
- * TODO(A#): exponer el techo (por ejemplo en `GET /usuarios/{id}/permisos`) para no duplicar la matriz.
- */
-export const TECHO_ROL: Readonly<Record<Rol, readonly Accion[]>> = {
-  admin: Object.values(A),
-  gerente: [
-    A.clienteVer, A.clienteEditar, A.inmuebleDocumento, A.contratoBorrador, A.contratoEstado, A.facturaVer,
-    A.facturaBorrador, A.facturaEmitir, A.facturaAnular, A.cobroRegistrar, A.fianzaMover, A.documentoEnviar,
-    A.cotizacionEnviar, A.mensajeriaMasivo, A.informeVer, A.auditoriaVer, A.sesionVer, A.sesionCerrar,
-    A.sesionPassword, A.iaConsultar, A.iaProponer,
-  ],
-  empleado: [
-    A.clienteVer, A.clienteEditar, A.contratoBorrador, A.facturaVer, A.facturaBorrador, A.cotizacionEnviar,
-    A.sesionVer, A.sesionCerrar, A.sesionPassword,
-  ],
-};
-
 /** Acciones básicas de sesión: todo usuario las necesita para entrar, no se ofrecen para recortar. */
 const BASICAS: readonly Accion[] = [A.sesionVer, A.sesionCerrar, A.sesionPassword];
 
@@ -57,10 +37,8 @@ export const GRUPOS_ACCIONES: readonly GrupoAcciones[] = [
   { clave: 'ia', acciones: [A.iaConsultar, A.iaProponer] },
 ];
 
-/** Grupos con solo las acciones que el rol trae (su techo) y que se pueden recortar. Un grupo vacío no sale. */
-export function gruposDelRol(rol: string): GrupoAcciones[] {
-  if (!esRol(rol)) return [];
-  const techo = TECHO_ROL[rol];
+/** Grupos con solo las acciones del techo del usuario (lo manda la API) que se pueden recortar. Un grupo vacío no sale. */
+export function gruposDelTecho(techo: readonly string[]): GrupoAcciones[] {
   return GRUPOS_ACCIONES.map((g) => ({
     clave: g.clave,
     acciones: g.acciones.filter((a) => techo.includes(a) && !BASICAS.includes(a)),
@@ -78,8 +56,8 @@ export function cuerpoPermiso(accion: string, permitido: boolean): { accion: str
 }
 
 /** Cuántas acciones del techo tiene recortadas este usuario. */
-export function recortadas(rol: string, efectivos: readonly string[]): number {
-  return gruposDelRol(rol).reduce((n, g) => n + g.acciones.filter((a) => !efectivos.includes(a)).length, 0);
+export function recortadas(techo: readonly string[], efectivos: readonly string[]): number {
+  return gruposDelTecho(techo).reduce((n, g) => n + g.acciones.filter((a) => !efectivos.includes(a)).length, 0);
 }
 
 /** Error de contraseña por longitud, o `null` si cumple. */
