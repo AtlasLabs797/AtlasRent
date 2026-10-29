@@ -483,9 +483,9 @@ Si la instancia PostgreSQL la usan otras aplicaciones: base de datos y roles pro
 |---|---|---|
 | `PUT /api/v1/comprobantes-retencion/{id}/recibir` | `factura.emitir` | Cuerpo `{ numero, fechaRecepcion }`. Anota la recepción del papel y **resuelve** el aviso vivo, en la misma transacción. 409 si ya se había recibido. Acepta `Idempotency-Key`. |
 
-- **No hay endpoint de lectura.** El estado sale en la factura como `retencionSinComprobante`, que es lo
-  que la pantalla necesita para saber si tiene que pedir el papel; el detalle completo no lo lee nadie
-  todavía (F3-10).
+- **Lectura (AUD-11):** `GET /api/v1/comprobantes-retencion` y `GET …/{id}` (§6.21.8). El estado
+  resumido sigue saliendo en la factura como `retencionSinComprobante`, y la factura expone además
+  `comprobanteRetencionId`.
 - **La factura expone `retencion`, `netoACobrar` y `retencionSinComprobante`** (§5). Los dos primeros
   son columnas; el tercero es derivado y se resuelve con **una consulta agregada** sobre la página,
   igual que el cobrado de F3-06. El indicador sale también en la respuesta de la emisión cuando la
@@ -553,7 +553,7 @@ fianzas**, con una insignia de tipo en cada fila, y los totales al pie **por mon
 
 | Endpoint | Acción | Notas |
 |---|---|---|
-| `GET /api/v1/cuentas` | `factura.ver` | Filtros `anio`, `serieId`, `moneda`, `estado`, `estadoCobro`, `clienteId`, `unidadId`, `vencidas`, `modificadas`, `incluirProformas` (por defecto **false**) e `incluirFianzas` (por defecto **true**). **Desde F5-01** también `desde`, `hasta`, `inmuebleId`, `propietariaId` y `facturadoraId`, que son los que faltaban de §3.15 y son los mismos que aplica el informe. Paginación obligatoria; solo se admite `sortBy=fecha`, con `sortDir` (por defecto ascendente, como el resto de la API). |
+| `GET /api/v1/cuentas` | `factura.ver` | Filtros `anio`, `serieId`, `moneda`, `estado`, `estadoCobro`, `clienteId`, `unidadId`, `vencidas`, `modificadas`, `incluirProformas` (por defecto **false**) e `incluirFianzas` (por defecto **true**). **Desde AUD-11** también `contratoId` (§6.21.5). **Desde F5-01** también `desde`, `hasta`, `inmuebleId`, `propietariaId` y `facturadoraId`, que son los que faltaban de §3.15 y son los mismos que aplica el informe. Paginación obligatoria; solo se admite `sortBy=fecha`, con `sortDir` (por defecto ascendente, como el resto de la API). |
 | `POST /api/v1/cobros/simular` | `cobro.registrar` | Además de lo de F3-06, acepta `facturasSeleccionadas` (lista de `facturaId`). Con ellas la propuesta es para esas facturas y **no propone ninguna otra**; sin ellas sigue siendo la FIFO. |
 
 #### Columnas de la fila y de dónde sale cada una
@@ -1002,6 +1002,310 @@ hay» es exactamente donde una pantalla y un informe dejarían de hablar de lo m
   detalle es el mismo que en el xlsx; el resumen solo va en el xlsx.
 - **`Content-Disposition`** con nombre fijo `informe-AAAAMMDD-HHmm.<xlsx|csv>` y hora de Santo Domingo,
   sin entrada de usuario en el nombre.
+
+### 6.12 Clientes, contactos y prospectos (F1)
+
+Leer es `cliente.ver`; escribir es `cliente.editar`. El documento de identidad (cédula/RNC/pasaporte) **solo sale en la ficha** (`GET /{id}`), descifrado y sin enmascarar (D16); no va en la lista ni en las respuestas de alta y cambio, porque estas se guardan para el reintento idempotente.
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/clientes` | `cliente.ver` | Paginado. Filtros `q` (nombre, o número si `q` es un entero), `tipo` (`PersonaFisica`/`Empresa`), `incluirInactivos`. `sortBy`: `numero`, `nombre`, `tipo`, `createdAt`. **`?documento=` responde 400** (SEC-030). |
+| `POST /api/v1/clientes/busqueda` | `cliente.ver` | Búsqueda por documento exacto (índice ciego HMAC). Cuerpo `{ documento, tipo?, incluirInactivos?, page?, pageSize? }`. |
+| `GET /api/v1/clientes/{id}` | `cliente.ver` | Ficha con `documento`. |
+| `POST /api/v1/clientes` | `cliente.editar` | Alta. Cuerpo `ClientePeticion`: `nombre`, `tipo`, `documento?`, `email?`, `telefono?`, `direccion?`, `notas?`, `agenteRetencion`, `enGestionCobro`, `recordatoriosPausados`, `numero?`. El número lo da la secuencia; **fijar `numero` exige además `configuracion.editar`** (403 auditado si no) y ≤ 99.999.999 (SEC-022). 409 si ya hay un cliente con ese documento. |
+| `PUT /api/v1/clientes/{id}` | `cliente.editar` | Mismo cuerpo. 404 / 409 (documento duplicado). |
+| `DELETE /api/v1/clientes/{id}` | `cliente.editar` | Baja lógica (`activo = false`); un cliente con facturas no se borra. Devuelve `true`. |
+| `POST /api/v1/clientes/{id}/reactivar` | `cliente.editar` | Deshace la baja. Si ya está activo: 200 sin cambios ni auditoría. Devuelve `ClienteResumen`. |
+| `GET\|POST /api/v1/clientes/{id}/contactos`, `PUT\|DELETE /api/v1/clientes/{id}/contactos/{contactoId}` | `cliente.ver` (GET) / `cliente.editar` | Contactos: `nombre`, `relacion?`, `email?`, `telefono?`, `esPrincipal` (marcar uno quita la marca a los demás). `DELETE` **sí borra la fila** (un contacto no tiene efecto económico) y audita `contacto_cliente.eliminado`. |
+| `PUT /api/v1/clientes/{id}/recordatorios-pausados` | `cliente.editar` | Ver §6.10. |
+| `GET /api/v1/clientes/{id}/estado-de-cuenta.pdf` | `informe.ver` | Ver §6.7.1. |
+| `GET /api/v1/prospectos` | `cliente.ver` | Paginado; `q` (nombre); `sortBy`: `nombre` (defecto), `tipo`, `createdAt`. **Solo prospectos activos y sin convertir**: no hay `incluirInactivos`. |
+| `GET /api/v1/prospectos/{id}` | `cliente.ver` | Ficha con `documento`, `clienteId` y `convertidoAt`. |
+| `POST /api/v1/prospectos`, `PUT /api/v1/prospectos/{id}` | `cliente.editar` | `ProspectoPeticion`: `nombre`, `tipo`, `documento?`, `email?`, `telefono?`, `notas?`. 409 si el documento ya es de otro prospecto. |
+| `DELETE /api/v1/prospectos/{id}` | `cliente.editar` | Baja lógica. |
+| `POST /api/v1/prospectos/{id}/reactivar` | `cliente.editar` | Ver §6.21.4. |
+| `POST /api/v1/prospectos/{id}/convertir` | `cliente.editar` | Ver §6.21.4. |
+
+- Los enums (`tipo`) viajan como texto (`PersonaFisica`, `Empresa`); ver §6.21.11.
+- **Todas las mutaciones aceptan `Idempotency-Key`.** Un duplicado de documento se detecta por el aviso previo y también por el índice único (bajo concurrencia): ambos son 409.
+
+### 6.13 Inmuebles, unidades y documentos de propiedad (F1)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/inmuebles` | `cliente.ver` | Paginado; `q` (nombre), `tipo` (`Edificio`, `Villa`, `Local`, `Terreno`, `Otro`), `incluirInactivos`. `sortBy`: `nombre`, `tipo`, `createdAt`. |
+| `GET /api/v1/inmuebles/{id}` | `cliente.ver` | Inmueble con sus unidades. |
+| `POST /api/v1/inmuebles`, `PUT /api/v1/inmuebles/{id}` | `cliente.editar` | `nombre`, `direccion?`, `tipo`, `propietariaId?`, `notas?`, `plantillaContratoPorDefecto?` (código de plantilla), `renovacionDefectoMeses?` (1–600). Un valor fuera de regla es 400. |
+| `DELETE /api/v1/inmuebles/{id}` | `cliente.editar` | Baja lógica. Devuelve `true`. **409** si alguna unidad del inmueble tiene un contrato que no esté `Finalizado`/`Liquidado` o una reserva `Activa`/`EnConflicto` (BUG-057, misma regla que la baja de unidad). |
+| `POST /api/v1/inmuebles/{id}/reactivar` | `cliente.editar` | Deshace la baja; si ya está activo, 200 sin cambios. |
+| `GET /api/v1/inmuebles/{id}/unidades` | `cliente.ver` | Unidades de un inmueble; filtro `estado` (`Disponible`, `Mantenimiento`, `FueraDeServicio`). |
+| `POST /api/v1/inmuebles/{id}/unidades` | `cliente.editar` | Alta de unidad (`UnidadPeticion`, abajo). |
+| `GET /api/v1/inmuebles/unidades`, `GET /api/v1/inmuebles/unidades/{unidadId}` | `cliente.ver` | Ver §6.21.4. |
+| `PUT /api/v1/inmuebles/unidades/{unidadId}` | `cliente.editar` | Mismo cuerpo que el alta. |
+| `DELETE` / `POST .../reactivar` de unidad | `cliente.editar` | Ver §6.21.4. |
+| `GET /api/v1/inmuebles/{id}/documentos` | `inmueble.documento` | Paginado; filtro `categoria` (`Compraventa`, `Titulo`, `Otros`); `sortBy`: `categoria`, `version`, `createdAt`. |
+| `POST /api/v1/inmuebles/{id}/documentos` | `inmueble.documento` | `multipart/form-data`: `archivo` + `categoria`. Solo PDF: extensión `.pdf` **y** firma `%PDF-`, 1 byte a 25 MB. 400 `API-001` si no cumple; 404 si el inmueble no existe (no deja archivo en disco). No lleva `Idempotency-Key` y está exento del token CSRF de formulario (`IgnoreAntiforgeryToken`). |
+| `GET /api/v1/inmuebles/{id}/documentos/{documentoId}/archivo` | `inmueble.documento` | Sirve el PDF desde disco con soporte de rangos. **Cada descarga se audita** (`documento_inmueble.descargado`). El nombre en disco lo genera el servidor (GUID); el del cliente nunca toca el sistema de archivos. |
+
+`UnidadPeticion`: `nombre` (≤120), `tipo` (`Oficina`, `Sala`, `Apartamento`, `Local`, `Bodega`, `Terreno`, `Otro`), `propietariaId?`, `facturadoraPorDefectoId?`, `estadoManual` (por defecto `Disponible`), `modalidades` (≥1 de `Mensual`, `MedioDia`, `DiaCompleto`), `tarifas[]` (`{ modalidad, moneda, importe }`), `metrosCuadrados?`, `capacidad?`, `habitaciones?`, `banos?`, `medidor?`, `notas?`. Reglas (400): una tarifa solo para una modalidad que la unidad ofrece, sin importes negativos y una sola por (modalidad, moneda). El estado manual **no** es «ocupada»: ocupación y reserva se calculan por fechas (§6.14).
+
+### 6.14 Calendario de disponibilidad (F2-03)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/calendario?unidadId=&inmuebleId=&desde=&hasta=` | `cliente.ver` | Calendario de una unidad **o** de todas las de un inmueble (exactamente uno de los dos), entre `desde` y `hasta` (fechas `yyyy-MM-dd`, **ambas incluidas**, obligatorias). |
+
+- **Errores.** 400 si falta `desde`/`hasta`, si no viene ningún filtro o vienen los dos, si el rango está al revés o pasa de **366 días**. 404 si la unidad o el inmueble no existen, o si el inmueble no tiene unidades.
+- **Respuesta:** `{ unidades: [ { unidadId, unidad, inmuebleId, inmueble, estadoManual, desde, hasta, dias: [ { fecha, tipo, disponible, motivo, ocupaciones: [ { origen, origenId, tipoDia, finExclusivo } ] } ] } ] }`. Siempre es una lista de unidades, aunque se pida una; todas las fechas del rango salen, también las libres. Se incluyen las unidades dadas de baja (su ocupación sigue siendo real).
+- **`tipo` del día** (lo que manda tras el desempate): `Libre`, `Contrato`, `ReservaMensual`, `ReservaCorta`, `Mantenimiento`, `EstadoManual`. `disponible` es exactamente `tipo == Libre`. `motivo` es un texto ya escrito.
+- **`ocupaciones`** trae todo lo que hay ese día (un día con dos medios días trae las dos). `origen`: `Contrato`, `ReservaMensual`, `ReservaCorta`, `Mantenimiento`; `tipoDia`: `MedioDia`/`DiaCompleto`, `null` si es un rango; `finExclusivo` es el primer día libre del rango (excluido, como `ocupacion_rango`) y `null` en rangos abiertos o días sueltos.
+- **No existe un campo «ocupado»:** se lee de `ocupacion_rango` y `ocupacion_dia`, la fuente de verdad de la disponibilidad (AGENTS §6).
+
+### 6.15 Cotizaciones (F2-02)
+
+Leer es `factura.ver`; crear, editar y dar de baja es `factura.borrador` («crear/editar facturas, proformas y cotizaciones en borrador», §2); cambiar de estado es `cotizacion.enviar` (D15: el empleado solo si se lo activan).
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/cotizaciones` | `factura.ver` | Paginado; `q` (cliente, prospecto o unidad), `estado`, `incluirInactivas`. `sortBy`: `createdAt`, `estado`, `total`. |
+| `GET /api/v1/cotizaciones/{id}` | `factura.ver` | Con líneas. |
+| `POST /api/v1/cotizaciones` | `factura.borrador` | Cuerpo `{ clienteId \| prospectoId, unidadId?, moneda, lineas: [ { descripcion, cantidad, precioUnitario } ] }`. Subtotal, total e importe de línea los calcula la aplicación. 200 con `CotizacionResumen`. |
+| `PUT /api/v1/cotizaciones/{id}` | `factura.borrador` | Mismo cuerpo. **Solo en `Borrador`.** |
+| `DELETE /api/v1/cotizaciones/{id}` | `factura.borrador` | Baja lógica, **solo en `Borrador`**. Devuelve `true`. |
+| `POST /api/v1/cotizaciones/{id}/estado` | `cotizacion.enviar` | Cuerpo `{ estado }`. Flujo `Borrador → Enviada → Aceptada \| Rechazada` (D18, sin vigencia). Audita `cotizacion.{estado}`. |
+| `GET /api/v1/cotizaciones/{id}/para-reserva`, `.../para-contrato` | `factura.ver` | Datos para precargar una reserva o un contrato (`cotizacionId`, destinatario, unidad, moneda, total, líneas). **Solo si está `Aceptada`**; no crea nada. |
+| `GET /api/v1/cotizaciones/{id}/pdf` | `factura.ver` | `application/pdf`, `cotizacion-{id}.pdf`. |
+
+- **409:** pasar a un estado que el flujo no permite; editar o dar de baja fuera de `Borrador`; pedir `para-*` sin estar `Aceptada`; ni cliente ni prospecto, o los dos; moneda inexistente; sin líneas; descripción vacía, cantidad o precio negativos. **404:** cotización, cliente, prospecto o unidad inexistentes.
+- **Una cotización va en una sola moneda** (D7) y no se convierte. Al convertir un prospecto, sus cotizaciones pasan al cliente (§6.21.4).
+- `estado` y `moneda` viajan como texto (`Borrador`…, `USD`/`DOP`). `cantidad`, `precioUnitario`, `subtotal`, `total` e `importe` son strings decimales.
+
+### 6.16 Reservas (F2-04)
+
+Leer es `cliente.ver`; crear, editar y cancelar es `cliente.editar`; facturar una reserva es `factura.emitir` (§6.2.1).
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/reservas` | `cliente.ver` | Paginado. Filtros `estado`, `tipo`, `unidadId`, `clienteId`, `prospectoId`, `desde`/`hasta` (fechas), `q` (cliente, prospecto o unidad), `incluirInactivas`. `sortBy`: `createdAt`, `entradaPrevista`, `estado`, `importe`. |
+| `GET /api/v1/reservas/{id}` | `cliente.ver` | Con los días (`dias[]`: `id`, `fecha`, `horaOrientativa`, `tipo`). |
+| `POST /api/v1/reservas` | `cliente.editar` | **201.** Cuerpo `ReservaPeticion` (abajo). |
+| `PUT /api/v1/reservas/{id}` | `cliente.editar` | Mismo cuerpo. Solo reservas `Activa`. |
+| `DELETE /api/v1/reservas/{id}` | `cliente.editar` | **Cancela** (no borra): `estado = Cancelada`, `activo = false`, suelta el bloqueo; la fila y sus días quedan. Valen `Activa` y `EnConflicto`. Si estaba en conflicto, cierra su aviso en la misma transacción. Devuelve `ReservaResumen`. |
+| `POST /api/v1/reservas/{id}/factura` | `factura.emitir` | Ver §6.2.1. |
+
+`ReservaPeticion`: `unidadId`, `clienteId` **o** `prospectoId`, `tipo` (`Mensual`/`Corta`), `entradaPrevista`, `salidaPrevista?`, `modalidad`, `moneda`, `importe`, `anticipoImporte?`, `anticipoNota?`, `observaciones?`, `dias[]` (`{ fecha, horaOrientativa? }`).
+
+- **Mensual:** `modalidad = Mensual`, sin `salidaPrevista` ni `dias`; bloquea la unidad con un **rango abierto** desde la entrada hasta que haya contrato.
+- **Corta:** `modalidad` `MedioDia` o `DiaCompleto`, al menos un día, sin repetir fechas, y entra y sale el mismo día. Caben **dos medios días o un día completo** por unidad y día.
+- **El anticipo es una nota, nunca un cobro** (AGENTS §6): `anticipoImporte` y `anticipoNota` se guardan y la factura de reserva devuelve el aviso, pero no se crea ningún cobro.
+- **409 `DIS-001` (unidad no disponible):** solape con un contrato, otra reserva o día completo, detectado por la base (`btree_gist` + trigger). La reserva no queda a medias: es una sola transacción.
+- **409 (regla):** unidad inactiva, en mantenimiento o fuera de servicio, o que no ofrece esa modalidad; ni cliente ni prospecto o los dos; importe o anticipo negativos; estado que no admite editar/cancelar; **la reserva tiene factura vigente** (no se pueden cambiar días, importe ni moneda ni cancelar sin anular la factura antes, BUG-048). **404:** unidad, cliente o prospecto inexistentes.
+- Estados: `Activa`, `Convertida` (en contrato), `Completada` (corta), `Cancelada`, `EnConflicto`. `EnConflicto` llega por dos vías: el trabajo diario de reservas (una mensual que llega a la entrada prevista sin contrato activado, BUG-026) y la activación de otro contrato sobre la unidad (§6.17, decisión del gerente: el contrato se queda el candado). Su única salida por API es cancelarla.
+
+### 6.17 Contratos (F2-05 a F2-09)
+
+Permisos, sin ninguno nuevo: `cliente.ver` para leer (también incrementos, bloques y PDF); `contrato.borrador` para crear, editar y **enviar a aprobación** (el camino del empleado); `contrato.estado` (gerente y admin) para aprobar, rechazar, activar, cambiar en activo, dar de baja, anular la baja, finalizar, liquidar y todo lo de incrementos. El servicio vuelve a comprobar `contrato.estado` por su cuenta (segunda puerta, con auditoría del intento): el 403 sale del filtro global o del servicio con el mismo formato.
+
+Flujo de estados (`EstadoContrato`): `Borrador → PendienteAprobacion → Aprobado → Activo → BajaProgramada → Finalizado → Liquidado`; el rechazo vuelve a `Borrador` y anular la baja vuelve a `Activo`.
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/contratos` | `cliente.ver` | Paginado; filtros `estado`, `clienteId`, `unidadId`, `q` (cliente, unidad o código de plantilla). `sortBy`: `createdAt` (defecto), `estado`, `inicio`, `renta`. |
+| `GET /api/v1/contratos/{id}` | `cliente.ver` | Ficha con `versiones[]` (historial) y `solicitudes[]` de aprobación. |
+| `POST /api/v1/contratos` | `contrato.borrador` | **201.** Alta en `Borrador`. Cuerpo `ContratoPeticion` (abajo). |
+| `PUT /api/v1/contratos/{id}` | `contrato.borrador` | Solo en `Borrador` o `PendienteAprobacion`. Editar uno pendiente **caduca su solicitud** si cambia algo de la huella (hay que reenviarlo). |
+| `POST /api/v1/contratos/{id}/solicitud` | `contrato.borrador` | Envío a aprobación. Cuerpo `{ comentario? }`. Abre una solicitud con la **huella** del contenido; una solicitud viva anterior se sustituye (índice único parcial: una por contrato). Desde `Borrador` pasa a `PendienteAprobacion`; reenviar uno ya pendiente solo abre solicitud nueva. |
+| `POST /api/v1/contratos/{id}/aprobacion` | `contrato.estado` | Exige `PendienteAprobacion`, solicitud viva y huella igual a la del contrato (si no, 409 «la solicitud caducó»). **Congela la plantilla** (texto y anexos) en la misma transacción. |
+| `POST /api/v1/contratos/{id}/rechazo` | `contrato.estado` | Cuerpo `{ comentario }` **obligatorio**; vuelve a `Borrador`. |
+| `POST /api/v1/contratos/{id}/activacion` | `contrato.estado` | Desde `Aprobado`: exige plantilla congelada y que la unidad esté activa, `Disponible` y con modalidad mensual. En una transacción: convierte su propia reserva (si la hay), pasa a `EnConflicto` las reservas `Activa` que se solapan y suelta su bloqueo, ocupa la unidad con un **rango abierto** desde `fechaInicio`, crea la versión 1 y **copia y congela el inventario** de la unidad. 409 `DIS-001` si la unidad está ocupada (todo se deshace). |
+| `POST /api/v1/contratos/{id}/cambios` | `contrato.estado` | Cambio en contrato `Activo`. Cuerpo: renta, `diaPago`, `fianza`, regla de renovación, `plantillaContratoId`, `observaciones` y **`motivo` obligatorio**. Genera **versión nueva** (número siguiente, renta anterior y nueva, alcance «afecta solo a facturas futuras»). 409 si cambia la moneda, o si no cambia nada que versionar. |
+| `POST /api/v1/contratos/{id}/baja` | `contrato.estado` | Cuerpo `{ fechaFin, comentario? }`; `fechaFin` obligatoria, no anterior a hoy ni al inicio. Desde `Activo` a `BajaProgramada`; el contrato sigue bloqueando la unidad. Cualquier fecha futura (BUG-024), no solo fin de bloque. |
+| `POST /api/v1/contratos/{id}/anular-baja` | `contrato.estado` | Desde `BajaProgramada` vuelve a `Activo` y borra la fecha programada. |
+| `POST /api/v1/contratos/{id}/finalizacion` | `contrato.estado` | Desde `BajaProgramada`, **solo cuando la fecha de baja ya llegó** (BUG-025). Fija `fechaFinReal`, **recorta** el rango de ocupación (el bloqueo se apaga, la fila queda) y crea la alerta persistente «falta liquidar». |
+| `POST /api/v1/contratos/{id}/liquidacion` | `contrato.estado` | Desde `Finalizado`. Exige saldos cerrados y revisión de salida firmada (abajo). Escribe `contrato_liquidacion` (fecha, quién, importe de faltantes propuesto, decisión de fianza), pasa a `Liquidado` y resuelve la alerta persistente. |
+| `GET /api/v1/contratos/{id}/pdf` | `cliente.ver` | PDF desde la **plantilla congelada**, no del catálogo (409 si el contrato no tiene congelada). `contrato-{id}.pdf`. |
+| `GET /api/v1/contratos/{id}/incrementos`, `GET .../incrementos/{incrementoId}` | `cliente.ver` | Incrementos pactados con fecha y su estado (`aplicado`, `cancelado`, `rentaAntes`, `rentaDespues`). |
+| `POST /api/v1/contratos/{id}/incrementos` | `contrato.estado` | **201.** Cuerpo `{ tipo, porcentaje \| importe, fechaVigencia, comentario? }`. |
+| `PUT /api/v1/contratos/{id}/incrementos/{incrementoId}` | `contrato.estado` | Corrige uno **pendiente** (ni aplicado ni cancelado: 409). |
+| `POST /api/v1/contratos/{id}/incrementos/{incrementoId}/cancelacion` | `contrato.estado` | Cancela uno pendiente; la fila no se borra. |
+| `GET /api/v1/contratos/{id}/bloques` | `cliente.ver` | Historial de bloques de renovación: `numero`, `fechaInicio`, `fechaFin`, `renta`, `creadoAt`. |
+| `GET /api/v1/contratos/{id}/inventario`, `GET\|POST /api/v1/contratos/{id}/revision-inventario` | ver §6.20 | Inventario congelado y revisión de salida. |
+
+`ContratoPeticion` (todos los campos son opcionales en el JSON; la regla de obligatorios la aplica el servicio y dice cuál falta con un **409**): `clienteId`, `unidadId`, `reservaId?`, `facturadoraId` (la subempresa que factura, nunca el hotel), `fechaInicio`, `duracionInicialMeses` (≥1), `renta` (>0), `moneda` (`USD`/`DOP`), `diaPago` (1–31), `fianza` (≥0), `reglaRenovacion` (`Mensual`=1 mes, `Trimestral`=3, `Semestral`=6, `Anual`=12, `Personalizada`) con `renovacionMeses` (debe cuadrar con la regla salvo `Personalizada`), `plantillaContratoId` (código de plantilla), `observaciones?`. Si viene `reservaId`, debe ser una reserva **mensual viva** (`Activa`/`EnConflicto`) de la **misma unidad y cliente**.
+
+- **Incrementos** (`tipo` `Porcentaje`/`ImporteFijo`): solo sobre un contrato `Activo`; porcentaje > 0 y ≤ **50 %**, sin `importe`; importe fijo > 0 y en la moneda del contrato, sin `porcentaje`; fecha de vigencia obligatoria. **No tocan la renta al crearse**: el trabajo diario los aplica al abrir el bloque que contiene la fecha, con una versión en el historial y aviso interno. El porcentaje se aplica sobre la renta vigente y se redondea half-up.
+- **Liquidación (reglas de 409):** no se liquida con fianzas cobradas sin resolver (devolver, descontar o retener, por los endpoints de fianzas) ni con facturas del contrato (no proforma) con importe pendiente (BUG-050); si el contrato tiene inventario congelado, hace falta la **revisión de salida firmada**. La decisión de fianza se deriva: hay faltantes ⇒ `RetenidaPorFaltantes` (retenido = mínimo entre faltantes y fianza); si no, `Devuelta`. **La liquidación no crea cobros ni mueve la fianza**: guarda los importes y las operaciones de dinero se hacen antes por sus endpoints.
+- **Errores comunes:** 404 contrato, cliente, unidad, subempresa o reserva inexistentes; 409 por estado que no admite la operación («Un contrato en estado X no puede hacer eso. El flujo es …»); 409 `DIS-001` por ocupación; 403 si falta `contrato.estado` (o `contrato.borrador` en edición). Todas las transiciones aceptan `Idempotency-Key`.
+- `estado`, `moneda`, `reglaRenovacion` y `tipo` de incremento viajan como texto; `renta`, `fianza`, `porcentaje`, `importe`, `rentaAntes/Despues` son strings decimales.
+
+### 6.18 Bandeja de aprobaciones (F2-10)
+
+No es un controller aparte: vive en `ContratosController`, con las rutas literales `solicitudes` (que no chocan con `{id:guid}`). La bandeja llama a los **mismos servicios** que los botones de la ficha: no hay una segunda lógica de aprobación.
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/contratos/solicitudes` | `contrato.estado` | Solicitudes de **contrato** vivas (`Pendiente`) cuyo contrato sigue en `PendienteAprobacion`. Paginado; `sortBy`: `solicitadoAt` (defecto), `fechaFin`, `renta`. |
+| `POST /api/v1/contratos/solicitudes/{id}/aprobacion` | `contrato.estado` | `{id}` es la **solicitud** de la fila (no el contrato). Misma regla que `POST /contratos/{contratoId}/aprobacion`. |
+| `POST /api/v1/contratos/solicitudes/{id}/rechazo` | `contrato.estado` | Cuerpo `{ comentario }` obligatorio. Igual que el rechazo de la ficha. |
+
+- **Fila** (`AprobacionBandejaRespuesta`): `solicitudId`, `contratoId`, `solicitadoPorId`, `solicitadoPor`, `cliente`, `unidad`, `estado`, `fechaInicio`, `fechaFinVigente`, `rentaVigente`, `rentaPropuesta`, `moneda`, `hayCambioDeRenta`, `huellaContenido`, `solicitadoAt`, `comentario`.
+- **Un empleado recibe 403, no una lista vacía** (una bandeja vacía esconde un error de permisos); se comprueba en el atributo y en el servicio, y la denegación se audita.
+- **BUG-042:** aprobar o rechazar desde la bandeja comprueba que la solicitud de la fila siga siendo la viva del contrato; si cambió (reenvío, edición), 409 «la solicitud cambió: ya no es la vigente». 404 si la solicitud no existe o no es de un contrato.
+- **Idempotencia compartida con la ficha:** la clave se guarda contra la ruta y el cuerpo del endpoint de contratos (`/contratos/{contratoId}/aprobacion` o `/rechazo`), así que aprobar desde la bandeja y desde la ficha con la misma `Idempotency-Key` es la misma operación.
+- Las **propuestas del agente** (`TipoSolicitud.AccionAgente`) tienen su propia lista y su propio permiso (`GET /api/v1/ia/propuestas`, §7); `ServicioAprobaciones` reparte por tipo, pero esta bandeja solo lista contratos.
+
+### 6.19 Plantillas de contrato y anexos (F2-07)
+
+Dos catálogos de texto. Leer es `cliente.ver`; crear y editar es `contrato.borrador`; **desactivar es `contrato.estado`**. Nada se borra: se desactiva.
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/plantillas-contrato` | `cliente.ver` | Paginado; `sortBy`: `nombre` (defecto), `codigo`, `createdAt`. **Incluye las desactivadas** (campo `activa`). |
+| `GET /api/v1/plantillas-contrato/{id}` | `cliente.ver` | |
+| `POST /api/v1/plantillas-contrato` | `contrato.borrador` | **201.** Cuerpo `{ codigo, nombre, secciones?: [ { titulo?, texto } ], anexosTipos?: [ TipoAnexo ] }`. El `codigo` es único y **no se reutiliza** (los contratos firmados lo citan): 409 si ya existe. |
+| `PUT /api/v1/plantillas-contrato/{id}` | `contrato.borrador` | Cuerpo `{ nombre, secciones?, anexosTipos? }` (el código no cambia). Una sección sin `texto` se descarta; `anexosTipos` se deduplica. No afecta a contratos ya aprobados (tienen copia). |
+| `POST /api/v1/plantillas-contrato/{id}/desactivacion` | `contrato.estado` | 409 si ya está desactivada. Los contratos ya aprobados no cambian; los que se aprueben después no podrán elegirla. |
+| `GET /api/v1/plantillas-anexo` | `cliente.ver` | Paginado; por defecto **solo activos**, `todos=true` incluye inactivos. `sortBy`: `tipo` (defecto), `nombre`, `createdAt`. |
+| `GET /api/v1/plantillas-anexo/{id}` | `cliente.ver` | |
+| `POST /api/v1/plantillas-anexo` | `contrato.borrador` | **201.** Cuerpo `{ nombre, tipo, secciones? }`; `tipo`: `Normas`, `Inventario`, `Mantenimiento`, `Otros`. **Solo un anexo activo por tipo**: 409 si ya hay (aviso del servicio e índice único parcial). |
+| `PUT /api/v1/plantillas-anexo/{id}` | `contrato.borrador` | Cuerpo `{ nombre, secciones? }`. |
+| `POST /api/v1/plantillas-anexo/{id}/desactivacion` | `contrato.estado` | 409 si ya está desactivado. |
+
+- **Congelación:** al aprobar un contrato se **copia** la plantilla y sus anexos (texto de las secciones y tipos) en el contrato (`plantillaContratoCongeladaId`, `plantillaCongeladaAt`), en la misma transacción. Aprobar falla con 409 si el código de plantilla no existe en el catálogo o está desactivada. Editar o desactivar la plantilla después no cambia un contrato ya aprobado; el PDF sale de la copia.
+- Los textos son datos: se guardan y se renderizan como texto, nunca como HTML.
+
+### 6.20 Inventarios (F2-08)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/unidades/{unidadId}/inventario-base` | `cliente.ver` | Elementos del inventario base de la unidad (`nombre`, `cantidad`, `notas`, `orden`, `activo`). |
+| `POST /api/v1/unidades/{unidadId}/inventario-base` | `cliente.editar` | **201.** Cuerpo `{ nombre, cantidad, notas? }`; `cantidad` ≥ 0 (400 si es negativa). El `orden` es el siguiente. 404 si la unidad no existe o está inactiva. |
+| `PUT /api/v1/unidades/{unidadId}/inventario-base/{itemId}` | `cliente.editar` | Mismo cuerpo. 404 si el elemento no es de esa unidad. |
+| `POST /api/v1/unidades/{unidadId}/inventario-base/{itemId}/desactivacion` | `cliente.editar` | Baja lógica del elemento. |
+| `GET /api/v1/contratos/{contratoId}/inventario` | `cliente.ver` | Inventario **congelado** del contrato (copia hecha al activar). |
+| `GET /api/v1/contratos/{contratoId}/revision-inventario` | `cliente.ver` | Revisión de salida firmada. 404 si todavía no hay. |
+| `POST /api/v1/contratos/{contratoId}/revision-inventario` | `contrato.estado` | **201.** Firma la revisión de salida. Cuerpo `{ lineas: [ { contratoInventarioItemId, estado, nota? } ], importePropuesto?, observacion? }`. |
+
+- **Congelado = copia.** El inventario del contrato se escribe una sola vez, al activar; el inventario base puede cambiar después sin tocar lo que el cliente firmó. Una unidad sin inventario base activa igual (es opcional, §3.1).
+- **Revisión de salida:** una línea por **cada** elemento congelado, ni más ni menos y sin repetir (409 con cuántos faltan y sobran). `estado`: `Presente`, `Ausente`, `Danado`; `Ausente` y `Danado` exigen `nota` (400; decisión provisional TODO(A#)). `importePropuesto` ≥ 0 (400), redondeado half-up; es el faltante que luego usa la liquidación. Solo con contrato `Activo`, `BajaProgramada` o `Finalizado` (409 en otro estado), y **una sola vez por contrato** («firmar es un hecho histórico»): 409 la segunda, y el índice único de `contrato_id` lo respalda. 409 si el contrato no tiene inventario congelado.
+- **Liquidación:** con inventario congelado y sin revisión firmada, liquidar es 409 (§6.17).
+- El servicio vuelve a comprobar el permiso (`cliente.editar` / `contrato.estado`) con la política, con auditoría del intento.
+
+### 6.21 Huecos de API de AUD-11 (28/10/2026)
+
+Cerrados por AUD-11 para que las pantallas de AUD-08/09 dejen de depender de `configuracion.editar` para cobrar y facturar. Todo lo de abajo está verificado contra el código; donde el informe de la tarea decía otra cosa, manda el código (ver «Discrepancias»).
+
+#### 6.21.1 Catálogos de solo lectura (`/api/v1/catalogos`)
+
+Solo lo necesario para mostrar la opción: nada de contadores, plantillas, RNC ni contactos de configuración. Envoltorio de lista estándar; **`pageSize` por defecto 200** (el máximo) y solo filas **activas**.
+
+| Endpoint | Acción | Fila |
+|---|---|---|
+| `GET /api/v1/catalogos/series` | `factura.borrador` (la mínima de quien consume `serieId`) | `id`, `numero`, `prefijo`, `moneda` (nula = sin moneda fija), `tipo`, `generaComprobante`. `sortBy`: `numero`. |
+| `GET /api/v1/catalogos/formas-pago` | `cobro.registrar` | `id`, `nombre`. `sortBy`: `nombre`. |
+| `GET /api/v1/catalogos/cuentas-receptoras` | `cobro.registrar` | `id`, `nombre`, `banco`, `moneda`. `sortBy`: `nombre`. |
+| `GET /api/v1/catalogos/subempresas` | `factura.ver` | `id`, `nombre`. `sortBy`: `nombre`. |
+| `GET /api/v1/catalogos/parametros-cobro` | `cobro.registrar` | Sin paginar: `{ toleranciaCambioUsd, toleranciaCambioDop }` (nulables), desde la configuración. |
+
+#### 6.21.2 Alertas (bandeja)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/alertas` | `cliente.ver` + filtro por tipo | Paginado (`pageSize` ≤ 200). Filtros `tipo` y `estado` (`abiertas` por defecto, `cerradas`, `todas`; otro valor es 400). `sortBy`: `ocurridoAt` (por defecto, **descendente**), `tipo`, `repeticiones`. Fila: `id`, `tipo`, `mensaje`, `ocurridoAt`, `repeticiones`, `resueltaAt`. |
+| `POST /api/v1/alertas/{id}/cerrar` | `cliente.ver` + acción del tipo | Cierra la alerta (`resueltaAt`). **Idempotente:** cerrar una ya cerrada no cambia la fecha del primer cierre ni vuelve a auditar. Audita `alerta.cerrada` con IP. Devuelve la fila. |
+
+Cada tipo de alerta exige una acción para verse y cerrarse (`ServicioBandejaAlertas.AccionPorTipo`):
+
+| Tipo | Acción |
+|---|---|
+| `contrato`, `reserva` | `cliente.ver` |
+| `factura`, `comprobante`, `tipo_cambio` | `factura.emitir` |
+| `fianza` | `fianza.mover` |
+| `recordatorio` | `mensajeria.masivo` |
+| `envio` | `documento.enviar` |
+| `seguridad` | `ip.desbloquear` |
+| `backup`, `auditoria` y **cualquier tipo no listado** | `configuracion.editar` |
+
+- **Lista:** sin `tipo`, solo salen los tipos que el usuario puede ver (los desconocidos, solo con `configuracion.editar`). Con `tipo` que no puede ver, devuelve **lista vacía** (no 403, para no filtrar qué tipos existen).
+- **Cerrar:** 404 si la alerta no existe; si existe pero su tipo no es visible para el usuario, **403** `SEG-007` con la denegación **auditada** (`permiso.denegado`). El orden es 404 primero y 403 después.
+- Una alerta de contrato (renovación) muestra importes al empleado: son datos individuales, no agregados; decisión aceptada.
+
+#### 6.21.3 Auditoría (lectura), seguridad y emergencia
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/auditoria` | `auditoria.ver` | Paginado. Filtros `desde`/`hasta` (fechas de negocio en `America/Santo_Domingo`, **ambas incluidas**; `desde > hasta` es 400), `usuarioId`, `entidad`, `entidadId`, `accion` (coincidencia exacta). `sortBy`: `fecha` (por defecto, **descendente**), `accion`, `entidad`; desempata por la secuencia. Fila: `id`, `fecha`, `usuarioId`, `usuarioNombre`, `ip`, `accion`, `entidad`, `entidadId`, `resultado`, `origen`, `datos`. **No devuelve la firma ni la secuencia.** La lectura no se audita. |
+| `GET /api/v1/seguridad/bloqueos/ips` | `ip.desbloquear` | IP con bloqueo **vigente** (o indefinido), más reciente primero, **sin las de la lista blanca**: `ip`, `nivel`, `fallos`, `desde` (último cambio), `hasta` (`null` si indefinido), `indefinido`. |
+| `GET /api/v1/seguridad/bloqueos/cuentas` | `cuenta.desbloquear` | Cuentas con bloqueo vigente, por nombre de acceso: `usuarioId`, `nombreAcceso`, `nombre`, `desde` (= `hasta` − `MinutosBloqueoCuenta`), `hasta`. |
+| `GET /api/v1/seguridad/bloqueos/lista-blanca` | `ip.desbloquear` | `data` = `string[]` de `Seguridad__IpListaBlanca`, ordenada. |
+| `GET /api/v1/auth/emergencia/solicitudes?estado=` | `seguridad.acceso_emergencia` | `estado`: `pendiente` (por defecto), `aprobada`, `caducada`, `usada`, `todas`; otro valor 400. Máximo **200**, más reciente primero. Fila: ids y nombres de acceso del objetivo, solicitante y aprobador, `motivo`, `creadoAt`, `aprobadoAt`, `caducaAt`, `usadoAt`, `estado`. **Nunca el código ni su hash.** |
+| `GET /api/v1/usuarios/{id}/permisos` | `configuracion.editar` | Añade `techo`: las acciones de `permiso_rol` del rol del usuario (lo máximo que se le puede activar). `permisos` sigue siendo lo efectivo. |
+
+- Los listados de bloqueos y de emergencia **no son paginados de verdad**: devuelven el envoltorio con `page = 1`, `pageSize = total` y `totalPages = 1`.
+- Una solicitud de emergencia `pendiente` **no caduca**: solo caduca el código una vez aprobado, por eso `caducaAt` es `null` hasta aprobar.
+- **Enmascarado en `datos` de auditoría.** Antes de responder, toda clave del JSON `datos` (a cualquier profundidad, también dentro de arrays) cuyo nombre, sin `_` ni `-` y en minúsculas, contenga `password`, `contrasena`, `hash`, `secret`, `token`, `clave`, `firma`, `cedula`, `rnc`, `pasaporte`, `apikey`, `documentoidentidad` o `numerodocumento` sale con el valor `"***"`.
+- **La lectura de una tabla con RLS necesita transacción.** Las políticas RLS de `auditoria` leen `app.rol`, y `ContextoTransaccionInterceptor` lo fija con `set_config(..., true)` **solo al abrir una transacción**. Una consulta suelta (sin transacción) no ve el rol y devuelve la lista siempre vacía, sin error. `ServicioLecturaAuditoria` abre una transacción para leer; cualquier lectura futura de una tabla con política por rol debe hacer lo mismo.
+
+#### 6.21.4 Clientes, prospectos, inmuebles y unidades
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `POST /api/v1/prospectos/{id}/convertir` | `cliente.editar` | Convierte el prospecto en cliente en **una transacción**. Cuerpo `ClientePeticion` **sin `numero`** (400 si viene: lo da la secuencia). Crea el cliente por el mismo camino del alta (documento cifrado e índice ciego, 409 si el documento ya es de un cliente), vincula `prospecto.clienteId` y `convertidoAt`, pone `activo = false` y **pasa al cliente sus cotizaciones y sus reservas**. Devuelve `ClienteResumen`. 409 si ya estaba convertido (dos conversiones simultáneas se serializan con un lock). Audita `prospecto.convertido`. |
+| `POST /api/v1/clientes/{id}/reactivar`, `/prospectos/{id}/reactivar`, `/inmuebles/{id}/reactivar`, `/inmuebles/unidades/{id}/reactivar` | `cliente.editar` | Deshacen la baja lógica. Ya activo ⇒ 200 sin cambios. Prospecto **convertido** ⇒ 409. Unidad cuyo inmueble está inactivo ⇒ 409. |
+| `GET /api/v1/inmuebles/unidades` | `cliente.ver` | Unidades de todos los inmuebles. Filtros `q` (nombre), `inmuebleId`, `activa`, `modalidad`. `sortBy` en `nombre` (defecto), `tipo`, `estadoManual`, `createdAt`. |
+| `GET /api/v1/inmuebles/unidades/{id}` | `cliente.ver` | Una unidad (`UnidadRespuesta`). |
+| `DELETE /api/v1/inmuebles/unidades/{id}` | `cliente.editar` | Baja lógica de la unidad; devuelve la unidad. **409** si tiene algún contrato que no esté `Finalizado`/`Liquidado` o una reserva activa (`Activa`/`EnConflicto`). |
+
+- `GET /api/v1/clientes?q=` busca por **nombre o por número** (si `q` es un entero). `GET /api/v1/prospectos` oculta los convertidos (y los inactivos).
+- Cambio de esquema: migración `20261028180005_ProspectoConvertidoACliente` (`prospecto.cliente_id` FK `Restrict` + `convertido_at`).
+- `TODO(A#)` abierto en el servicio: la «unidad implícita» de un inmueble que se alquila completo no está modelada; falta decidir si se puede desactivar por separado.
+
+#### 6.21.5 Cuentas por contrato
+
+`GET /api/v1/cuentas` (§6.7) acepta `contratoId`: filtra las facturas por `factura.contrato_id` **y** las fianzas por su contrato. El filtro se devuelve en el eco `filtro.contratoId`. Los totales siguen dependiendo de `informe.ver` (nulos sin él). Un filtro de factura que una fianza no puede expresar (`serieId`, `estado`, …) sigue dejando las fianzas fuera; `contratoId` **no** las deja fuera.
+
+#### 6.21.6 Simulación de facturación periódica
+
+`POST /api/v1/facturas/periodicas/simular` (§6.2.1, `factura.emitir`): cada elemento de `items` trae ahora, además de lo anterior, `clienteNombre`, `unidadNombre`, `inmuebleId`, `inmuebleNombre` y `contratoFechaInicio`, resueltos en bloque (sin consulta por fila). La respuesta incluye también `seEmite` (derivado: sin motivo de omisión y sin factura ya existente).
+
+#### 6.21.7 Reintento de un envío fallido
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `POST /api/v1/envios/{id}/reintentar` | `cotizacion.enviar` (puerta) + permiso del tipo de documento en el servicio | Sin cuerpo. Acepta `Idempotency-Key`. Devuelve la `EnvioFila`. |
+
+- Reutiliza la **misma fila** (suma `intentos`, no crea otra) y la copia del PDF del primer intento. La fila se reclama con `UPDATE ... WHERE estado IN (Pendiente, Fallido)`: dos reintentos a la vez compiten y solo uno manda; el otro es 409.
+- **404** envío inexistente; **403** si el usuario no tiene el permiso del tipo de documento (o del contenido del adjunto); **409** si el envío no está `Fallido` o ya lo reclamó otro intento; **409 `API-005`** si no hay correo configurado.
+- Audita `envio.reintentado` si sale y `envio.fallido` si vuelve a fallar. El reintento de un **lote** masivo sigue siendo `POST /api/v1/envios/masivo/{loteId}/reintentar` (§6.9).
+
+#### 6.21.8 Comprobantes de retención (lectura)
+
+| Endpoint | Acción | Notas |
+|---|---|---|
+| `GET /api/v1/comprobantes-retencion` | `factura.ver` | Paginado; filtros `facturaId` y `pendiente` (`true` = solo `Pendiente`; `false` = solo recibidos). `sortBy`: `createdAt`, **por defecto descendente**. |
+| `GET /api/v1/comprobantes-retencion/{id}` | `factura.ver` | 404 si no existe. |
+
+Fila: `id`, `facturaId`, `tipo`, `base`, `porcentaje`, `importe`, `estado` (`Pendiente`/`Recibido`), `numero`, `fechaRecepcion`, `recibidoAt`, `recibidoPor`, `createdAt`. Esto sustituye a «no hay endpoint de lectura» de §6.5; `PUT .../recibir` no cambia.
+
+#### 6.21.9 Campos nuevos en factura y cobro
+
+- **`FacturaRespuesta`** añade `comprobanteFiscal` (texto «Tipo Número», como en el PDF; `null` si la serie no genera comprobante), `comprobanteFiscalId`, `modificadaTrasEnvio` (mismo criterio que la vista de cuentas: se tocó la factura después del último envío que salió) y `comprobanteRetencionId`. Se rellenan en el detalle y en **todas las respuestas de escritura que devuelven la factura entera**: emitir, modificar, anular, alta/edición/baja de línea y referencia de e-factura. Alta y edición de la cabecera devuelven `FacturaResumen`, que no los lleva.
+- **`CobroRespuesta`** añade `importeDevuelto`: la parte del cobro devuelta al anular facturas de un cobro repartido, **en la moneda recibida**; cero si no se anuló ninguna. Queda como devuelta en el cobro y no genera saldo a favor.
+- Los **ajustes por diferencia de cambio** cuelgan de la factura, no del cobro, y no se exponen por cobro (mejora anotada).
+
+#### 6.21.10 Recordatorios: modo
+
+`GET /api/v1/recordatorios/modo` (`mensajeria.masivo`) → `{ modo }` con `Apagado`, `Manual` o `Automatico` (la configuración de §6.10 sin pasar por `configuracion.editar`).
+
+#### 6.21.11 Serialización global: importes como string y enums como texto
+
+Aplica a **todas** las respuestas JSON de la API (`AddJsonOptions` en `Program.cs`) y a las respuestas idempotentes guardadas.
+
+- **Decimales como string con su escala.** Todo `decimal` (y `decimal?`) sale entre comillas, con cultura invariante y la escala que trae el valor: `"1500.00"` para `numeric(18,2)`, `"58.500000"` para un tipo de cambio `numeric(18,6)`. Nunca un número JSON (AGENTS §6: el dinero en TypeScript es un string decimal).
+- **Entrada que acepta ambos.** El mismo conversor (`ImporteJsonConverter`) lee un string decimal (`"1500.00"`) o un número JSON, y rechaza con 400 un importe que pase de 9.999.999.999.999.999,99 en valor absoluto (`numeric(18,2)`). Los tipos de cambio y porcentajes conservan su `[Range]` propio.
+- **Enums como texto.** Todo enum sale por su nombre (`"Borrador"`, `"USD"`, `"MedioDia"`); en la entrada se siguen aceptando tanto el nombre como el entero, porque los atributos por tipo o campo (`JsonStringEnumConverter<T>`) y el conversor global lo permiten.
+- **Respuestas idempotentes con el mismo formato.** `ServicioIdempotencia` serializa lo que guarda con los mismos conversores, así que el reintento devuelve un cuerpo indistinguible del de la primera vez. **Las filas guardadas antes del cambio conservan el formato viejo** (decimales como número, enums como entero) hasta que caduquen: un reintento de una mutación anterior devuelve eso, tal cual. Un reintento responde siempre **200**, también si la mutación original respondió 201.
+- El frontend tiene los tipos de la API alineados (commit `aa888c7`): importes `string`, enums como unión de textos.
 
 ## 7. Seguridad técnica (detalle y estado en SEGURIDAD.md)
 - **Base:** JWT de acceso corto en cookie HttpOnly + token de refresco rotatorio, CSRF double-submit, BCrypt (12 rondas), MFA/TOTP, rate limiting (`Microsoft.AspNetCore.RateLimiting`), cabeceras de seguridad y CSP, HSTS, auditoría firmada, registro de eventos de seguridad, control de sesiones y tokens.
