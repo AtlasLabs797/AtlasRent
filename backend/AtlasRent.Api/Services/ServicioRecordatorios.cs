@@ -681,6 +681,13 @@ public sealed class ServicioRecordatorios(
                 recordatorio.Unidad?.Nombre)
             .Sustituir(plantilla);
 
+        // Saldo sin cambios: sale la copia que se preparó y revisó. Recomponerla daría otro PDF (otra
+        // fecha de creación) del mismo documento, y el adjunto dejaría de ser lo que se revisó.
+        if (asunto == envio.Asunto && cuerpo == envio.Cuerpo)
+        {
+            return;
+        }
+
         var pdf = await cuentas.PdfAsync(recordatorio.ClienteId, envio.DocumentoAnio ?? hoy.Year, usuario, ct);
 
         envio.Asunto = asunto;
