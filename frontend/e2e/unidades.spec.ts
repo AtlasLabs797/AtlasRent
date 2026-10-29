@@ -18,6 +18,7 @@ const INMUEBLE = {
 const UNIDAD = {
   id: 'ffffffff-0000-0000-0000-000000000001',
   inmuebleId: INMUEBLE.id,
+  inmuebleNombre: INMUEBLE.nombre,
   nombre: 'Apto 2B',
   tipo: 'Apartamento',
   propietariaId: INMUEBLE.propietariaId,

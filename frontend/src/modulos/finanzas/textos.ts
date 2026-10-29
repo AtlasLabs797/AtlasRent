@@ -258,7 +258,6 @@ export const textosFinanzas = {
     itbis: 'ITBIS',
     retencion: 'Retención',
     sinImpuesto: 'Sin impuesto',
-    sinCatalogoImpuestos: 'Tu usuario no puede ver los tipos de ITBIS ni de retención: las líneas se guardan sin impuesto. Para aplicarlos, pide a la administración que los asigne.',
     previa: 'Vista previa del importe de la línea: {importe}',
     anadir: 'Añadir',
     guardarLinea: 'Guardar línea',
@@ -338,7 +337,7 @@ export const textosFinanzas = {
   fianzas: {
     titulo: 'Fianzas',
     descripcion: 'Depósitos de garantía por contrato.',
-    columnas: { contrato: 'Contrato', exigido: 'Exigido', numero: 'Fianzas', cobrado: 'Cobrado', devuelto: 'Devuelto', descontado: 'Descontado', saldo: 'Saldo', estado: 'Estado' },
+    columnas: { cliente: 'Cliente', unidad: 'Unidad', exigido: 'Exigido', numero: 'Fianzas', cobrado: 'Cobrado', devuelto: 'Devuelto', descontado: 'Descontado', saldo: 'Saldo', estado: 'Estado' },
     ficha: {
       devoluciones: 'Devoluciones',
       fecha: 'Fecha',

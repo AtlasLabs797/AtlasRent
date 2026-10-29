@@ -110,14 +110,14 @@ export function useEliminarContacto(clienteId: string) {
   });
 }
 
-export function useListaProspectos(f: { q: string; page: number; pageSize: number }) {
+export function useListaProspectos(f: { q: string; page: number; pageSize: number; incluirInactivos?: boolean }) {
   return useQuery({
     queryKey: ['prospectos', 'lista', f],
     placeholderData: keepPreviousData,
     queryFn: async () =>
       (
         await clienteHttp.get<Pagina<ProspectoResumen>>('/prospectos', {
-          params: { page: f.page, pageSize: f.pageSize, ...(f.q.trim() ? { q: f.q.trim() } : {}) },
+          params: { page: f.page, pageSize: f.pageSize, ...(f.q.trim() ? { q: f.q.trim() } : {}), ...(f.incluirInactivos ? { incluirInactivos: true } : {}) },
         })
       ).data,
   });

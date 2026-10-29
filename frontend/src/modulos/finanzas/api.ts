@@ -153,13 +153,12 @@ export function useParametrosCobro(activo = true) {
   });
 }
 
-/** Tipos de ITBIS y de retención: solo los lista `configuracion.editar` (no hay catálogo mínimo). */
-export function useTiposImpuesto(tipo: 'itbis' | 'retencion', activo: boolean) {
+/** Tipos de ITBIS y de retención activos para elegir en un borrador (`GET /catalogos/tipos-*`, `factura.borrador`). */
+export function useTiposImpuesto(tipo: 'itbis' | 'retencion') {
   return useQuery({
     queryKey: ['finanzas', 'tipos', tipo],
-    enabled: activo,
     retry: false,
-    queryFn: async () => (await clienteHttp.get<Pagina<TipoImpuesto>>(`/config/tipos-${tipo}`, { params: { pageSize: 200 } })).data.data.filter((t) => t.activo),
+    queryFn: async () => (await clienteHttp.get<Pagina<TipoImpuesto>>(`/catalogos/tipos-${tipo}`, { params: { pageSize: 200 } })).data.data,
   });
 }
 

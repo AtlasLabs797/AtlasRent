@@ -182,6 +182,22 @@ test('prospecto ya convertido: enlaza a su cliente, no ofrece convertir y queda 
   await expect(page).toHaveURL(new RegExp(`/clientes/${RESUMEN.id}$`));
 });
 
+test('prospectos: «Mostrar inactivos y convertidos» pide incluirInactivos y deja alcanzables Reactivar y Ver cliente', async ({ page, api }) => {
+  conSesion(api);
+  const inactivo = { ...PROSPECTO, id: 'cccccccc-0000-0000-0000-000000000002', nombre: 'Dormido SRL', activo: false };
+  const convertido = { ...PROSPECTO, id: 'cccccccc-0000-0000-0000-000000000003', nombre: 'Ya Cliente SRL', activo: false, clienteId: RESUMEN.id, convertidoAt: '2026-10-01T10:00:00Z' };
+  api.responder('GET', '/prospectos', (p) => ({ body: pagina(p.query.includes('incluirInactivos=true') ? [PROSPECTO, inactivo, convertido] : [PROSPECTO]) }));
+
+  await page.goto('/clientes/prospectos');
+  await expect(page.getByText('Pro Spectos SRL')).toBeVisible();
+  await expect(page.getByText('Dormido SRL')).toHaveCount(0);
+  await page.getByLabel('Mostrar inactivos y convertidos').click();
+  await expect(page.getByText('Dormido SRL')).toBeVisible();
+  await expect(page.getByText('Ya Cliente SRL')).toBeVisible();
+  await expect(page.getByText('Convertido', { exact: true })).toBeVisible();
+  await capturarClaroOscuro(page, 'prospectos-inactivos-convertidos');
+});
+
 test('prospecto desactivado: se reactiva desde su panel', async ({ page, api }) => {
   conSesion(api);
   const inactivo = { ...PROSPECTO, activo: false };

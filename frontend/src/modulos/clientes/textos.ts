@@ -23,7 +23,7 @@ export const textosClientes = {
     reintentar: 'Reintentar',
   },
   tipos: { PersonaFisica: 'Persona física', Empresa: 'Empresa' },
-  estados: { activo: 'Activo', inactivo: 'Inactivo' },
+  estados: { activo: 'Activo', inactivo: 'Inactivo', convertido: 'Convertido' },
   marcas: { agenteRetencion: 'Agente de retención', enGestionCobro: 'En gestión de cobro', recordatoriosPausados: 'Recordatorios pausados' },
   ficha: {
     eyebrow: 'Cliente',
@@ -111,6 +111,7 @@ export const textosClientes = {
     descripcion: 'Personas y empresas con cotización pendiente que todavía no son clientes.',
     nuevo: 'Nuevo prospecto',
     buscar: 'Buscar por nombre',
+    inactivos: 'Mostrar inactivos y convertidos',
     columnas: { nombre: 'Nombre', tipo: 'Tipo', email: 'Email', telefono: 'Teléfono', estado: 'Estado' },
     vacioTitulo: 'No hay prospectos',
     vacioCuerpo: 'Los prospectos son contactos a los que cotizas antes de que contraten.',

@@ -88,6 +88,12 @@ test('cuentas: el gerente (sin configuración) elige forma de pago y cuenta de l
   // Propietaria y facturadora salen de /catalogos/subempresas, sin ser administrador.
   await page.getByLabel('Propietaria').click();
   await expect(page.getByRole('option', { name: 'Atlas Propiedades SRL' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Solo Propietaria SRL' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Solo Facturadora SRL' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Facturadora').click();
+  await expect(page.getByRole('option', { name: 'Solo Facturadora SRL' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Solo Propietaria SRL' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.getByRole('checkbox', { name: 'Seleccionar 1-00412' }).check();
   await page.getByRole('button', { name: 'Registrar cobro' }).click();
@@ -193,17 +199,33 @@ test('borrador: el empleado crea la cabecera y añade una línea; los totales so
   expect(api.ultimoCuerpo('POST', '/facturas')).toMatchObject({ clienteId: CLIENTE_ID, serieId: SERIE_ID, moneda: 'USD', fechaVencimiento: '2026-11-05', concepto: 'Servicios octubre' });
   expect(claves[0]).toMatch(/^[0-9a-f-]{36}$/);
 
-  // Sin permiso de configuración no hay selector de impuestos, y lo dice.
-  await expect(page.getByText('no puede ver los tipos de ITBIS')).toBeVisible();
+  // El empleado elige ITBIS desde el catálogo mínimo, sin permiso de configuración.
+  await expect(page.getByText('no puede ver los tipos de ITBIS')).toHaveCount(0);
+  await page.getByLabel('ITBIS', { exact: true }).click();
+  await page.getByRole('option', { name: 'ITBIS general (18,00 %)' }).click();
   await page.locator('#linea-concepto').fill('Servicio de limpieza');
   await page.getByLabel('Cantidad').fill('2');
   await page.getByLabel('Precio unitario').fill('625');
   await expect(page.getByText('Vista previa del importe de la línea: 1250.00 USD')).toBeVisible();
   await page.getByRole('button', { name: 'Añadir', exact: true }).click();
   await expect(page.getByRole('table').getByText('Servicio de limpieza')).toBeVisible();
-  expect(api.ultimoCuerpo('POST', `/facturas/${FACTURA_ID}/lineas`)).toMatchObject({ tipo: 'Servicio', concepto: 'Servicio de limpieza', cantidad: '2.0000', precioUnitario: '625.00', tipoItbisId: null });
+  expect(api.ultimoCuerpo('POST', `/facturas/${FACTURA_ID}/lineas`)).toMatchObject({ tipo: 'Servicio', concepto: 'Servicio de limpieza', cantidad: '2.0000', precioUnitario: '625.00', tipoItbisId: 'itbis1' });
   await expect(page.getByLabel('Totales de la API')).toContainText('1.250,00');
   await capturarClaroOscuro(page, 'finanzas-borrador-editar', { paginaCompleta: true });
+});
+
+test('fianzas: el listado muestra cliente y unidad en vez del identificador del contrato', async ({ page, api }) => {
+  conSesion(api, GERENTE);
+  catalogos(api);
+  const fila = { id: FIANZA_ID, contratoId: CONTRATO_ID, clienteId: CLIENTE_ID, clienteNombre: 'Inversiones Caribe SRL', unidadId: 'u1', unidadNombre: 'Apto 3B', importeExigido: '59500.00', moneda: 'DOP', numeroFianzas: 2, cobrado: '59500.00', devuelto: '0.00', descontado: '0.00', saldo: '59500.00', estado: 'Retenida', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-10-28T00:00:00Z' };
+  api.responder('GET', '/fianzas', { body: { data: [fila], total: 1, page: 1, pageSize: 25, totalPages: 1 } });
+
+  await page.goto('/fianzas');
+  const tabla = page.getByRole('table');
+  await expect(tabla.getByText('Inversiones Caribe SRL')).toBeVisible();
+  await expect(tabla.getByText('Apto 3B')).toBeVisible();
+  await expect(tabla.getByText(CONTRATO_ID.slice(0, 8))).toHaveCount(0);
+  await capturarClaroOscuro(page, 'finanzas-fianzas-lista');
 });
 
 test('fianza: alta desde la pantalla de fianzas', async ({ page, api }) => {
@@ -213,8 +235,8 @@ test('fianza: alta desde la pantalla de fianzas', async ({ page, api }) => {
   api.responder('GET', '/contratos', {
     body: { data: [{ id: CONTRATO_ID, cliente: 'Inversiones Caribe SRL', unidad: 'Apto 3B', moneda: 'DOP', fechaInicio: '2026-01-01' }], total: 1, page: 1, pageSize: 20, totalPages: 1 },
   });
-  api.responder('POST', '/fianzas', { body: { fianza: { id: FIANZA_ID, contratoId: CONTRATO_ID, importeExigido: '59500.00', moneda: 'DOP', numeroFianzas: 2, cobrado: '0.00', devuelto: '0.00', descontado: '0.00', saldo: '0.00', estado: 'Pendiente', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-10-28T00:00:00Z' }, devoluciones: [] } });
-  api.responder('GET', `/fianzas/${FIANZA_ID}`, { body: { fianza: { id: FIANZA_ID, contratoId: CONTRATO_ID, importeExigido: '59500.00', moneda: 'DOP', numeroFianzas: 2, cobrado: '0.00', devuelto: '0.00', descontado: '0.00', saldo: '0.00', estado: 'Pendiente', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-10-28T00:00:00Z' }, devoluciones: [] } });
+  api.responder('POST', '/fianzas', { body: { fianza: { id: FIANZA_ID, contratoId: CONTRATO_ID, clienteId: CLIENTE_ID, clienteNombre: 'Inversiones Caribe SRL', unidadId: 'u1', unidadNombre: 'Apto 3B', importeExigido: '59500.00', moneda: 'DOP', numeroFianzas: 2, cobrado: '0.00', devuelto: '0.00', descontado: '0.00', saldo: '0.00', estado: 'Pendiente', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-10-28T00:00:00Z' }, devoluciones: [] } });
+  api.responder('GET', `/fianzas/${FIANZA_ID}`, { body: { fianza: { id: FIANZA_ID, contratoId: CONTRATO_ID, clienteId: CLIENTE_ID, clienteNombre: 'Inversiones Caribe SRL', unidadId: 'u1', unidadNombre: 'Apto 3B', importeExigido: '59500.00', moneda: 'DOP', numeroFianzas: 2, cobrado: '0.00', devuelto: '0.00', descontado: '0.00', saldo: '0.00', estado: 'Pendiente', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-10-28T00:00:00Z' }, devoluciones: [] } });
 
   await page.goto('/fianzas');
   await page.getByRole('button', { name: 'Nueva fianza' }).click();
@@ -338,7 +360,7 @@ test('fianza: resumen y devolución parcial exige motivo', async ({ page, api })
   conSesion(api);
   api.responder('GET', `/fianzas/${FIANZA_ID}`, {
     body: {
-      fianza: { id: FIANZA_ID, contratoId: 'bbbbbbbb-0000-0000-0000-000000000001', importeExigido: '1000.00', moneda: 'USD', numeroFianzas: 1, cobrado: '1000.00', devuelto: '0.00', descontado: '0.00', saldo: '1000.00', estado: 'Retenida', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-01-01T00:00:00Z' },
+      fianza: { id: FIANZA_ID, contratoId: 'bbbbbbbb-0000-0000-0000-000000000001', clienteId: CLIENTE_ID, clienteNombre: 'Inversiones Caribe SRL', unidadId: 'u1', unidadNombre: 'Apto 3B', importeExigido: '1000.00', moneda: 'USD', numeroFianzas: 1, cobrado: '1000.00', devuelto: '0.00', descontado: '0.00', saldo: '1000.00', estado: 'Retenida', retenidaAt: null, enLiquidacionAt: null, devueltaAt: null, createdAt: '2026-01-01T00:00:00Z' },
       devoluciones: [],
     },
   });

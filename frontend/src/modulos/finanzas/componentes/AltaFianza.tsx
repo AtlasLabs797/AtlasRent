@@ -57,21 +57,19 @@ export function AltaFianza({ onCerrar, onCreada }: { onCerrar: () => void; onCre
       }
     >
       <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
-        <div onInput={(e) => setTexto((e.target as HTMLInputElement).value)}>
-          <Combobox
-            label={a.contrato}
-            required
-            placeholder={a.buscarContrato}
-            options={opciones}
-            value={elegido?.id ?? null}
-            onChange={(v) => {
-              setTexto('');
-              const c = (contratos.data ?? []).find((x) => x.id === v) ?? null;
-              setElegido(c);
-              if (c) setMoneda(c.moneda);
-            }}
-          />
-        </div>
+        <Combobox
+          label={a.contrato}
+          required
+          placeholder={a.buscarContrato}
+          options={opciones}
+          value={elegido?.id ?? null}
+          onChange={(v) => {
+            const c = (contratos.data ?? []).find((x) => x.id === v) ?? null;
+            setElegido(c);
+            if (c) setMoneda(c.moneda);
+          }}
+          onSearch={setTexto}
+        />
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-6)' }}>
           <Input
             label={a.importe}
