@@ -28,6 +28,7 @@ import {
   useCliente,
   useContactos,
   useDesactivarCliente,
+  useReactivarCliente,
   useEliminarContacto,
   useGuardarContacto,
 } from '../api';
@@ -49,6 +50,7 @@ export default function ClienteFicha() {
   const cliente = useCliente(id);
   const contactos = useContactos(id);
   const desactivar = useDesactivarCliente();
+  const reactivar = useReactivarCliente();
   const eliminarContacto = useEliminarContacto(id);
 
   const [editando, setEditando] = useState(false);
@@ -116,6 +118,22 @@ export default function ClienteFicha() {
         {editar && c.activo && (
           <Button variant="ghost" onClick={() => setConfirmando(true)}>
             {t.ficha.desactivar}
+          </Button>
+        )}
+        {editar && !c.activo && (
+          <Button
+            variant="secondary"
+            disabled={reactivar.isPending}
+            onClick={async () => {
+              setErrorAccion(null);
+              try {
+                await reactivar.mutateAsync(c.id);
+              } catch (e) {
+                setErrorAccion(aErrorApi(e).detail ?? t.ficha.errorReactivar);
+              }
+            }}
+          >
+            {reactivar.isPending ? t.ficha.reactivando : t.ficha.reactivar}
           </Button>
         )}
         {editar && (

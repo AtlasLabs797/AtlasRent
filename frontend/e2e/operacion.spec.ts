@@ -65,6 +65,8 @@ test('calendario: navegar de mes pide el rango del mes siguiente y una celda de 
   conSesion(api);
   responderSelectores(api);
   api.responder('GET', '/calendario', (p) => ({ body: calendarioDe(new URLSearchParams(p.query).get('desde')!.slice(0, 7), 3) }));
+  // La ficha del contrato se pide al navegar; la respuesta no es lo que prueba este test.
+  api.responder('GET', '/contratos/eeeeeeee-0000-0000-0000-000000000002', problema(404, 'API-404', 'No encontrado', 'Contrato no encontrado.'));
   await page.goto('/calendario');
   await expect(page.getByText(/^3 unidades/)).toBeVisible();
   const antes = api.peticiones.filter((x) => x.ruta === '/calendario').length;
@@ -125,6 +127,23 @@ test('cotizaciones: listado, alta con líneas y vista previa del total half-up, 
       { descripcion: 'Otro', cantidad: '3', precioUnitario: '0.335' },
     ],
   });
+});
+
+test('selector de clientes: busca en remoto con retardo (q en la petición) y las unidades vienen del listado global', async ({ page, api }) => {
+  conSesion(api);
+  responderSelectores(api);
+  api.responder('GET', '/cotizaciones', { body: pagina([]) });
+
+  await page.goto('/cotizaciones');
+  await page.getByRole('button', { name: 'Nueva cotización' }).click();
+  await page.getByLabel('Cliente *').click();
+  await page.getByLabel('Cliente *').pressSequentially('Ana', { delay: 40 });
+  await expect.poll(() => api.peticiones.some((p) => p.ruta === '/clientes' && p.query.includes('q=Ana'))).toBe(true);
+  // Las pulsaciones intermedias no llegan a la API: solo el texto completo.
+  expect(api.peticiones.some((p) => p.ruta === '/clientes' && /q=(A|An)(&|$)/.test(p.query))).toBe(false);
+  await expect(page.getByRole('option', { name: /Ana Martínez/ })).toBeVisible();
+  expect(api.llamadas('GET', '/inmuebles/unidades')).toBeGreaterThan(0);
+  expect(api.peticiones.some((p) => /^\/inmuebles\/[^/]+\/unidades$/.test(p.ruta))).toBe(false);
 });
 
 test('cotizaciones: el borrador pasa a enviada con cotizacion.enviar; la aceptada ofrece crear reserva o contrato', async ({ page, api }) => {

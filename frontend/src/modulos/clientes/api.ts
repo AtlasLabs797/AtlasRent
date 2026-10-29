@@ -79,6 +79,16 @@ export function useDesactivarCliente() {
   });
 }
 
+export function useReactivarCliente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await clienteHttp.post(`/clientes/${id}/reactivar`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clientes'] }),
+  });
+}
+
 export function useGuardarContacto(clienteId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -135,6 +145,28 @@ export function useDesactivarProspecto() {
       await clienteHttp.delete(`/prospectos/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['prospectos'] }),
+  });
+}
+
+export function useReactivarProspecto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await clienteHttp.post(`/prospectos/${id}/reactivar`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['prospectos'] }),
+  });
+}
+
+/** `POST /prospectos/{id}/convertir`: el cuerpo es el alta de cliente (sin número). Devuelve el cliente nuevo. */
+export function useConvertirProspecto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, cuerpo }: { id: string; cuerpo: CuerpoCliente }) =>
+      (await clienteHttp.post<ClienteResumen>(`/prospectos/${id}/convertir`, cuerpo)).data,
+    // Las cotizaciones y reservas del prospecto pasan al cliente: sus listas cambian de destinatario.
+    onSuccess: () =>
+      Promise.all(['clientes', 'prospectos', 'cotizaciones', 'reservas', 'operacion'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
 }
 

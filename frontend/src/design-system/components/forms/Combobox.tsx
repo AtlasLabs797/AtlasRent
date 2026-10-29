@@ -28,6 +28,8 @@ export interface ComboboxProps {
   disabled?: boolean;
   id?: string;
   style?: CSSProperties;
+  /** Búsqueda remota: se llama con el texto escrito y las opciones ya no se filtran en local (las filtra quien llama). */
+  onSearch?: (consulta: string) => void;
 }
 
 const norm = (s: unknown) =>
@@ -52,6 +54,7 @@ export function Combobox({
   disabled,
   id,
   style,
+  onSearch,
 }: ComboboxProps): JSX.Element {
   const fid = id || (label ? 'cb-' + String(label).toLowerCase().replace(/\W+/g, '-') : undefined);
   const [interno, setInterno] = useState<string | null>(null);
@@ -72,13 +75,14 @@ export function Combobox({
   }, [abierto]);
 
   const lista = options
-    .filter((o) => !q || norm(o.label + ' ' + (o.sub || '') + ' ' + (o.meta || '')).includes(norm(q)))
+    .filter((o) => onSearch !== undefined || !q || norm(o.label + ' ' + (o.sub || '') + ' ' + (o.meta || '')).includes(norm(q)))
     .slice(0, 50);
   const puedeCrear = Boolean(onCreate && q.trim() && !lista.some((o) => norm(o.label) === norm(q)));
   const total = lista.length + (puedeCrear ? 1 : 0);
   const elegir = (o: ComboboxOption) => {
     setInterno(o.value);
     setQ('');
+    onSearch?.('');
     setAbierto(false);
     onChange?.(o.value, o);
   };
@@ -132,6 +136,7 @@ export function Combobox({
               setQ(e.target.value);
               setAbierto(true);
               setResaltado(0);
+              onSearch?.(e.target.value);
             }}
             onKeyDown={alTeclear}
           />

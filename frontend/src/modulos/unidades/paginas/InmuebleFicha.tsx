@@ -16,7 +16,7 @@ import { PageHeader } from '../../../design-system/components/navigation/PageHea
 import { Tabs } from '../../../design-system/components/navigation/Tabs';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
-import { useDesactivarInmueble, useInmueble } from '../api';
+import { useDesactivarInmueble, useInmueble, useReactivarInmueble } from '../api';
 import { DocumentosInmueble } from '../DocumentosInmueble';
 import { FormularioInmueble } from '../FormularioInmueble';
 import { FormularioUnidad } from '../FormularioUnidad';
@@ -40,6 +40,7 @@ export default function InmuebleFicha() {
 
   const inmueble = useInmueble(id);
   const desactivar = useDesactivarInmueble();
+  const reactivar = useReactivarInmueble();
   const [pestana, setPestana] = useState('unidades');
   const [editando, setEditando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
@@ -89,6 +90,22 @@ export default function InmuebleFicha() {
         {editar && i.activo && (
           <Button variant="ghost" onClick={() => setConfirmando(true)}>
             {t.ficha.desactivar}
+          </Button>
+        )}
+        {editar && !i.activo && (
+          <Button
+            variant="secondary"
+            disabled={reactivar.isPending}
+            onClick={async () => {
+              setErrorAccion(null);
+              try {
+                await reactivar.mutateAsync(i.id);
+              } catch (e) {
+                setErrorAccion(aErrorApi(e).detail ?? t.ficha.errorReactivar);
+              }
+            }}
+          >
+            {reactivar.isPending ? t.ficha.reactivando : t.ficha.reactivar}
           </Button>
         )}
         {editar && (

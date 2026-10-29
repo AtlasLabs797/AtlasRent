@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { Button } from '../../../design-system/components/core/Button';
 import { Badge } from '../../../design-system/components/core/Badge';
 import { Switch } from '../../../design-system/components/forms/Switch';
@@ -18,7 +18,6 @@ import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
 import { useListaClientes } from '../api';
 import { FormularioCliente } from '../FormularioCliente';
-import type { ValoresCliente } from '../logica';
 import { textosClientes } from '../textos';
 import type { ClienteResumen, TipoCliente } from '../tipos';
 import { useRetardo } from '../useRetardo';
@@ -28,7 +27,6 @@ const POR_PAGINA = 25;
 
 export default function Clientes() {
   const navegar = useNavigate();
-  const ubicacion = useLocation();
   const identidad = useSesion((s) => s.identidad);
   const editar = puede(identidad, ACCIONES.clienteEditar);
 
@@ -40,10 +38,7 @@ export default function Clientes() {
   const [documento, setDocumento] = useState('');
   const qRetardada = useRetardo(q, 300);
 
-  // Un prospecto que se convierte llega con sus datos en el estado de la navegación (no en la URL).
-  const prefill = (ubicacion.state as { prefill?: ValoresCliente } | null)?.prefill;
-  const [alta, setAlta] = useState(prefill !== undefined);
-  const [inicial] = useState(prefill);
+  const [alta, setAlta] = useState(false);
 
   useEffect(() => setPage(1), [qRetardada, tipo, incluirInactivos, documento]);
 
@@ -173,7 +168,6 @@ export default function Clientes() {
       {editar && (
         <FormularioCliente
           open={alta}
-          inicial={inicial}
           onClose={() => setAlta(false)}
           onGuardado={(c) => {
             setAlta(false);

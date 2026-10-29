@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { aErrorApi } from '../../../api/errores';
@@ -23,7 +23,8 @@ import { Pagination } from '../../../design-system/components/navigation/Paginat
 import { Tabs } from '../../../design-system/components/navigation/Tabs';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
-import { leerProspecto, useDesactivarProspecto, useGuardarProspecto, useListaProspectos } from '../api';
+import { leerProspecto, useDesactivarProspecto, useGuardarProspecto, useListaProspectos, useReactivarProspecto } from '../api';
+import { FormularioCliente } from '../FormularioCliente';
 import {
   cuerpoProspecto,
   emailPlausible,
@@ -110,6 +111,8 @@ function PanelProspecto({ seleccion, editar, onClose }: { seleccion: string | 'n
   const ficha = useQuery({ queryKey: ['prospectos', 'ficha', id], enabled: id !== undefined, queryFn: () => leerProspecto(id!) });
   const guardar = useGuardarProspecto();
   const desactivar = useDesactivarProspecto();
+  const reactivar = useReactivarProspecto();
+  const [convirtiendo, setConvirtiendo] = useState(false);
   const [general, setGeneral] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const { register, handleSubmit, reset, setError, watch, setValue, formState } = useForm<ValoresProspecto>({ defaultValues: valoresProspecto() });
@@ -133,18 +136,40 @@ function PanelProspecto({ seleccion, editar, onClose }: { seleccion: string | 'n
 
   const f = t.formulario;
   const cargando = id !== undefined && ficha.isPending;
+  const convertido = ficha.data?.clienteId != null;
+  const soloLectura = !editar || convertido;
+  // Estable entre renders: el formulario de cliente se reinicia cuando cambia `inicial`.
+  const valoresConversion = useMemo(() => (ficha.data ? valoresClienteDesdeProspecto(ficha.data) : undefined), [ficha.data]);
   return (
     <>
       <Drawer
-        open={seleccion !== null}
+        open={seleccion !== null && !convirtiendo}
         onClose={isSubmitting ? undefined : onClose}
         title={id ? p.tituloEdicion : p.tituloAlta}
         footer={
-          editar ? (
+          editar && !convertido ? (
             <>
               {id && ficha.data?.activo && (
                 <Button variant="ghost" onClick={() => setConfirmando(true)} style={{ marginRight: 'auto' }}>
                   {p.desactivar}
+                </Button>
+              )}
+              {id && ficha.data && !ficha.data.activo && (
+                <Button
+                  variant="secondary"
+                  disabled={reactivar.isPending}
+                  onClick={async () => {
+                    setGeneral(null);
+                    try {
+                      await reactivar.mutateAsync(id);
+                      onClose();
+                    } catch (e) {
+                      setGeneral(aErrorApi(e).detail ?? p.reactivarError);
+                    }
+                  }}
+                  style={{ marginRight: 'auto' }}
+                >
+                  {p.reactivar}
                 </Button>
               )}
               <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>
@@ -168,7 +193,7 @@ function PanelProspecto({ seleccion, editar, onClose }: { seleccion: string | 'n
                 {general}
               </Alert>
             )}
-            <fieldset disabled={!editar} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 'var(--space-7)' }}>
+            <fieldset disabled={soloLectura} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 'var(--space-7)' }}>
               <Input label={f.nombre} required autoComplete="off" error={errors.nombre?.message} {...register('nombre', { validate: (v) => v.trim() !== '' || f.errores.obligatorio, maxLength: { value: 200, message: f.errores.largo } })} />
               <Select
                 label={f.tipo}
@@ -181,21 +206,47 @@ function PanelProspecto({ seleccion, editar, onClose }: { seleccion: string | 'n
               <Input label={f.telefono} type="tel" autoComplete="off" error={errors.telefono?.message} {...register('telefono', { maxLength: { value: 40, message: f.errores.largo } })} />
               <Textarea label={f.notas} rows={3} error={errors.notas?.message} {...register('notas', { maxLength: { value: 1000, message: f.errores.largo } })} />
             </fieldset>
-            {editar && ficha.data && (
+            {ficha.data && convertido && (
               <Alert
-                tone="info"
+                tone="success"
                 action={
-                  <Button size="sm" variant="secondary" onClick={() => navegar('/clientes', { state: { prefill: valoresClienteDesdeProspecto(ficha.data) } })}>
-                    {p.crearCliente}
+                  <Button size="sm" variant="secondary" onClick={() => navegar(`/clientes/${ficha.data.clienteId}`)}>
+                    {p.verCliente}
                   </Button>
                 }
               >
-                {p.crearClienteAviso}
+                {p.convertido}
+              </Alert>
+            )}
+            {ficha.data && !convertido && !ficha.data.activo && <Alert tone="warning">{p.inactivoAviso}</Alert>}
+            {editar && ficha.data && !convertido && ficha.data.activo && (
+              <Alert
+                tone="info"
+                action={
+                  <Button size="sm" variant="secondary" onClick={() => setConvirtiendo(true)}>
+                    {p.convertir}
+                  </Button>
+                }
+              >
+                {p.convertirAviso}
               </Alert>
             )}
           </form>
         )}
       </Drawer>
+      {editar && id && ficha.data && (
+        <FormularioCliente
+          open={convirtiendo}
+          inicial={valoresConversion}
+          convertirProspectoId={id}
+          onClose={() => setConvirtiendo(false)}
+          onGuardado={(cliente) => {
+            setConvirtiendo(false);
+            onClose();
+            navegar(`/clientes/${cliente.id}`);
+          }}
+        />
+      )}
       <Dialog
         open={confirmando}
         title={p.desactivarTitulo}
