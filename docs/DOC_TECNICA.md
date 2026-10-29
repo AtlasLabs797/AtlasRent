@@ -1204,7 +1204,9 @@ Solo lo necesario para mostrar la opción: nada de contadores, plantillas, RNC n
 | `GET /api/v1/catalogos/series` | `factura.borrador` (la mínima de quien consume `serieId`) | `id`, `numero`, `prefijo`, `moneda` (nula = sin moneda fija), `tipo`, `generaComprobante`. `sortBy`: `numero`. |
 | `GET /api/v1/catalogos/formas-pago` | `cobro.registrar` | `id`, `nombre`. `sortBy`: `nombre`. |
 | `GET /api/v1/catalogos/cuentas-receptoras` | `cobro.registrar` | `id`, `nombre`, `banco`, `moneda`. `sortBy`: `nombre`. |
-| `GET /api/v1/catalogos/subempresas` | `factura.ver` | `id`, `nombre`. `sortBy`: `nombre`. |
+| `GET /api/v1/catalogos/subempresas` | `factura.ver` | `id`, `nombre`, `propietaria`, `facturadora`. `sortBy`: `nombre`. |
+| `GET /api/v1/catalogos/tipos-itbis` | `factura.borrador` | `id`, `nombre`, `porcentaje` (de configuración). `sortBy`: `nombre`. |
+| `GET /api/v1/catalogos/tipos-retencion` | `factura.borrador` | `id`, `nombre`, `porcentaje`, `base`, `esDefecto`. `sortBy`: `nombre`. |
 | `GET /api/v1/catalogos/parametros-cobro` | `cobro.registrar` | Sin paginar: `{ toleranciaCambioUsd, toleranciaCambioDop }` (nulables), desde la configuración. |
 
 #### 6.21.2 Alertas (bandeja)
@@ -1227,6 +1229,7 @@ Cada tipo de alerta exige una acción para verse y cerrarse (`ServicioBandejaAle
 | `backup`, `auditoria` y **cualquier tipo no listado** | `configuracion.editar` |
 
 - **Lista:** sin `tipo`, solo salen los tipos que el usuario puede ver (los desconocidos, solo con `configuracion.editar`). Con `tipo` que no puede ver, devuelve **lista vacía** (no 403, para no filtrar qué tipos existen).
+- **Token de agente (SEC-031):** con token, cada tipo exige además que su acción esté en `Acciones.PermitidasAAgente` y en el token; **cerrar está vedado a cualquier token** (403 auditado): un agente no muta.
 - **Cerrar:** 404 si la alerta no existe; si existe pero su tipo no es visible para el usuario, **403** `SEG-007` con la denegación **auditada** (`permiso.denegado`). El orden es 404 primero y 403 después.
 - Una alerta de contrato (renovación) muestra importes al empleado: son datos individuales, no agregados; decisión aceptada.
 
@@ -1256,7 +1259,9 @@ Cada tipo de alerta exige una acción para verse y cerrarse (`ServicioBandejaAle
 | `GET /api/v1/inmuebles/unidades/{id}` | `cliente.ver` | Una unidad (`UnidadRespuesta`). |
 | `DELETE /api/v1/inmuebles/unidades/{id}` | `cliente.editar` | Baja lógica de la unidad; devuelve la unidad. **409** si tiene algún contrato que no esté `Finalizado`/`Liquidado` o una reserva activa (`Activa`/`EnConflicto`). |
 
-- `GET /api/v1/clientes?q=` busca por **nombre o por número** (si `q` es un entero). `GET /api/v1/prospectos` oculta los convertidos (y los inactivos).
+- `GET /api/v1/clientes?q=` busca por **nombre o por número** (si `q` es un entero). `GET /api/v1/prospectos` oculta los convertidos y los inactivos salvo con `incluirInactivos=true` (entonces salen con `clienteId` y `convertidoAt`).
+- `UnidadRespuesta` lleva `inmuebleNombre` en todas las respuestas (en listas, resuelto en bloque). `FianzaResumen` (lista, ficha y respuestas de mutación de fianzas) lleva `clienteId`, `clienteNombre`, `unidadId` y `unidadNombre`, con una consulta por página.
+- **BUG-057:** `DELETE /api/v1/inmuebles/{id}` aplica la misma regla a todas las unidades del inmueble (409 con contratos o reservas vivos).
 - Cambio de esquema: migración `20261028180005_ProspectoConvertidoACliente` (`prospecto.cliente_id` FK `Restrict` + `convertido_at`).
 - `TODO(A#)` abierto en el servicio: la «unidad implícita» de un inmueble que se alquila completo no está modelada; falta decidir si se puede desactivar por separado.
 
@@ -1302,7 +1307,7 @@ Fila: `id`, `facturaId`, `tipo`, `base`, `porcentaje`, `importe`, `estado` (`Pen
 Aplica a **todas** las respuestas JSON de la API (`AddJsonOptions` en `Program.cs`) y a las respuestas idempotentes guardadas.
 
 - **Decimales como string con su escala.** Todo `decimal` (y `decimal?`) sale entre comillas, con cultura invariante y la escala que trae el valor: `"1500.00"` para `numeric(18,2)`, `"58.500000"` para un tipo de cambio `numeric(18,6)`. Nunca un número JSON (AGENTS §6: el dinero en TypeScript es un string decimal).
-- **Entrada que acepta ambos.** El mismo conversor (`ImporteJsonConverter`) lee un string decimal (`"1500.00"`) o un número JSON, y rechaza con 400 un importe que pase de 9.999.999.999.999.999,99 en valor absoluto (`numeric(18,2)`). Los tipos de cambio y porcentajes conservan su `[Range]` propio.
+- **Entrada que acepta ambos.** El mismo conversor (`ImporteJsonConverter`) lee un string decimal (`"1500.00"`, **solo signo y punto decimal**: `"1,50"` o `"1,500.00"` son 400, SEC-032) o un número JSON, y rechaza con 400 un importe que pase de 9.999.999.999.999.999,99 en valor absoluto (`numeric(18,2)`). Los tipos de cambio y porcentajes conservan su `[Range]` propio.
 - **Enums como texto.** Todo enum sale por su nombre (`"Borrador"`, `"USD"`, `"MedioDia"`); en la entrada se siguen aceptando tanto el nombre como el entero, porque los atributos por tipo o campo (`JsonStringEnumConverter<T>`) y el conversor global lo permiten.
 - **Respuestas idempotentes con el mismo formato.** `ServicioIdempotencia` serializa lo que guarda con los mismos conversores, así que el reintento devuelve un cuerpo indistinguible del de la primera vez. **Las filas guardadas antes del cambio conservan el formato viejo** (decimales como número, enums como entero) hasta que caduquen: un reintento de una mutación anterior devuelve eso, tal cual. Un reintento responde siempre **200**, también si la mutación original respondió 201.
 - El frontend tiene los tipos de la API alineados (commit `aa888c7`): importes `string`, enums como unión de textos.
