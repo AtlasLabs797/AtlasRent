@@ -64,11 +64,11 @@ Versiones exactas en `docs/DOC_TECNICA.md` §2. No cambies una versión ni añad
 
 Los pasos detallados están en `docs/PROCEDIMIENTOS.md`. En resumen:
 
-1. **Una tarea del plan por sesión.** Rama `tarea/<ID>-<nombre-corto>` desde `main`; márcala EN CURSO en `docs/PLAN.md` (§1 de PROCEDIMIENTOS).
+1. **Una tarea del plan por sesión.** Se trabaja en la rama `V-01.05`, la única activa además de `main`, que tiene todas las fases y la auditoría. No se crean ramas por tarea. Marca la tarea EN CURSO en `docs/PLAN.md` (§1 de PROCEDIMIENTOS).
 2. **Antes de escribir código**, resume en ~5 líneas qué vas a tocar y qué test probará cada criterio de aceptación. Espera confirmación. Para cambios triviales (typo, una línea obvia) no hace falta.
 3. Declara tus supuestos. Si la especificación es ambigua o contradictoria, para y pregunta: no inventes reglas de negocio ni cifras fiscales. Deja `// TODO(A#)` con la pregunta abierta.
 4. Implementa con tests. Cada tarea cabe en una sesión y un PR revisable; si no, propón dividirla.
-5. Cierra la tarea (§2 de PROCEDIMIENTOS): verificación §8 + registros §7. PR a `main`; otra persona revisa.
+5. Cierra la tarea (§2 de PROCEDIMIENTOS): verificación §8 + registros §7. Commit en `V-01.05`; a `main` solo se pasa por PR, cuando lo decida el responsable, y otra persona lo revisa.
 6. Bugs y seguridad: §3 y §4 de PROCEDIMIENTOS. Al cerrar cada fase: revisión de seguridad (§5).
 7. Commits pequeños `tipo(modulo): descripcion` (`feat`, `fix`, `sec`, `test`, `docs`, `refactor`, `chore`). Nunca commits directos a `main`, `push --force` ni `reset --hard`. No hagas push sin permiso.
 
