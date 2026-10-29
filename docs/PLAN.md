@@ -19,15 +19,17 @@ Una tarea debe caber en una sesión y un PR revisable. Si no cabe, se divide ant
 ---
 
 ## Fase 0 · Preparación (humana, en paralelo con F1)
+Cada tarea tiene un documento con el procedimiento listo en [`docs/F0/`](F0/00-estado.md). Son tareas de persona, no de código: ninguna se cierra desde el repositorio.
+
 | ID | Tarea | Bloquea | Estado |
 |---|---|---|---|
-| F0-01 | Contador: formato/rangos del comprobante (A3), % de ITBIS y retenciones (A4), confirmar no modificar importes de facturas con comprobante | F3-03, F3-04 | PENDIENTE |
-| F0-02 | Exportar muestras reales de Factusol: clientes, unidades, contratos, facturas series 1/2/3/4/9, cobros, fianzas (A5) | FM-01 | PENDIENTE |
-| F0-03 | Dominio público y DNS para el certificado (A6) | FP-02 | PENDIENTE |
-| F0-04 | Cuenta/carpeta de Google Drive para backups de Atlas Rent | F1-12 | PENDIENTE |
-| F0-05 | Repositorio privado `AtlasLabs797/AtlasRent`, protección de `main`, revisores, secretos de CI | F1-01 | PENDIENTE |
-| F0-06 | Ejemplos de PDF actuales por serie (A2) | F4-01 | PENDIENTE |
-| F0-07 | Elegir proveedor de WhatsApp (A1) | F4-04, F4-05 | PENDIENTE |
+| F0-01 | Contador: formato/rangos del comprobante (A3), % de ITBIS y retenciones (A4), confirmar no modificar importes de facturas con comprobante | F3-03, F3-04 | EN CURSO (cuestionario escrito, falta enviar y recibir respuesta) |
+| F0-02 | Exportar muestras reales de Factusol: clientes, unidades, contratos, facturas series 1/2/3/4/9, cobros, fianzas (A5) | FM-01 | EN CURSO (16 entidades y casos definidos, falta exportar) |
+| F0-03 | Dominio público y DNS para el certificado (A6) | FP-02 | EN CURSO (procedimiento escrito, falta registrar el subdominio) |
+| F0-04 | Cuenta/carpeta de Google Drive para backups de Atlas Rent | F1-12 | EN CURSO (decidido: el backup lo sube cada persona con su propia cuenta por OAuth 2.0; falta crear las carpetas y registrar el cliente OAuth) |
+| F0-05 | Repositorio `AtlasLabs797/AtlasRent`, protección de `main`, revisores, secretos de CI | F1-01 | EN CURSO (decidido: repositorio público, lo que habilita la protección de `main`; falta aplicarlo, añadir revisor y CI verde) |
+| F0-06 | Ejemplos de PDF actuales por serie (A2) | F4-01 | EN CURSO (qué pedir y cómo sanear definido, falta reunirlos) |
+| F0-07 | Elegir proveedor de WhatsApp (A1) | F4-04, F4-05 | EN CURSO (comparativa con precios verificados y recomendación Twilio; decisión pendiente de tomar en equipo, falta dar de alta el emisor en Meta) |
 
 ## Fase 1 · Fundación
 | ID | Tarea | Spec | Aceptación | Depende | Estado |

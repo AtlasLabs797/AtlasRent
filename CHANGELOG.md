@@ -1247,6 +1247,42 @@ TIPO: FEAT · FIX · SEC · DOCS · MIGR · CONFIG · DECISION
 - Riesgo / pendiente: quedan ~28 componentes del DS por portar conforme los usen las pantallas; refresco de sesión ante 401 (DOC_TECNICA §6) pendiente de F1-04; el nombre de la cookie de CSRF `atlas-rent-csrf` es un supuesto que debe casar con el backend; `backend/**/wwwroot/` sin conectar (`MapFallbackToFile` sigue pendiente).
 - Commit/PR: `feat(frontend): esqueleto Vite+React+TS, design system portado y tema claro/oscuro`.
 
+## [15/10/2026 03:05] DECISION · F0-05 · Repositorio público y protección de `main` activa (Andi)
+- Qué: `AtlasLabs797/AtlasRent` pasa de privado a público. Activa protección de `main` con 1 aprobación requerida, descartar revisiones obsoletas, sin force push, sin borrado de rama e historia lineal obligatoria. Se audita el historial antes del cambio. Se documenta en `docs/F0/05-repositorio-y-ci.md`.
+- Por qué: GitHub Free no permite proteger ramas en repositorios privados (HTTP 403). Se eligió la vía gratuita frente a contratar Pro. Consecuencia asumida: `ESPECIFICACION.md` queda legible para cualquiera y contiene datos del negocio (series de facturación, tipos de cobro, reglas de retención y ocupación). Auditoría previa: `.env.dev` nunca estuvo versionado, no hay ficheros de clave ni datos reales en el historial, y el único patrón tipo secreto es el valor de ejemplo `solo_local_cambiar`.
+- Verificado: `private` pasa de `true` a `false` (API); la protección se lee de vuelta por API con los cinco valores esperados. `enforce_admins` queda en **false** a propósito: con un solo colaborador, activarlo haría imposible fusionar, porque nadie podría aprobar el PR. **NO verificado**: que la CI nueva pase en GitHub, porque el workflow solo dispara con `pull_request` o con `push` a `main`.
+- Migraciones: no.
+- Riesgo / pendiente: añadir un revisor y entonces activar `enforce_admins`. Añadir la comprobación `CI / Secretos` como obligatoria cuando la CI esté verde.
+- Commit/PR: este mismo commit; rama `tarea/F0-preparacion` ya subida.
+
+## [15/10/2026 03:05] DECISION · F0-04 y F0-07 · Backup con OAuth propio y WhatsApp pendiente (Andi)
+- Qué: se documenta en `docs/F0/00-estado.md` y en los documentos de tarea. F0-04: el backup lo sube cada persona con su propia cuenta de Google por OAuth 2.0, no una cuenta de servicio. F0-07: el proveedor de WhatsApp se decide en equipo; la comparativa y la recomendación Twilio quedan escritas.
+- Por qué: una cuenta de servicio de Google Drive no tiene cuota ni puede ser propietaria de archivos, así que no puede subir backups. Con OAuth por usuario, el job desatendido de las 02:00 documentado en `DOC_TECNICA.md` §8 deja de ser ejecutable tal cual y habrá que rediseñarlo en F1-12: el backup se dispara desde la sesión del usuario.
+- Verificado: la limitación de las cuentas de servicio está confirmada en la documentación oficial de Google (about-shareddrives, consultado 15/10/2026). **NO verificado**: nada de la implementación, no hay código.
+- Migraciones: no.
+- Riesgo / pendiente: decidir carpeta común o por persona; vigilar que las cuotas personales se llenen; explicar con claridad para qué se pide acceso a Drive. F4-04 y F4-05 siguen bloqueadas. Independentemente de la elección final conviene iniciar el alta del emisor en Meta, que es el plazo más largo del bloque.
+- Commit/PR: este mismo commit.
+
+---
+
+## [15/10/2026 02:40] FIX · F0-05 · La CI fallaba sin ejecutar ningún job (BUG-001) (agente)
+- Qué: `.github/workflows/ci.yml` reescrito. Se eliminó el `if` de nivel de job con `hashFiles(...)` de los jobs `backend` y `frontend`. Ahora los tres jobs se crean siempre y cada uno empieza con un paso de detección que escribe `existe=true|false` en `$GITHUB_OUTPUT`; los pasos de build y test se condicionan con `if: steps.detecta.outputs.existe == 'true'`. Registrado como BUG-001 en `docs/BUGS.md`.
+- Por qué: los tres últimos disparos terminaban en `failure` con `total_count: 0` jobs, `created_at` = `updated_at` y `rerequestable: false`, que es la firma de un workflow rechazado en la validación de GitHub. Se descartó que fuera problema de codificación (sin BOM ni tabuladores) o de YAML (`yaml.safe_load` lo parsea sin errores) y que fuera de permisos o saldo de Actions (`enabled: true` y AtlasBalance sí ejecuta). El `if` de nivel de job era el único constructo sin validar empíricamente, y explica por qué tampoco se creaba el job `secretos`, que no usa expresiones.
+- Verificado: `yaml.safe_load` del archivo nuevo (3 jobs, 7/9 pasos, sin `if` de nivel de job) y los dos scripts bash de detección ejecutados en local (`existe=false` en un directorio sin `.sln` ni `frontend/package.json`). **NO verificado en GitHub**: no se ha hecho push de la rama, así que no se puede afirmar que la CI esté verde.
+- Migraciones: no.
+- Riesgo / pendiente: subir `tarea/F0-preparacion` y comprobar que aparecen jobs. F1-01 exige "CI verde" como aceptación.
+- Commit/PR: rama `tarea/F0-preparacion`, pendiente de push y PR.
+
+## [15/10/2026 02:40] DOCS · F0 · Paquete de preparación de la Fase 0 (agente)
+- Qué: se crea `docs/F0/` con siete documentos: `00-estado.md` (índice y orden de ejecución), `01-cuestionario-contador.md`, `02-exportacion-factusol.md`, `03-dominio-dns-certificado.md`, `04-google-drive-backups.md`, `05-repositorio-y-ci.md`, `06-pdfs-por-serie.md`, `07-whatsapp.md`. `docs/PLAN.md` §Fase 0 pasa las siete tareas de PENDIENTE a EN CURSO con su estado real. `AGENTS.md` §3 añade la fila del paquete.
+- Por qué: las siete tareas de F0 son humanas (contador, datos reales, dominio, cuenta de Drive, PDFs, decisión de proveedor). Ninguna se cierra desde el repositorio, pero cada una se puede dejar preparada para ejecutarse sin ambigüedad. Ninguna bloquea el arranque de F1-01 salvo F0-05.
+- Verificado: referencias cruzadas de cada documento comprobadas contra `ESPECIFICACION.md`, `DOC_TECNICA.md`, `DESIGN.md`, `SEGURIDAD.md` y `PLAN.md` (catálogo de series 1 USD / 2 DOP / 3 fiscal / 4 proforma / 9 histórica confirmado en la especificación; `DESIGN.md` §7 y §8 y `SEC-004` existen). Escaneo de los siete archivos en busca de correos, RNC, claves y caracteres fuera del alfabeto latino: sin resultados. **NO verificado**: ninguna tarea está cerrada; los huecos fiscales siguen vacíos a propósito; la afirmación de Google sobre cuota de cuentas de servicio se comprobó en la documentación oficial (ver F0-04).
+- Migraciones: no.
+- Riesgo / pendiente: dos hallazgos que cambian decisiones. (1) Google Drive: una cuenta de servicio no tiene cuota ni puede ser propietaria de archivos, así que el backup necesita una unidad compartida de Workspace o OAuth en nombre de una persona; hay que decidirlo antes de F1-12. (2) GitHub Free no permite protección de rama en repos privados (HTTP 403); Publicar el repositorio queda descartado. Además, las suites de las apps Claude y Cursor están en `queued` desde el 14/10 y no producen resultado.
+- Commit/PR: rama `tarea/F0-preparacion`, pendiente de push y PR.
+
+---
+
 ## [15/10/2026 03:40] FEAT · F1-02 · Tipos de dominio: Dinero, redondeo, fechas de negocio y zona horaria
 - Qué: `backend/AtlasRent.Api/Dominio/` con `Moneda` (USD/DOP), `Dinero`, `Redondeo`, `Prorrateo`, `TiempoNegocio` y `MonedaDistintaException`. Tests en `backend/AtlasRent.Tests/Dominio/`.
   - `Redondeo.Importe` half-up a 2 decimales, `Redondeo.TipoCambio` a 6 (`numeric(18,6)`) y `Redondeo.Porcentaje` a 4 (ITBIS y retenciones, F1-08).
