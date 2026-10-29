@@ -2,17 +2,12 @@
 
 > Describe cómo funciona la app según la especificación.
 >
-> **Estado a 15/10/2026.** Este manual describe la app **tal como se entregará**, no la que hay hoy:
-> la parte de contratos, reservas y cotizaciones ya está construida y probada por API, pero **todavía
-> no hay pantallas**. Antes de buscar un botón que aquí se describe, mira la marca del apartado:
+> **Estado a 29/10/2026.** Todas las pantallas de este manual existen en la app. Las marcas de cada apartado:
 >
-> - ✅ **pantalla construida y probada**: se puede usar hoy en la app.
-> - 🟡 **la regla existe y está probada por la API, pero no hay pantalla**: se puede usar por API, un
->   cliente o una integración. En la interfaz todavía no hay dónde hacerlo.
-> - ⬜ **no construido todavía**: es de una fase posterior.
+> - ✅ **pantalla disponible**: se puede usar en la app.
 >
-> La lista de pantallas pendientes está en `frontend/src/navegacion/menu.ts`, con un `TODO(A#)` al
-> lado de cada módulo. Si algo no coincide con lo que ves, avisa al administrador.
+> Si algo de este manual no aparece en tu pantalla, lo más probable es que tu usuario no tenga ese permiso
+> (si no ves un botón, mira el apartado 3). Si no es eso, avisa al administrador.
 
 ## 1. Qué es
 La herramienta donde se gestiona todo el alquiler: clientes, unidades, cotizaciones, reservas, contratos, facturas, cobros y fianzas. Sustituye a Factusol.
@@ -37,30 +32,46 @@ Ten en cuenta:
 | Cotizaciones | Crear; enviar si tiene el permiso | Todo | Todo |
 | Contratos | Preparar borradores y enviarlos a aprobación | Aprobar, modificar, dar de baja, liquidar | Todo |
 | Facturas | Ver y preparar borradores | Emitir, modificar, anular, enviar | Todo |
-| Cobros y fianzas | Ver | Registrar, corregir, devolver | Todo |
+| Cobros y fianzas | Ver | Registrar, corregir, devolver, dar de alta fianzas | Todo |
 | Totales, informes, exportar | No | Sí | Sí |
+| Auditoría (solo lectura) | No | Sí | Sí |
 | Recordatorios, envío masivo | No | Revisar y enviar; pausar por cliente | Todo, y elegir el modo en Configuración |
-| Configuración, usuarios, desbloqueos | No | No | Sí |
+| Configuración, usuarios, bloqueos | No | No | Sí |
 
 Si no ves un botón, tu usuario no tiene ese permiso.
 
-## 4. Clientes 🟡
-- **Nuevo:** Clientes → *Nuevo*. Obligatorio: nombre, tipo (persona o empresa), documento y teléfono. El número de cliente se pone solo.
+**Novedad para gerentes:** al cobrar, emitir facturas y generar la facturación periódica, ya puedes elegir desde la app la serie, la forma de pago y la cuenta receptora. Antes había que pedírselo al administrador. Y también puedes rehacer una factura en otra moneda.
+
+## 4. Clientes ✅
+- **Nuevo:** Clientes → *Nuevo cliente*. Obligatorio: nombre, tipo (persona o empresa), documento y teléfono. El número de cliente se pone solo.
 - **Contactos:** varios teléfonos y emails; marca cuál es para WhatsApp y cuál para email.
 - **Prospecto:** alguien a quien solo has hecho una cotización. Pasa a cliente cuando reserva o firma.
+- **Convertir un prospecto en cliente:** en Clientes → *Prospectos*, abre el prospecto y pulsa *Convertir en cliente*. Se abre el alta con sus datos: revísalos y guarda. Al guardar, el prospecto queda convertido y **sus cotizaciones y reservas pasan al cliente nuevo**. Un prospecto convertido no se puede volver a convertir: la pantalla muestra *Ver cliente*. Si el documento ya pertenece a otro cliente, la app no convierte el prospecto y te avisa.
 - **Pausar recordatorios:** casilla en la ficha (gerente). **Frena los avisos automáticos y también**
   el envío manual de uno que esté pendiente.
 - **Buscar:** por nombre o número en la lista. Para buscar por documento usa su propio campo: el documento no queda en la dirección ni en el historial del navegador.
-- **Prospectos:** pestaña *Prospectos* de Clientes. Desde un prospecto puedes abrir el alta de cliente con sus datos; el prospecto no se convierte solo.
+- **Buscar un cliente al elegirlo:** en los campos de cliente (por ejemplo en Facturas, Cuentas y cobros), escribe su nombre o número y elige de la lista que aparece.
 - **Desactivar:** un cliente con facturas no se borra, se desactiva. El número de cliente solo lo puede fijar la administración.
+- **Reactivar:** un cliente o un prospecto desactivado se vuelve a activar con el botón *Reactivar* de su ficha. Para verlos, marca *Mostrar inactivos* en la lista.
 - La ficha tiene pestañas: datos, contratos, reservas, facturas, cobros, fianzas, documentos y mensajes recibidos.
 
-## 5. Unidades 🟡
+## 5. Unidades ✅
 - Un **inmueble** es el edificio o la villa; una **unidad** es lo que se alquila.
 - *Ocupada / Reservada* se calcula sola. Tú solo marcas *Mantenimiento* o *Fuera de servicio*.
 - **Pantalla:** Unidades e inmuebles → entra en un inmueble para ver sus unidades, cambiar el estado manual, las modalidades y las tarifas.
+- **Desactivar una unidad:** en la ficha del inmueble, botón *Desactivar unidad*. Deja de ofrecerse para contratos y reservas nuevos. **No se puede** si tiene un contrato o una reserva vivos: primero hay que terminarlos o cancelarlos.
+- **Reactivar:** una unidad desactivada tiene el botón *Reactivar unidad*; un inmueble desactivado, el botón *Reactivar* de su ficha.
+- **Desactivar un inmueble:** botón *Desactivar* de su ficha. **No se puede** si tiene contratos o reservas vivos.
 - **Documentos de propiedad (gerente y administrador):** pestaña *Documentos* del inmueble. Solo PDF de hasta 25 MB; cada subida de la misma categoría crea una versión. El empleado no ve esta pestaña.
-- **Calendario** ✅ (menú Operación → Calendario): elige el inmueble y el mes; cada fila es una unidad y cada casilla un día. Verde claro = libre, oscuro = contrato, azul = reserva (mensual **R**, corta **D**), media casilla azul = un medio día reservado (queda otro medio libre), ámbar = mantenimiento, gris con borde = fuera de servicio. Pulsa una casilla para ver qué hay ese día y abrir su contrato o reserva; en una casilla libre puedes crear la reserva con la unidad y el día ya puestos.
+- **Calendario** ✅ (menú Operación → Calendario): elige el inmueble y el mes; cada fila es una unidad y cada casilla un día. Busca una unidad concreta con el campo *Buscar unidad*.
+  - **Verde claro = libre.**
+  - **Oscuro = contrato** (letra **C**).
+  - **Azul = reserva**: mensual (letra **R**) o corta (letra **D**).
+  - **Media casilla azul y media verde = un medio día reservado**; queda otro medio día libre. No lleva letra.
+  - **Ámbar = mantenimiento** (letra **M**).
+  - **Gris con borde = fuera de servicio** (letra **–**).
+
+  Pulsa una casilla para ver qué hay ese día y abrir su contrato o reserva; en una casilla libre puedes crear la reserva con la unidad y el día ya puestos.
 
 ## 6. Cotizaciones ✅
 > Pantalla construida; probada con la API simulada, todavía no contra el servidor real.
@@ -77,8 +88,7 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 
 **Corta:** por cada día eliges **Medio día** o **Día completo** (puedes escribir una hora orientativa en texto libre, por ejemplo «mañana» o «a partir de las 3»; es opcional y no bloquea nada: lo que cuenta es medio día o día completo). En un mismo día caben dos medios días o un día completo.
 
-**Anticipo:** si el cliente adelantó dinero, anótalo en la reserva (importe y una nota con lo acordado). **Es solo una nota, no un cobro, y no aparece en ningún saldo ni informe económico.** El cobro se registrará en la fase de finanzas; todavía no existe, y tampoco el aviso que te lo recordará.
-
+**Anticipo:** si el cliente adelantó dinero, anótalo en la reserva (importe y una nota con lo acordado). **Es solo una nota, no un cobro, y no aparece en ningún saldo ni informe económico.** 
 **Si la unidad no está libre**, la reserva no se guarda y la pantalla lo explica: hay un contrato, otra reserva, o el día ya está completo. Tampoco se puede reservar una unidad en mantenimiento o fuera de servicio, ni cambiar o cancelar una reserva que tiene una **factura vigente** (hay que anular antes la factura).
 
 **En conflicto:** la reserva sigue bloqueando la unidad hasta que el gerente decida; la salida es cancelarla y buscar otra unidad al cliente. **Facturar:** la reserva corta se factura desde su ficha (*Facturar reserva*, gerente o administrador); la mensual se factura por su contrato.
@@ -94,26 +104,31 @@ Si no ves un botón, tu usuario no tiene ese permiso.
 - **Inventario:** la copia se congela al activar. Para la salida, *Revisar la salida* pide el estado de cada elemento (OK, faltante o dañado), una nota en lo que falta, y el importe propuesto; se firma entera y una sola vez. No es un cobro.
 - **Plantillas y anexos** (botón en Contratos): texto de los contratos y catálogo de anexos; crear y editar con permiso de redacción, desactivar solo el gerente o administrador. *Descargar PDF* genera el contrato.
 - Se renueva solo hasta que se cancele. Las subidas de renta programadas se aplican solas.
-- **Baja:** el gerente pone la fecha de fin, **en cualquier fecha** (hoy o posterior), aunque sea antes de que acabe el periodo en curso. La fecha de baja ya no se factura: si la baja es el día 15, se factura hasta el 14, prorrateando ese último mes. En esa fecha el contrato **se finalizará solo** y la unidad queda libre. Después hay que **liquidar**: se revisa el inventario de salida y se decide qué pasa con la fianza. **Los cobros y los saldos todavía no existen** (fase de finanzas), así que por ahora la liquidación deja constancia de qué falta y de la decisión, pero no mueve dinero.
+- **Baja:** el gerente pone la fecha de fin, **en cualquier fecha** (hoy o posterior), aunque sea antes de que acabe el periodo en curso. La fecha de baja ya no se factura: si la baja es el día 15, se factura hasta el 14, prorrateando ese último mes. En esa fecha el contrato **se finalizará solo** y la unidad queda libre. Después hay que **liquidar**: se revisa el inventario de salida y se decide qué pasa con la fianza.
 - **Finalizar** solo se puede cuando llega la fecha de baja; antes el botón está desactivado y dice desde cuándo. **Liquidar** no se deja si queda fianza cobrada sin resolver o facturas con importe pendiente: la pantalla dice qué falta y se resuelve a mano (fianzas y cobros) antes de volver a liquidar.
 
-## 9. Facturas 🟡
-**Qué hay en pantalla:** *Facturas* (listado con filtros y ficha), *Facturación periódica* (simular y generar), emitir un borrador, modificar líneas, anular con motivo, duplicar, convertir una proforma, rehacer en otra moneda, cerrar una diferencia de cambio, la referencia de e-factura y el PDF. **Falta:** crear un borrador desde cero y registrar el comprobante de retención recibido.
-- **Del mes:** el gerente pulsa *Generar facturas periódicas*, revisa la simulación y confirma.
+## 9. Facturas ✅
+**Qué hay en pantalla:** *Facturas* (listado con filtros y ficha), *Nueva factura* para crear borradores, *Facturación periódica* (simular y generar), editar un borrador, emitir, modificar líneas, anular con motivo, duplicar, convertir una proforma, rehacer en otra moneda, cerrar una diferencia de cambio, la referencia de e-factura, el PDF y el registro del comprobante de retención.
+- **Del mes:** el gerente pulsa *Generar facturas periódicas*, revisa la simulación y confirma. En la simulación cada fila muestra el cliente, la unidad (inmueble · unidad) y la fecha desde la que empieza el contrato.
 - **Manual:** *Nueva factura* desde la unidad o el cliente. Queda en **borrador** hasta que el gerente la emite.
+- **Crear un borrador:** Facturas → *Nueva factura*. Rellena la cabecera (cliente, inmueble, unidad opcional, serie, moneda, vencimiento y concepto) y pulsa *Crear borrador*. Después añade las líneas con *Añadir línea*: tipo, cantidad, precio unitario, ITBIS y retención.
+- **Editar un borrador:** en la ficha, *Editar borrador*. Puedes cambiar la cabecera (*Guardar cabecera*) y las líneas (*Editar*, *Quitar*). Solo los borradores se pueden editar.
+- **Totales:** lo que ves mientras escribes es una vista previa. Los totales que valen son los que calcula el sistema al guardar. Si tu usuario no puede ver los tipos de ITBIS y de retención, las líneas se guardan sin impuesto: pide a la administración que los asigne.
 - **Emitir** pone el número definitivo y, en la serie 3, el **número de comprobante fiscal** automáticamente. Si quedan pocos comprobantes, la app avisa; si se acaban o vencen, no deja emitir hasta cargar un rango nuevo.
+- **Modificada tras envío:** si una factura se cambia después de enviarla, la ficha y la tabla de Cuentas lo marcan con esa etiqueta.
+- **Retención:** si el cliente es agente de retención, la factura muestra *Retención sin comprobante* hasta que se recibe su comprobante. En la ficha, *Registrar recibido* pide el número y la fecha de recepción tal como figuran en el documento del cliente. Solo lo puede registrar el gerente o el administrador, y una vez registrado no se puede cambiar.
 - **Moneda:** cada factura va en una moneda y no cambia. Si la necesitas en la otra moneda, hay que anularla y hacer otra.
 - **E-factura:** no se hace aquí. Si se hizo en la otra aplicación, puedes teclear su número en *Referencia e-factura*.
 - **Mora:** añádela como una línea más.
 - **Proforma:** presupuesto que no genera deuda; con un botón se convierte en factura con los mismos importes.
 - **Duplicar:** crea un borrador igual, sin número ni cobros.
-- **Anular** (gerente): pide motivo. **Los cobros de esa factura también se anulan.** Si un cobro pagaba varias facturas, solo se anula la parte de esta. La pantalla te muestra qué cobros se verán afectados antes de confirmar. El dinero de la parte anulada queda marcado como **devuelto** en el cobro (no se convierte en saldo a favor). Si el cobro ya financió otro cobro, la app no deja anular y te dice cuál hay que anular antes.
+- **Anular** (gerente): pide motivo. **Los cobros de esa factura también se anulan.** Si un cobro pagaba varias facturas, solo se anula la parte de esta. La pantalla te muestra qué cobros se verán afectados antes de confirmar. El dinero de la parte anulada queda marcado como **devuelto** en el cobro («Devuelto al anular facturas» en su ficha; no se convierte en saldo a favor). Si el cobro ya financió otro cobro, la app no deja anular y te dice cuál hay que anular antes.
 
 ## 10. Cuentas y cobros (pantalla principal) ✅
 **Cómo se cobra:** marca una o varias filas del mismo cliente y contrato y pulsa *Registrar cobro*. En el panel eliges fecha, moneda e importe recibidos, forma de pago y cuenta. Si pagan en otra moneda, la app propone el cambio del día y puedes cambiarlo; verás la conversión aproximada. Pulsa *Simular reparto*, corrige el importe de cada línea si hace falta, vuelve a simular y *Registrar cobro*. Si cambias algo después de simular, hay que simular otra vez. El empleado ve la tabla pero no los totales ni el botón de cobrar. Los filtros quedan en la dirección de la página.
 
 Es la pantalla que sustituye a Factusol: **una sola tabla con todo lo que se debe y lo que se ha
-pagado**, y desde ahí se cobra. 
+pagado**, y desde ahí se cobra.
 ### Qué se ve
 
 Una fila por documento, con una **insignia de tipo**: `Factura`, `Proforma` o `Fianza`. Las fianzas
@@ -136,7 +151,7 @@ Columnas:
 | Saldo a devolver | Solo en fianzas: lo que se le tiene que devolver al cliente. |
 | Vencimiento, días vencida, vencida | Cuándo se debía y cuántos días lleva de retraso. Las fianzas no vencen. |
 | Estado | *Pendiente*, *Parcial*, *Pagada* o *Anulada* en facturas; el estado de la fianza en fianzas. |
-| Estado de envío | **Vacío todavía**: se llena cuando existan los envíos (F4-01). |
+| Envío | El estado del último envío del documento (Enviado, Entregado, Leído, Fallido…). «—» si no se ha enviado. |
 
 - **Lo que no aplica en una fila sale vacío, nunca en cero.** Una proforma no tiene cobrado ni
   pendiente porque no es una deuda; que pone «0» se leería como una deuda que no existe.
@@ -151,14 +166,14 @@ Año, serie, moneda, estado del documento, estado de cobro, cliente, unidad, **v
 pendiente y su vencimiento ya pasó), **modificadas** (tocadas después de emitirse), y los interruptores
 de incluir proformas y fianzas.
 
-- **«No enviadas» y «envío fallido» todavía no están**: dependen de saber si un documento se envió y con
-  qué resultado, que es lo que trae el bloque de envíos (F4-01). Cuando llegue, se añaden aquí.
+- **Filtros de envío:** *No enviadas*, *Envío fallido* y *Modificadas tras envío* se basan en el estado de envío de cada documento. Si el documento no tiene envíos, sale en *No enviadas*.
 - Un filtro que una fianza no puede tener (serie, estado, vencidas, modificadas) **deja las fianzas
   fuera** en vez de mostrarlas sin filtrar.
 - El orden es por fecha y se puede invertir. Es el único criterio de orden: el pendiente y los días de
   mora son cuentas, no columnas, así que no se puede ordenar por ellos.
 - El estado del filtro vive en la barra de direcciones: se puede compartir un enlace con la vista ya
   filtrada.
+- **Ver las cuentas de un contrato:** desde la ficha de una factura o de una fianza, *Ver cuentas del contrato* abre esta pantalla filtrada por ese contrato. *Ver todos los contratos* quita el filtro.
 
 ### Totales al pie
 
@@ -186,13 +201,18 @@ queda como excedente o saldo a favor, como en cualquier otro cobro.
 Ver, duplicar, modificar (si no tiene comprobante), anular, el PDF y el envío. **Cada acción es la de su
 propio documento**: la vista no modifica nada por su cuenta, solo lleva a la pantalla que sí lo hace.
 
-## 11. Fianzas 🟡
-**Qué hay en pantalla:** listado y ficha con el resumen, las devoluciones, *Retener*, *Pasar a liquidación* y *Devolver fianza* (el motivo es obligatorio si descuentas algo o no la dejas a cero). La fianza se cobra desde *Cuentas y cobros*.
+## 11. Fianzas ✅
+**Qué hay en pantalla:** listado y ficha con el resumen, las devoluciones, *Retener*, *Pasar a liquidación* y *Devolver fianza* (el motivo es obligatorio si descuentas algo o no la dejas a cero).
+- **Dar de alta una fianza** (gerente y administrador): *Nueva fianza*. Busca el contrato por cliente o unidad e indica el importe exigido, la moneda y el número de fianzas. La fianza se crea sin cobro: el cobro se registra después en *Cuentas y cobros*.
+- **Cobrar una fianza:** la ficha te manda a *Cuentas y cobros*, donde se marca y se registra el cobro.
+- **Ver las cuentas de un contrato:** *Ver cuentas del contrato* en la ficha.
+
 En la misma tabla de cobros. Al terminar el contrato, el gerente la devuelve entera o en parte; si descuenta algo, indica motivo e importe.
 
-## 12. Enviar documentos (gerente y administrador) ⬜
+## 12. Enviar documentos (gerente y administrador) ✅
 - *Enviar* en la factura, proforma o recibo: email (o WhatsApp cuando esté activo) y contactos.
 - El estado (enviado, entregado, leído, fallido) se ve en la tabla.
+- **Reintentar:** en *Envíos* → *Historial*, un envío fallido tiene el botón *Reintentar*; el correo se vuelve a mandar. Si otra persona ya lo reintentó, la lista se recarga y lo dice.
 - **Envío masivo:** muestra un resumen antes de enviar.
 - **Recordatorios:** según configuración, salen solos o el gerente revisa la lista del día y los envía.
   Tienes tres modos en *Configuración → Ajustes* (**administrador**):
@@ -218,8 +238,8 @@ En la misma tabla de cobros. Al terminar el contrato, el gerente la devuelve ent
 - **Recordatorios por WhatsApp:** todavía no. Depende de decidir con qué proveedor se manda, y eso está
   pendiente. Hoy los recordatorios son **solo por correo**.
 
-## 13. Avisos y bandeja 🟡
-La campana muestra vencidas, contratos por vencer o pendientes de aprobar, fianzas pendientes, comprobantes por agotarse, envíos fallidos y avisos de seguridad (administrador).
+## 13. Avisos y bandeja ✅
+La campana muestra vencidas, contratos por vencer o pendientes de aprobar, fianzas pendientes, comprobantes por agotarse, envíos fallidos y avisos de seguridad (administrador). Para revisar y cerrar cada aviso, mira la pestaña *Alertas* de la Bandeja (ver más abajo).
 
 ## 14. Informes (gerente y administrador) ✅
 > Construida en F5-01. **Pendiente:** nadie la ha abierto todavía en un navegador, así que su aspecto en
@@ -272,18 +292,19 @@ instalación, la pantalla lo dice y no hay que enviar nada para enterarse.
 
 ## 15 bis. Administración (solo administrador) ✅
 
-Tres entradas del menú, bajo **Control**. Gerente y empleado no las ven.
+Entradas del menú bajo **Control**. Gerente y empleado no las ven (la auditoría, en el apartado siguiente, sí la ve el gerente).
 
 **Usuarios.** Lista de personas con su rol y estado. «Nuevo usuario» pide nombre de acceso, nombre, email (opcional), contraseña de 12 a 72 caracteres y rol. Al pulsar una fila se abre el detalle:
 - **Rol:** el rol marca el techo de lo que la persona puede hacer.
-- **Permisos:** se ve todo lo que el rol permite y se puede **apagar** lo que esa persona no debe hacer. No se puede encender nada que su rol no traiga. A un administrador no se le puede quitar el segundo factor obligatorio ni el acceso de emergencia.
+- **Permisos:** el editor solo ofrece lo que permite el rol. Puedes **apagar** los que esa persona no debe tener; no se puede encender nada que su rol no traiga. A un administrador no se le puede quitar el segundo factor obligatorio ni el acceso de emergencia.
 - **Restablecer contraseña:** la persona tendrá que cambiarla al entrar y se cierran sus sesiones. Comunícasela por un canal seguro.
 - **Desactivar usuario:** corta sus sesiones al instante. No puedes desactivar tu propia cuenta ni quitar el rol al último administrador; la pantalla te lo dice con el motivo.
 
-**Bloqueos y acceso de emergencia.**
-- **Cuentas:** botón «Desbloquear» junto a cada usuario. Atlas Rent no indica qué cuentas están bloqueadas; desbloquear una que no lo está no cambia nada.
-- **IPs:** escribe la dirección bloqueada y pulsa «Desbloquear IP».
-- **Acceso de emergencia:** para un administrador que perdió su dispositivo y sus códigos. Un administrador lo pide (con motivo de al menos 10 caracteres) y **otro distinto** lo aprueba pegando el identificador de la solicitud. Al aprobar sale un código de un solo uso: entrégalo por un canal seguro, no se vuelve a mostrar.
+**Bloqueos y acceso de emergencia.** Pestañas según tu permiso:
+- **Cuentas bloqueadas:** lista con usuario, nombre y las fechas desde y hasta. *Desbloquear* deja que la persona vuelva a intentar entrar.
+- **IPs bloqueadas:** lista con nivel, fallos y fechas. *Desbloquear* en la fila. Si la IP no sale en la lista, escríbela en *Desbloquear una IP a mano* y pulsa *Desbloquear IP*; si no estaba bloqueada, la app lo dice.
+- **Lista blanca:** las IP que nunca se bloquean. Es de solo lectura: se cambia en la configuración del servidor, no desde la app.
+- **Acceso de emergencia:** para un administrador que perdió su dispositivo y sus códigos. Lo pide otro administrador con un motivo de 10 a 500 caracteres. Después, **otro administrador distinto** lo aprueba: en *Solicitudes* (filtro *Estado*) pulsa *Aprobar*, o pega el identificador en *Aprobar una solicitud*. Tú no puedes aprobar tu propia solicitud. Al aprobar sale un código de un solo uso: entrégalo por un canal seguro, no se vuelve a mostrar.
 
 **Configuración.** Pestañas:
 - **Series:** número, prefijo, moneda, tipo y condiciones de pago. Si la serie ya emitió números, no se puede cambiar su moneda, prefijo ni tipo: crea una serie nueva. «Dar de baja» la deja de ofrecer en documentos nuevos; lo emitido se conserva.
@@ -294,6 +315,12 @@ Tres entradas del menú, bajo **Control**. Gerente y empleado no las ven.
 - **Mensajes:** plantillas de correo por tipo e idioma, en texto plano.
 - **Agentes de IA:** tokens para que un agente consulte datos. Solo admiten lectura o propuestas. **El token se muestra una sola vez** al emitirlo: cópialo entonces. «Revocar» lo invalida al instante.
 
+## 15 ter. Auditoría (gerente y administrador) ✅
+Registro de lo que se ha hecho en la app. Es **solo de lectura**: desde aquí no se cambia ni se borra nada.
+- **Filtros:** desde, hasta, usuario (escribe su identificador, no su nombre), entidad y acción. *Filtrar* aplica los filtros y *Limpiar* los quita.
+- **Tabla:** fecha, usuario, acción, entidad, resultado, IP y detalle. «Sistema» indica que el evento lo hizo la propia aplicación.
+- **Detalle:** *Ver* abre los datos del evento. Los datos sensibles salen ocultos con `***`. Si el evento no guarda datos, lo dice.
+
 ## 16. Preguntas frecuentes
 - **Me equivoqué en una factura emitida.** El gerente la modifica (si no tiene comprobante) o la anula y emite otra.
 - **No veo un botón.** Tu usuario no tiene ese permiso.
@@ -302,12 +329,12 @@ Tres entradas del menú, bajo **Control**. Gerente y empleado no las ven.
 
 ## Bandeja, envíos y panel de inicio
 
-**Panel de inicio.** Al entrar ves cuatro indicadores (facturado, cobrado, vencido y unidades ocupadas), cada uno con su comparación. Si tu usuario no puede ver totales, en su lugar aparece "Solo gerencia". Debajo tienes lo que está pendiente de decidir y accesos directos a lo que puedes usar.
+**Panel de inicio.** Al entrar ves cuatro indicadores (facturado, cobrado, vencido y unidades ocupadas), cada uno con su comparación. Si tu usuario no puede ver totales, en su lugar aparece "Solo gerencia". Debajo tienes las alertas abiertas más recientes (hasta cinco), con *Ver todas* para ir a la Bandeja, lo que está pendiente de decidir y accesos directos a lo que puedes usar.
 
 **Bandeja** (gerente y administrador). Tiene tres pestañas:
 - Contratos: los contratos enviados a aprobación, con la renta vigente y la propuesta. Puedes aprobar o rechazar; rechazar pide un motivo. Si el aviso dice que la solicitud cambió, alguien la decidió antes o el contrato se modificó: vuelve a revisarla.
 - Propuestas de la IA: lo que el asistente propone, con su justificación y la evidencia. El asistente solo propone; no se manda nada hasta que apruebas. Si el saldo cambió, la propuesta caduca y se te explica el motivo.
-- Alertas: el listado todavía no está disponible.
+- Alertas: lo que necesita revisión (contratos, reservas, facturas, comprobantes fiscales, tipo de cambio, fianzas, recordatorios, envíos, seguridad, copias de seguridad y auditoría). Filtra por *Tipo* y por *Estado* (*Abiertas*, *Cerradas* o *Todas*). Cada alerta muestra cuántas veces ha salido. *Cerrar* la quita de abiertas; si el problema sigue, **vuelve a abrirse sola**. Cada persona ve solo los tipos que le corresponden: el empleado ve las de contratos y reservas.
 
 **Envíos.**
 - Historial: cada correo con su estado (Pendiente, Enviando, Enviado, Entregado, Leído o Fallido). Puedes descargar la copia exacta de lo que salió y reintentar los fallidos.
