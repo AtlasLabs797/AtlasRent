@@ -40,10 +40,17 @@ public sealed class ServicioProspectos(
     public Task<Pagina<ProspectoResumen>> ListarAsync(
         ConsultaLista paginacion,
         string? busqueda,
+        bool incluirInactivos,
         CancellationToken ct)
     {
-        // Un prospecto convertido ya es cliente: no se ofrece más como destinatario.
-        var consulta = contexto.Prospecto.AsNoTracking().Where(p => p.Activo && p.ClienteId == null);
+        // Un prospecto convertido ya es cliente: no se ofrece más como destinatario. Con
+        // incluirInactivos salen también los inactivos y los convertidos (con clienteId), para
+        // poder reactivarlos o ir a su cliente.
+        var consulta = contexto.Prospecto.AsNoTracking();
+        if (!incluirInactivos)
+        {
+            consulta = consulta.Where(p => p.Activo && p.ClienteId == null);
+        }
 
         if (!string.IsNullOrWhiteSpace(busqueda))
         {

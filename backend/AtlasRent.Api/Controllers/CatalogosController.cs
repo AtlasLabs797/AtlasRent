@@ -49,7 +49,25 @@ public sealed class CatalogosController(
         CancellationToken ct) =>
         await EnvoltorioAsync(catalogos.CuentasReceptorasAsync(Lista(page, pageSize, sortBy, sortDir), ct));
 
-    /// <summary>Id y nombre, para mostrar propietaria/facturadora en la vista de cuentas.</summary>
+    /// <summary>
+    /// Tipos de ITBIS activos para elegir en una línea de borrador. Misma acción que las líneas
+    /// (<c>factura.borrador</c>): quien puede editar el borrador elige el impuesto sin tocar configuración.
+    /// </summary>
+    [HttpGet("tipos-itbis")]
+    [Accion(Acciones.FacturaBorrador)]
+    public async Task<IActionResult> TiposItbis(
+        [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? sortBy, [FromQuery] string? sortDir,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(catalogos.TiposItbisAsync(Lista(page, pageSize, sortBy, sortDir), ct));
+
+    [HttpGet("tipos-retencion")]
+    [Accion(Acciones.FacturaBorrador)]
+    public async Task<IActionResult> TiposRetencion(
+        [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] string? sortBy, [FromQuery] string? sortDir,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(catalogos.TiposRetencionAsync(Lista(page, pageSize, sortBy, sortDir), ct));
+
+    /// <summary>Id, nombre y marcas propietaria/facturadora, para filtrar los selectores y la vista de cuentas.</summary>
     [HttpGet("subempresas")]
     [Accion(Acciones.FacturaVer)]
     public async Task<IActionResult> Subempresas(

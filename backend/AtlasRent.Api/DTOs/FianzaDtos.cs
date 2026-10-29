@@ -89,6 +89,10 @@ public sealed class FianzaDevolucionPeticion
 public sealed record FianzaResumen(
     Guid Id,
     Guid ContratoId,
+    Guid ClienteId,
+    string ClienteNombre,
+    Guid UnidadId,
+    string UnidadNombre,
     decimal ImporteExigido,
     [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda Moneda,
     int NumeroFianzas,

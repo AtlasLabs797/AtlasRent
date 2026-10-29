@@ -22,7 +22,17 @@ public sealed record CuentaReceptoraCatalogo(
     string? Banco,
     [property: JsonConverter(typeof(JsonStringEnumConverter<Moneda>))] Moneda Moneda);
 
-public sealed record SubempresaCatalogo(Guid Id, string Nombre);
+public sealed record SubempresaCatalogo(Guid Id, string Nombre, bool Propietaria, bool Facturadora);
+
+/// <summary>Tipo de ITBIS activo para elegir en la línea de un borrador. El porcentaje sale de configuración.</summary>
+public sealed record TipoItbisCatalogo(Guid Id, string Nombre, decimal Porcentaje);
+
+public sealed record TipoRetencionCatalogo(
+    Guid Id,
+    string Nombre,
+    decimal Porcentaje,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<BaseRetencion>))] BaseRetencion Base,
+    bool EsDefecto);
 
 /// <summary>Tolerancia de diferencia de cambio que aplica el registro de cobros. Nula = sin configurar.</summary>
 public sealed record ParametrosCobroRespuesta(decimal? ToleranciaCambioUsd, decimal? ToleranciaCambioDop);

@@ -112,9 +112,10 @@ public sealed class ServicioFianzas(
             ct);
 
         var cifras = await CifrasAsync([.. pagina.Data.Select(f => f.Id)], ct);
+        var datos = await DatosContratosAsync([.. pagina.Data.Select(f => f.ContratoId).Distinct()], ct);
 
         return new Pagina<FianzaResumen>(
-            [.. pagina.Data.Select(f => AResumen(f, cifras[f.Id]))],
+            [.. pagina.Data.Select(f => AResumen(f, cifras[f.Id], datos[f.ContratoId]))],
             pagina.Total,
             pagina.Page,
             pagina.PageSize,
@@ -128,8 +129,19 @@ public sealed class ServicioFianzas(
         var cifras = (await CifrasAsync([id], ct))[id];
         var devoluciones = await DevolucionesAsync(id, ct);
 
-        return new FianzaRespuesta(AResumen(fianza, cifras), [.. devoluciones.Select(ADevolucionRespuesta)]);
+        var datos = (await DatosContratosAsync([fianza.ContratoId], ct))[fianza.ContratoId];
+
+        return new FianzaRespuesta(AResumen(fianza, cifras, datos), [.. devoluciones.Select(ADevolucionRespuesta)]);
     }
+
+    /// <summary>Cliente y unidad de los contratos dados, con una sola consulta (sin N+1).</summary>
+    private async Task<Dictionary<Guid, DatosContrato>> DatosContratosAsync(List<Guid> contratoIds, CancellationToken ct) =>
+        await contexto.Contrato.AsNoTracking()
+            .Where(c => contratoIds.Contains(c.Id))
+            .Select(c => new { c.Id, Datos = new DatosContrato(c.ClienteId, c.Cliente!.Nombre, c.UnidadId, c.Unidad!.Nombre) })
+            .ToDictionaryAsync(x => x.Id, x => x.Datos, ct);
+
+    private sealed record DatosContrato(Guid ClienteId, string ClienteNombre, Guid UnidadId, string UnidadNombre);
 
     // ---------------------------------------------------------------- escritura
 
@@ -190,6 +202,8 @@ public sealed class ServicioFianzas(
             Estado = EstadoFianza.Pendiente,
         };
 
+        var datosContrato = (await DatosContratosAsync([contrato.Id], ct))[contrato.Id];
+
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
             contexto.Fianza, fianza,
@@ -200,7 +214,7 @@ public sealed class ServicioFianzas(
             ip,
             mutacion,
             proyectar: f => new FianzaRespuesta(
-                AResumen(f, CifraVacia),
+                AResumen(f, CifraVacia, datosContrato),
                 []),
             datosAuditoria: DatosAuditoria,
             ct: ct);
@@ -330,6 +344,7 @@ public sealed class ServicioFianzas(
         // dentro de `proyectar`: leerla de la base saldría sin ella, y el cliente no vería el
         // movimiento que acaba de confirmar.
         var historial = await DevolucionesAsync(id, ct, devolucion);
+        var datosContrato = (await DatosContratosAsync([fianza.ContratoId], ct))[fianza.ContratoId];
 
         var esperado = new Fianza
         {
@@ -355,7 +370,7 @@ public sealed class ServicioFianzas(
             ip,
             mutacion,
             proyectar: _ => new FianzaRespuesta(
-                AResumen(esperado, despues),
+                AResumen(esperado, despues, datosContrato),
                 [.. historial.Select(ADevolucionRespuesta)]),
             datosAuditoria: d => new
             {
@@ -468,6 +483,7 @@ public sealed class ServicioFianzas(
         fianza.Estado = destino;
 
         var devoluciones = await DevolucionesAsync(id, ct);
+        var datosContrato = (await DatosContratosAsync([fianza.ContratoId], ct))[fianza.ContratoId];
 
         return await GuardadoAuditado.GuardarAsync(
             contexto, auditoria, idempotencia, reloj,
@@ -478,7 +494,7 @@ public sealed class ServicioFianzas(
             usuario,
             ip,
             mutacion,
-            proyectar: f => new FianzaRespuesta(AResumen(f, cifras), [.. devoluciones.Select(ADevolucionRespuesta)]),
+            proyectar: f => new FianzaRespuesta(AResumen(f, cifras, datosContrato), [.. devoluciones.Select(ADevolucionRespuesta)]),
             datosAuditoria: DatosAuditoria,
             // Una fianza en liquidación ya no es un asunto pendiente de §3.16, así que el aviso se
             // cierra en el mismo commit en que se toma la decisión.
@@ -611,9 +627,13 @@ public sealed class ServicioFianzas(
 
     // ---------------------------------------------------------------- proyecciones
 
-    private static FianzaResumen AResumen(Fianza f, Cifras cifras) => new(
+    private static FianzaResumen AResumen(Fianza f, Cifras cifras, DatosContrato contrato) => new(
         f.Id,
         f.ContratoId,
+        contrato.ClienteId,
+        contrato.ClienteNombre,
+        contrato.UnidadId,
+        contrato.UnidadNombre,
         Redondeo.Importe(f.ImporteExigido),
         f.Moneda,
         f.NumeroFianzas,
