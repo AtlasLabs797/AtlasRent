@@ -249,11 +249,11 @@ test('reservas: el empleado no ve cancelar una reserva en conflicto ni facturar'
   await expect(page.getByRole('button', { name: 'Facturar reserva' })).toHaveCount(0);
 });
 
-test('reservas: facturar una corta con serie (admin) emite y avisa de que el anticipo es una nota', async ({ page, api }) => {
+test('reservas: facturar una corta eligiendo la serie del catálogo emite y avisa de que el anticipo es una nota', async ({ page, api }) => {
   conSesion(api);
   responderSelectores(api);
   api.responder('GET', `/reservas/${RESERVA_ID}`, { body: reservaDetalle() });
-  api.responder('GET', '/config/series', { body: pagina([{ id: 'se1', numero: 1, prefijo: 'A', moneda: 'USD', activa: true }]) });
+  api.responder('GET', '/catalogos/series', { body: pagina([{ id: 'se1', numero: 1, prefijo: 'A', moneda: 'USD', tipo: 'Normal', generaComprobante: false }]) });
   api.responder('POST', `/reservas/${RESERVA_ID}/factura`, {
     body: { facturaId: 'fa1', reservaId: RESERVA_ID, numero: 412, total: '120.00', moneda: 'USD', vencimiento: '2026-11-03', anticipoAviso: 'La reserva tiene un anticipo anotado de 30,00 USD: es una nota, no un cobro.' },
   });

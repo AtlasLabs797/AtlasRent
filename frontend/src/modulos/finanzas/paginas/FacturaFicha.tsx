@@ -19,6 +19,7 @@ import SinPermiso from '../../../paginas/SinPermiso';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
 import { abrirPdf, useDuplicarFactura, useEmitirFactura, useFactura, useReferenciaEfactura } from '../api';
+import { TarjetaComprobanteRetencion } from '../componentes/ComprobanteRetencion';
 import { CargandoTabla, FalloCarga, InsigniaFila } from '../componentes/Comunes';
 import { AjusteDiferenciaCambio, AnularFactura, ConvertirProforma, ModificarLineas, RehacerEnOtraMoneda } from '../componentes/DialogosFactura';
 import { esPositivo } from '../decimal';
@@ -74,6 +75,7 @@ export default function FacturaFicha() {
   const puedeEmitir = puede(identidad, ACCIONES.facturaEmitir);
   const puedeGestionar = puede(identidad, ACCIONES.facturaAnular);
   const puedeCobrar = puede(identidad, ACCIONES.cobroRegistrar);
+  const puedeEditarBorrador = x.estado === 'Borrador' && puede(identidad, ACCIONES.facturaBorrador);
   const emitida = x.estado === 'Emitida';
   const conPendiente = emitida && !esProforma && esPositivo(x.pendiente);
   const referenciaActual = referencia ?? x.referenciaEfactura ?? '';
@@ -93,6 +95,8 @@ export default function FacturaFicha() {
   ];
 
   const acciones = [
+    ...(puedeEditarBorrador ? [{ label: f.editarBorrador, icon: 'pencil', onClick: () => navegar(`/facturas/${x.id}/editar`) }] : []),
+    ...(x.contratoId ? [{ label: f.verCuentas, icon: 'wallet', onClick: () => navegar(`/cuentas?contratoId=${x.contratoId}`) }] : []),
     ...(puedeGestionar && emitida && !esProforma ? [{ label: f.modificar, icon: 'pencil', onClick: () => setDialogo('modificar') }] : []),
     ...(puedeGestionar
       ? [{ label: f.duplicar, icon: 'copy', onClick: () => duplicar.mutate({}, { onSuccess: (r) => navegar(`/facturas/${r.factura.id}`, { state: { similares: r.similares } }) }) }]
@@ -113,6 +117,7 @@ export default function FacturaFicha() {
       >
         <InsigniaFila tipo={esProforma ? 'Proforma' : 'Factura'} estado={emitida && !esProforma ? x.estadoCobro : x.estado} />
         {x.vencida && <Badge status="vencida" />}
+        {x.modificadaTrasEnvio && <Badge tone="warning">{tc.modificadaTrasEnvio}</Badge>}
         <IconButton
           icon="file-text"
           label={tc.pdf}
@@ -171,6 +176,7 @@ export default function FacturaFicha() {
               { label: f.cliente, value: x.clienteNombre },
               { label: f.unidad, value: x.unidadNombre },
               { label: f.moneda, value: x.moneda, mono: true },
+              { label: f.comprobanteFiscal, value: x.comprobanteFiscal, mono: true },
               { label: f.emision, value: x.fechaEmision ? formatearFecha(x.fechaEmision) : null, mono: true },
               { label: f.vencimiento, value: formatearFecha(x.fechaVencimiento), mono: true },
               {
@@ -197,6 +203,10 @@ export default function FacturaFicha() {
           {!puedeEmitir && x.referenciaEfactura && <KeyValueList columns={1} style={{ marginTop: 16 }} items={[{ label: f.efactura, value: x.referenciaEfactura, mono: true }]} />}
           {efactura.isError && <ErrorAlerta error={efactura.error} titulo={f.efactura} />}
         </Card>
+
+        {(x.comprobanteRetencionId !== null || x.retencionSinComprobante) && (
+          <TarjetaComprobanteRetencion facturaId={x.id} moneda={x.moneda} puedeRegistrar={puedeEmitir} />
+        )}
 
         <Card title={f.lineas} padded={false}>
           <DataTable columns={columnas} rows={x.lineas} empty={tc.vacio} />

@@ -12,6 +12,7 @@ export interface FiltrosCuentas {
   /** '' | Pendiente | Parcial | Pagada | Anulada */
   estado: string;
   clienteId: string;
+  contratoId: string;
   unidadId: string;
   inmuebleId: string;
   propietariaId: string;
@@ -32,6 +33,7 @@ export const FILTROS_VACIOS: FiltrosCuentas = {
   moneda: '',
   estado: '',
   clienteId: '',
+  contratoId: '',
   unidadId: '',
   inmuebleId: '',
   propietariaId: '',
@@ -46,7 +48,7 @@ export const FILTROS_VACIOS: FiltrosCuentas = {
   incluirFianzas: true,
 };
 
-const TEXTOS = ['anio', 'estado', 'clienteId', 'unidadId', 'inmuebleId', 'propietariaId', 'facturadoraId', 'desde', 'hasta'] as const;
+const TEXTOS = ['anio', 'estado', 'clienteId', 'contratoId', 'unidadId', 'inmuebleId', 'propietariaId', 'facturadoraId', 'desde', 'hasta'] as const;
 const BOOLEANOS = ['vencidas', 'noEnviadas', 'envioFallido', 'modificadasTrasEnvio', 'incluirProformas'] as const;
 
 export function filtrosDesdeParametros(p: URLSearchParams): FiltrosCuentas {
@@ -75,7 +77,7 @@ export function parametrosDeFiltros(f: FiltrosCuentas): URLSearchParams {
 /** Query de `GET /cuentas`. "Anulada" es estado de la factura; el resto, estado de cobro derivado. */
 export function consultaCuentas(f: FiltrosCuentas, pageSize: number): Record<string, string | number | boolean> {
   const q: Record<string, string | number | boolean> = { page: f.page, pageSize };
-  for (const k of ['anio', 'clienteId', 'unidadId', 'inmuebleId', 'propietariaId', 'facturadoraId', 'desde', 'hasta'] as const) {
+  for (const k of ['anio', 'clienteId', 'contratoId', 'unidadId', 'inmuebleId', 'propietariaId', 'facturadoraId', 'desde', 'hasta'] as const) {
     if (f[k]) q[k] = f[k];
   }
   if (f.moneda) q.moneda = f.moneda;

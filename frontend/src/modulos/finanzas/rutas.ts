@@ -13,6 +13,8 @@ export const facturas: DefinicionModulo = {
   rutas: [
     { path: 'facturas', cargar: () => import('./paginas/Facturas') },
     { path: 'facturas/periodicas', cargar: () => import('./paginas/FacturasPeriodicas') },
+    { path: 'facturas/nueva', cargar: () => import('./paginas/FacturaBorrador') },
+    { path: 'facturas/:id/editar', cargar: () => import('./paginas/FacturaBorrador') },
     { path: 'facturas/:id', cargar: () => import('./paginas/FacturaFicha') },
   ],
 };

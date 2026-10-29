@@ -120,14 +120,15 @@ export interface SerieLista {
   numero: number;
   prefijo: string | null;
   moneda: MonedaApi | null;
-  activa: boolean;
+  tipo: string;
+  generaComprobante: boolean;
 }
 
-/** Las series solo las lista `configuracion.editar`. TODO(A#): un gerente que emite no puede elegir serie. */
+/** Catálogo mínimo de series activas (`factura.borrador`): lo puede leer también quien emite sin ser administrador. */
 export function useSeries(habilitado: boolean) {
   return useQuery({
     queryKey: ['reservas', 'series'],
     enabled: habilitado,
-    queryFn: async () => (await clienteHttp.get<Pagina<SerieLista>>('/config/series', { params: { pageSize: 200 } })).data,
+    queryFn: async () => (await clienteHttp.get<Pagina<SerieLista>>('/catalogos/series')).data,
   });
 }

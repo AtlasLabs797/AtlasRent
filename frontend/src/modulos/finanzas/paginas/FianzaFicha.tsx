@@ -125,6 +125,7 @@ export default function FianzaFicha() {
         description={<span className="mono">{x.contratoId}</span>}
         breadcrumbs={[{ label: textos.navegacion.modulos.fianzas.etiqueta, onClick: () => navegar('/fianzas') }, { label: textosFinanzas.fianzas.titulo }]}
       >
+        <Button variant="secondary" icon="wallet" onClick={() => navegar(`/cuentas?contratoId=${x.contratoId}`)}>{f.verCuentas}</Button>
         {x.estado === 'RetenidaParcial' && <Badge tone="info" dot>{f.retenidaParcial}</Badge>}
         {puedeMover && (x.estado === 'Pendiente' || x.estado === 'Parcial') && (
           <Button variant="secondary" disabled={retener.isPending} onClick={() => retener.mutate(undefined)}>{f.retener}</Button>

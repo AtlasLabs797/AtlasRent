@@ -40,7 +40,7 @@ test('el menú no enlaza a rutas que no existen: las rutas salen del registro de
   for (const modulo of MODULOS) {
     for (const ruta of modulo.rutas) rutasMontadas.add(ruta.path === '' ? '/' : `/${ruta.path}`);
   }
-  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/bandeja', '/bloqueos', '/calendario', '/clientes', '/clientes/:id', '/clientes/prospectos', '/cobros', '/cobros/:id', '/componentes', '/configuracion', '/contratos', '/contratos/:id', '/contratos/:id/editar', '/contratos/nuevo', '/contratos/plantillas', '/cotizaciones', '/cotizaciones/:id', '/cuenta', '/cuentas', '/envios', '/facturas', '/facturas/:id', '/facturas/periodicas', '/fianzas', '/fianzas/:id', '/informes', '/reservas', '/reservas/:id', '/unidades', '/unidades/:id', '/usuarios']);
+  assert.deepEqual([...rutasMontadas].sort(), ['/', '/asistente', '/bandeja', '/bloqueos', '/calendario', '/clientes', '/clientes/:id', '/clientes/prospectos', '/cobros', '/cobros/:id', '/componentes', '/configuracion', '/contratos', '/contratos/:id', '/contratos/:id/editar', '/contratos/nuevo', '/contratos/plantillas', '/cotizaciones', '/cotizaciones/:id', '/cuenta', '/cuentas', '/envios', '/facturas', '/facturas/:id', '/facturas/:id/editar', '/facturas/nueva', '/facturas/periodicas', '/fianzas', '/fianzas/:id', '/informes', '/reservas', '/reservas/:id', '/unidades', '/unidades/:id', '/usuarios']);
 
   // App.tsx no declara rutas de módulo a mano: las monta del registro (si no, el menú y el
   // enrutador podrían divergir).

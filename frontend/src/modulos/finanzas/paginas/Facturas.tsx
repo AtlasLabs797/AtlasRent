@@ -78,6 +78,11 @@ export default function Facturas() {
         description={t.descripcion}
         breadcrumbs={[{ label: textos.navegacion.grupos.finanzas }, { label: textos.navegacion.modulos.facturas.etiqueta }]}
       >
+        {puede(identidad, ACCIONES.facturaBorrador) && (
+          <Button icon="plus" onClick={() => navegar('/facturas/nueva')}>
+            {t.nueva}
+          </Button>
+        )}
         {puede(identidad, ACCIONES.facturaEmitir) && (
           <Button variant="secondary" icon="calendar-clock" onClick={() => navegar('/facturas/periodicas')}>
             {t.periodicas}

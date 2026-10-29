@@ -2,11 +2,12 @@ import { useEffect, useState, type JSX, type ReactNode } from 'react';
 import { Badge } from '../../../design-system/components/core/Badge';
 import { Button } from '../../../design-system/components/core/Button';
 import { Skeleton } from '../../../design-system/components/feedback/Skeleton';
-import { Combobox } from '../../../design-system/components/forms/Combobox';
+import { Alert } from '../../../design-system/components/feedback/Alert';
+import { Combobox, type ComboboxOption } from '../../../design-system/components/forms/Combobox';
 import { Select } from '../../../design-system/components/forms/Select';
 import { ErrorAlerta } from '../../../componentes/ErrorAlerta';
-import { aErrorApi } from '../../../api/errores';
-import { useClientes, useInmuebles, useUnidadesDeInmueble } from '../api';
+import type { Serie } from '../tipos';
+import { useBuscarClientes, useClienteElegido, useInmuebles, useSeries, useUnidadesDeInmueble } from '../api';
 import { insigniaDeFila } from '../logica';
 import { textosFinanzas } from '../textos';
 
@@ -39,15 +40,95 @@ export function FalloCarga({ error, reintentar }: { error: unknown; reintentar: 
   );
 }
 
-export function SelectorCliente({ value, onChange }: { value: string; onChange: (id: string) => void }): JSX.Element {
-  const clientes = useClientes();
+/** Valor que sigue a `valor` con retraso: evita una petición por pulsación de tecla. */
+export function useRetardado<T>(valor: T, ms = 300): T {
+  const [retardado, setRetardado] = useState(valor);
+  useEffect(() => {
+    const id = setTimeout(() => setRetardado(valor), ms);
+    return () => clearTimeout(id);
+  }, [valor, ms]);
+  return retardado;
+}
+
+/**
+ * Cliente con búsqueda remota (`GET /clientes?q=`). El Combobox del DS filtra en local y no avisa de
+ * lo que se teclea: se escucha el `input` que burbujea hasta el contenedor. El cliente elegido se
+ * conserva en las opciones aunque la búsqueda siguiente ya no lo traiga.
+ */
+export function SelectorCliente({
+  value,
+  onChange,
+  etiqueta = t.cliente,
+  required,
+  error,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  etiqueta?: string;
+  required?: boolean;
+  error?: string;
+}): JSX.Element {
+  const [texto, setTexto] = useState('');
+  const q = useRetardado(texto);
+  const resultados = useBuscarClientes(q);
+  const elegido = useClienteElegido(value);
+  const opciones: ComboboxOption[] = [...(resultados.data ?? [])];
+  if (elegido.data && !opciones.some((o) => o.value === elegido.data.value)) opciones.unshift(elegido.data);
   return (
-    <Combobox
-      label={t.cliente}
-      placeholder={t.cliente}
-      options={clientes.data ?? []}
-      value={value || null}
-      onChange={(v) => onChange(v ?? '')}
+    <div onInput={(e) => setTexto((e.target as HTMLInputElement).value)}>
+      <Combobox
+        label={etiqueta}
+        placeholder={t.buscarCliente}
+        required={required}
+        error={error}
+        options={opciones}
+        value={value || null}
+        onChange={(v) => {
+          setTexto('');
+          onChange(v ?? '');
+        }}
+      />
+    </div>
+  );
+}
+
+export const etiquetaSerie = (s: Serie): string => `${s.numero}${s.prefijo ? ' · ' + s.prefijo : ''} · ${s.tipo}`;
+
+/** Serie del catálogo mínimo (`GET /catalogos/series`, `factura.borrador`). */
+export function SelectorSerie({
+  valor,
+  onChange,
+  etiqueta,
+  opcional,
+  moneda,
+  error,
+}: {
+  valor: string;
+  onChange: (v: string) => void;
+  etiqueta: string;
+  opcional?: boolean;
+  /** Si se indica, solo series de esa moneda o sin moneda fija. */
+  moneda?: string;
+  error?: string;
+}): JSX.Element {
+  const series = useSeries();
+  if (series.isError) {
+    return (
+      <Alert tone="warning" title={t.sinCatalogoTitulo}>
+        {t.sinCatalogoCuerpo}
+      </Alert>
+    );
+  }
+  const opciones = (series.data ?? []).filter((s) => !moneda || s.moneda === null || s.moneda === moneda).map((s) => ({ value: s.id, label: etiquetaSerie(s) }));
+  return (
+    <Select
+      label={etiqueta}
+      required={!opcional}
+      placeholder="—"
+      value={valor}
+      error={error}
+      options={opcional ? [{ value: '', label: '—' }, ...opciones] : opciones}
+      onChange={(e) => onChange(e.target.value)}
     />
   );
 }
@@ -90,11 +171,6 @@ export function RejillaFiltros({ children }: { children: ReactNode }): JSX.Eleme
       {children}
     </div>
   );
-}
-
-/** Texto que solo existe si la API devuelve 403 en un catálogo de configuración. */
-export function esSinPermiso(error: unknown): boolean {
-  return aErrorApi(error).status === 403;
 }
 
 /** Valor que se reinicia cuando cambia `clave` (selección al cambiar de filtros). */

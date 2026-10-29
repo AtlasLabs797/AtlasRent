@@ -93,8 +93,6 @@ export const textosReservas = {
     titulo: 'Facturar reserva corta',
     descripcion: 'La reserva corta se cobra antes. La factura se emite con el número de la serie elegida.',
     serie: 'Serie',
-    serieId: 'Identificador de la serie',
-    serieAyuda: 'Tu usuario no puede ver las series. Pide el identificador a un administrador.',
     emitir: 'Emitir factura',
     emitiendo: 'Emitiendo…',
     hecho: 'Factura emitida',

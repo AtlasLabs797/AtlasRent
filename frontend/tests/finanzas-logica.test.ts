@@ -122,3 +122,11 @@ test('fianza: el motivo es obligatorio con descuento o si la devolución no deja
   assert.equal(motivoObligatorio('900.00', '100.00', '1000.00'), true);
   assert.equal(motivoObligatorio('700.00', '300.00', '1000.00'), true);
 });
+
+test('contratoId viaja en la URL y en la consulta de /cuentas', () => {
+  const f = filtrosDesdeParametros(new URLSearchParams('contratoId=abc'));
+  assert.equal(f.contratoId, 'abc');
+  assert.equal(parametrosDeFiltros(f).get('contratoId'), 'abc');
+  assert.equal(consultaCuentas(f, 25).contratoId, 'abc');
+  assert.equal('contratoId' in consultaCuentas(FILTROS_VACIOS, 25), false);
+});

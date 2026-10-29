@@ -10,7 +10,6 @@ import { Money } from '../../../design-system/components/data/Money';
 import { Alert } from '../../../design-system/components/feedback/Alert';
 import { Dialog } from '../../../design-system/components/feedback/Dialog';
 import { Skeleton } from '../../../design-system/components/feedback/Skeleton';
-import { Input } from '../../../design-system/components/forms/Input';
 import { Select } from '../../../design-system/components/forms/Select';
 import { PageHeader } from '../../../design-system/components/navigation/PageHeader';
 import { formatearFecha } from '../../../dominio/fechas';
@@ -183,10 +182,8 @@ export default function ReservaDetalle() {
 }
 
 function DialogoFacturar({ abierto, reservaId, moneda, onCerrar }: { abierto: boolean; reservaId: string; moneda: 'USD' | 'DOP'; onCerrar: () => void }) {
-  const identidad = useSesion((s) => s.identidad);
   const f = t.facturar;
-  const veSeries = puede(identidad, ACCIONES.configuracionEditar);
-  const series = useSeries(veSeries && abierto);
+  const series = useSeries(abierto);
   const facturar = useFacturarReserva(reservaId);
   const [serieId, setSerieId] = useState('');
   const [fallo, setFallo] = useState<unknown>(null);
@@ -199,7 +196,7 @@ function DialogoFacturar({ abierto, reservaId, moneda, onCerrar }: { abierto: bo
   }
 
   const opciones = (series.data?.data ?? [])
-    .filter((s) => s.activa && (s.moneda === null || s.moneda === moneda))
+    .filter((s) => s.moneda === null || s.moneda === moneda)
     .map((s) => ({ value: s.id, label: `Serie ${s.numero}${s.prefijo ? ` · ${s.prefijo}` : ''}` }));
 
   return (
@@ -243,11 +240,7 @@ function DialogoFacturar({ abierto, reservaId, moneda, onCerrar }: { abierto: bo
       ) : (
         <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
           {fallo !== null && <AvisoBloqueo error={fallo} titulo={f.error} />}
-          {veSeries ? (
-            <Select label={f.serie} required placeholder={f.serie} value={serieId} onChange={(e) => setSerieId(e.target.value)} options={opciones} />
-          ) : (
-            <Input id="serie-id" label={f.serieId} required hint={f.serieAyuda} value={serieId} onChange={(e) => setSerieId(e.target.value)} className="mono" />
-          )}
+          <Select label={f.serie} required placeholder={f.serie} value={serieId} onChange={(e) => setSerieId(e.target.value)} options={opciones} />
           <Alert tone="info">{t.anticipoNota}</Alert>
         </div>
       )}
