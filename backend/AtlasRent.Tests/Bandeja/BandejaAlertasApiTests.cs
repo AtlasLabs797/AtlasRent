@@ -27,6 +27,20 @@ public sealed class BandejaAlertasApiTests(ContenedorBdFixture bd, ApiTestFactor
         "reserva", "seguridad", "tipo_cambio", "envio",
     ];
 
+    [Fact]
+    public void EnmascararRecorreArraysYObjetosAnidadosSinRomper()
+    {
+        // En la suite completa salió un 500: reasignar un nodo a su propio padre lanza
+        // "The node already has a parent" en cuanto `datos` trae un array.
+        var nodo = System.Text.Json.Nodes.JsonNode.Parse(
+            """{"lineas":[{"importe":"1.00","token":"x"},[1,2]],"cliente":{"cedula":"001","nombre":"A"}}""");
+
+        var resultado = ServicioLecturaAuditoria.Enmascarar(nodo)!.ToJsonString();
+
+        resultado.Should().Be(
+            """{"lineas":[{"importe":"1.00","token":"***"},[1,2]],"cliente":{"cedula":"***","nombre":"A"}}""");
+    }
+
     private async Task<Dictionary<string, Guid>> SembrarAsync(CancellationToken ct, DateTimeOffset? resuelta = null)
     {
         var ids = new Dictionary<string, Guid>();

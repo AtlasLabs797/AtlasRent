@@ -134,16 +134,24 @@ public sealed class ServicioLecturaAuditoria(AtlasRentDbContext contexto)
         switch (nodo)
         {
             case JsonObject objeto:
+                // Se recorre en sitio: reasignar un nodo a su propio padre lanza "already has a parent".
                 foreach (var clave in objeto.Select(p => p.Key).ToList())
                 {
-                    objeto[clave] = EsSensible(clave) ? JsonValue.Create(Enmascarado) : Enmascarar(objeto[clave]);
+                    if (EsSensible(clave))
+                    {
+                        objeto[clave] = JsonValue.Create(Enmascarado);
+                    }
+                    else
+                    {
+                        Enmascarar(objeto[clave]);
+                    }
                 }
 
                 return objeto;
             case JsonArray lista:
-                for (var i = 0; i < lista.Count; i++)
+                foreach (var elemento in lista)
                 {
-                    lista[i] = Enmascarar(lista[i]);
+                    Enmascarar(elemento);
                 }
 
                 return lista;
