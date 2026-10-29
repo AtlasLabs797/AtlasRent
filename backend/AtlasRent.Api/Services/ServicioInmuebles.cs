@@ -162,6 +162,15 @@ public sealed class ServicioInmuebles(
         CancellationToken ct)
     {
         var inmueble = await CargarInmuebleAsync(id, ct);
+
+        // BUG-057: la misma regla que la baja de una unidad, para todas las del inmueble.
+        var unidades = await contexto.Unidad.Where(u => u.InmuebleId == id).Select(u => u.Id).ToListAsync(ct);
+        if (await TieneContratosOReservasVivosAsync(unidades, ct))
+        {
+            throw new InvalidOperationException(
+                "El inmueble tiene unidades con contratos o reservas vivos: no se puede desactivar.");
+        }
+
         inmueble.Activo = false;
 
         await GuardadoAuditado.GuardarAsync(
@@ -264,6 +273,16 @@ public sealed class ServicioInmuebles(
     /// solo junto con el inmueble?
     /// </para>
     /// </summary>
+    private async Task<bool> TieneContratosOReservasVivosAsync(List<Guid> unidades, CancellationToken ct) =>
+        await contexto.Contrato.AnyAsync(
+            c => unidades.Contains(c.UnidadId)
+                && c.Estado != EstadoContrato.Finalizado && c.Estado != EstadoContrato.Liquidado,
+            ct)
+        || await contexto.Reserva.AnyAsync(
+            r => unidades.Contains(r.UnidadId) && r.Activo
+                && (r.Estado == EstadoReserva.Activa || r.Estado == EstadoReserva.EnConflicto),
+            ct);
+
     public async Task<UnidadRespuesta> DesactivarUnidadAsync(
         Guid id,
         Guid usuario,
@@ -277,14 +296,7 @@ public sealed class ServicioInmuebles(
             return AUnidad(unidad);
         }
 
-        var contratoVivo = await contexto.Contrato.AnyAsync(
-            c => c.UnidadId == id && c.Estado != EstadoContrato.Finalizado && c.Estado != EstadoContrato.Liquidado,
-            ct);
-        var reservaViva = await contexto.Reserva.AnyAsync(
-            r => r.UnidadId == id && r.Activo
-                && (r.Estado == EstadoReserva.Activa || r.Estado == EstadoReserva.EnConflicto),
-            ct);
-        if (contratoVivo || reservaViva)
+        if (await TieneContratosOReservasVivosAsync([id], ct))
         {
             throw new InvalidOperationException(
                 "La unidad tiene contratos o reservas vivos: no se puede desactivar.");

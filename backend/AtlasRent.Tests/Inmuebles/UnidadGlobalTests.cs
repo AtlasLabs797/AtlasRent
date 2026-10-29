@@ -89,6 +89,26 @@ public sealed class UnidadGlobalTests(ContenedorBdFixture bd, ApiTestFactory api
             .StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>BUG-057: el inmueble tampoco se desactiva con una unidad que tiene una reserva viva.</summary>
+    [Fact]
+    public async Task UnInmuebleConUnaReservaVivaNoSeDesactiva()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var sesion = await SesionAsync(Roles.Gerente, ct);
+        var (inmuebleId, unidadId) = await AyudaReserva.InmuebleYUnidadAsync(sesion, ct);
+        var cliente = await AyudaReserva.ClienteAsync(sesion, ct);
+        var reserva = await AyudaReserva.CrearAsync(
+            sesion, AyudaReserva.Mensual(cliente, unidadId, AyudaReserva.Dia(520)), ct);
+
+        (await sesion.DeleteAsync($"/api/v1/inmuebles/{inmuebleId:D}", ct))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        (await sesion.DeleteAsync($"/api/v1/reservas/{reserva:D}", ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await sesion.DeleteAsync($"/api/v1/inmuebles/{inmuebleId:D}", ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task NoSeReactivaUnaUnidadDeUnInmuebleInactivo()
     {
