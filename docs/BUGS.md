@@ -22,6 +22,18 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-059 · HuecosApiTests.SubempresasTraenPropietariaYFacturadora depende del tamaño de la base compartida
+- Fecha detectado: 29/10/2026 · Fecha corregido: 29/10/2026
+- Gravedad: **Baja** · Estado: CORREGIDO · Módulo: pruebas / catálogos
+- Detectado por: suite completa tras integrar AUD-11 (1179/1180)
+- Síntoma: la prueba no encontraba sus subempresas en la respuesta del catálogo.
+- Cómo reproducir: ejecutar la suite completa; en la base compartida hay más de 200 subempresas y las de la prueba quedan fuera de la primera página (orden por nombre).
+- Causa raíz: la prueba leía solo la primera página del catálogo (`pageSize` por defecto 200).
+- Solución: la prueba recorre todas las páginas. El catálogo no cambia: 200 subempresas activas no es un caso real.
+- Test que lo cubre: `Catalogos/HuecosApiTests` + `CatalogosApiTests` 23/23.
+- Commit/PR: rama `tarea/AUD-01-auditoria`, commit `test(catalogos): recorrer todas las páginas…`.
+- Datos afectados: Ninguno: es un fallo de prueba.
+
 ### BUG-058 · GET /auditoria da 500 cuando `datos` lleva arrays
 - Fecha detectado: 29/10/2026 · Fecha corregido: 29/10/2026
 - Gravedad: **Alta** · Estado: CORREGIDO · Módulo: auditoría (lectura, AUD-11)
