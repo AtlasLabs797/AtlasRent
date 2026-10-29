@@ -1,6 +1,6 @@
 import { problema } from './apiFalsa';
 import { capturarClaroOscuro } from './capturas';
-import { EMPLEADO, DASHBOARD, conSesion, identidad } from './fixtures';
+import { ALERTA, EMPLEADO, DASHBOARD, conSesion, identidad } from './fixtures';
 import { expect, test } from './prueba';
 import { ACCIONES } from '../src/permisos';
 
@@ -47,6 +47,7 @@ const GERENTE = identidad({
   rol: 'gerente',
   permisosEfectivos: [
     ACCIONES.sesionVer,
+    ACCIONES.clienteVer,
     ACCIONES.contratoEstado,
     ACCIONES.iaProponer,
     ACCIONES.mensajeriaMasivo,
@@ -110,17 +111,63 @@ test('bandeja: propuesta de la IA con evidencia; si caduca se enseña el motivo 
   await expect(page.getByText('El saldo cambió desde que se propuso.').first()).toBeVisible();
 });
 
-test('bandeja: el empleado no tiene la ruta; la pestaña de alertas dice que falta el listado', async ({ page, api }) => {
-  conSesion(api, EMPLEADO);
-  await page.goto('/bandeja');
-  await expect(page.getByRole('heading', { name: 'Bandeja', level: 1 })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Bandeja' })).toHaveCount(0);
+const ALERTAS_ABIERTAS = [
+  ALERTA('a1', 'seguridad', 'Entrada desde una IP nueva', { repeticiones: 2 }),
+  ALERTA('a2', 'factura', 'Factura periódica fallida'),
+];
 
+test('bandeja: alertas abiertas con repeticiones, filtro de tipo y cerrar', async ({ page, api }) => {
   conSesion(api, GERENTE);
   api.responder('GET', '/informes/dashboard', { body: DASHBOARD });
   api.responder('GET', '/contratos/solicitudes', { body: pagina([]) });
   api.responder('GET', '/ia/propuestas', { body: pagina([]) });
+  api.responder('GET', '/alertas', (p) =>
+    p.query.includes('tipo=factura')
+      ? { body: pagina([ALERTAS_ABIERTAS[1]!]) }
+      : { body: pagina(ALERTAS_ABIERTAS) },
+  );
+  api.responder('POST', '/alertas/a1/cerrar', { body: { ...ALERTAS_ABIERTAS[0], resueltaAt: '2026-10-28T10:00:00Z' } });
+
   await page.goto('/bandeja');
   await page.getByRole('tab', { name: 'Alertas' }).click();
-  await expect(page.getByText('La lista de alertas todavía no está disponible')).toBeVisible();
+  await expect(page.getByText('Una alerta cerrada vuelve a abrirse si el problema persiste.')).toBeVisible();
+  await expect(page.getByText('Entrada desde una IP nueva')).toBeVisible();
+  await expect(page.getByText('2 veces')).toBeVisible();
+  expect(api.peticiones.find((p) => p.ruta === '/alertas')?.query).toContain('estado=abiertas');
+  await capturarClaroOscuro(page, 'bandeja-alertas');
+
+  await page.getByLabel('Tipo').selectOption('factura');
+  await expect(page.getByText('Entrada desde una IP nueva')).toHaveCount(0);
+  await expect(page.getByText('Factura periódica fallida')).toBeVisible();
+  await page.getByLabel('Tipo').selectOption('');
+
+  await page.getByRole('row', { name: /IP nueva/ }).getByRole('button', { name: 'Cerrar' }).click();
+  await expect.poll(() => api.llamadas('POST', '/alertas/a1/cerrar')).toBe(1);
+});
+
+test('bandeja: el empleado solo ve la pestaña de alertas, con lo que la API le deja ver', async ({ page, api }) => {
+  conSesion(api, EMPLEADO);
+  // La API ya filtra por rol: al empleado solo le llegan alertas de contrato y reserva.
+  api.responder('GET', '/alertas', {
+    body: pagina([ALERTA('a3', 'contrato', 'Contrato por renovar'), ALERTA('a4', 'reserva', 'Reserva sin convertir')]),
+  });
+  await page.goto('/bandeja');
+  await expect(page.getByRole('heading', { name: 'Bandeja', level: 1 })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /Contratos/ })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Alertas' })).toBeVisible();
+  await expect(page.getByText('Contrato por renovar')).toBeVisible();
+  await expect(page.getByText('Reserva sin convertir')).toBeVisible();
+  await expect(page.getByText('Entrada desde una IP nueva')).toHaveCount(0);
+  await capturarClaroOscuro(page, 'bandeja-alertas-empleado');
+});
+
+test('bandeja: el administrador ve el estado vacío de las alertas', async ({ page, api }) => {
+  conSesion(api, identidad());
+  api.responder('GET', '/informes/dashboard', { body: DASHBOARD });
+  api.responder('GET', '/contratos/solicitudes', { body: pagina([]) });
+  api.responder('GET', '/ia/propuestas', { body: pagina([]) });
+  api.responder('GET', '/alertas', { body: pagina([]) });
+  await page.goto('/bandeja');
+  await page.getByRole('tab', { name: 'Alertas' }).click();
+  await expect(page.getByText('No hay alertas')).toBeVisible();
 });

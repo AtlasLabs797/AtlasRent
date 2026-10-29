@@ -94,3 +94,21 @@ export function accionDePropuesta(tipo: string): string {
   const conocidas = textosBandeja.propuestas.tipos as Record<string, string>;
   return conocidas[tipo] ?? tipo;
 }
+
+/** `AlertaFila` de `GET /alertas`. `resueltaAt` nulo = abierta. */
+export interface Alerta {
+  id: string;
+  tipo: string;
+  mensaje: string;
+  ocurridoAt: string;
+  repeticiones: number;
+  resueltaAt: string | null;
+}
+
+export type EstadoAlertas = 'abiertas' | 'cerradas' | 'todas';
+
+/** Nombre legible del tipo de alerta; un tipo que la UI no conoce se enseña tal cual. */
+export function nombreTipoAlerta(tipo: string): string {
+  const conocidos = textosBandeja.alertas.tipos as Record<string, string>;
+  return conocidos[tipo] ?? tipo;
+}

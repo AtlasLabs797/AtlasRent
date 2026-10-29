@@ -10,7 +10,10 @@ import { PageHeader } from '../design-system/components/navigation/PageHeader';
 import { pedirDashboard, type DashboardRespuesta } from '../informes/api';
 import { FILTROS_VACIOS } from '../informes/filtros';
 import { textos } from '../i18n/textos';
-import { usePropuestasIa, useSolicitudesContrato } from '../modulos/bandeja/api';
+import { useAlertas, usePropuestasIa, useSolicitudesContrato } from '../modulos/bandeja/api';
+import { nombreTipoAlerta } from '../modulos/bandeja/modelo';
+import { formatearMarca } from '../dominio/fechas';
+import { Badge } from '../design-system/components/core/Badge';
 import { accesosRapidos, comparacionMensual } from '../modulos/panel/modelo';
 import { ACCIONES } from '../permisos';
 import { permisosDe, puede, useSesion } from '../sesion/store';
@@ -22,7 +25,7 @@ const REJILLA = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(
 /**
  * Panel de inicio. KPIs de F5-01 solo con `informe.ver` (el empleado ve el hueco con
  * `RestrictedValue`, no un panel vacío), aprobaciones pendientes y accesos según permisos.
- * TODO(A#): alertas abiertas (§3.16) cuando la API tenga un endpoint para listarlas.
+ * Las alertas abiertas más recientes (§3.16) salen para todos los roles: la API filtra por tipo.
  */
 export default function Inicio() {
   const { panel } = textos;
@@ -40,6 +43,7 @@ export default function Inicio() {
   });
   const contratos = useSolicitudesContrato(1, verContratos);
   const propuestas = usePropuestasIa(1, verPropuestas);
+  const alertas = useAlertas(1, '', 'abiertas', 5);
   const accesos = accesosRapidos(permisosDe(identidad));
 
   return (
@@ -81,6 +85,36 @@ export default function Inicio() {
               </dl>
             </Card>
           )}
+          <Card
+            title={t.alertas}
+            actions={
+              <Button variant="ghost" size="sm" onClick={() => navegar('/bandeja')}>
+                {t.verAlertas}
+              </Button>
+            }
+          >
+            {alertas.isError ? (
+              <ErrorAlerta error={alertas.error} titulo={t.errorAlertas} />
+            ) : alertas.data && alertas.data.data.length === 0 ? (
+              <span style={{ color: 'var(--text-muted)' }}>{t.sinAlertas}</span>
+            ) : (
+              <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 'var(--space-4)' }}>
+                {alertas.data?.data.map((a) => (
+                  <li key={a.id}>
+                    <Badge tone="warning">{nombreTipoAlerta(a.tipo)}</Badge> {a.mensaje}
+                    <div className="mono" style={{ color: 'var(--text-muted)' }}>
+                      {formatearMarca(a.ocurridoAt)}
+                    </div>
+                  </li>
+                ))}
+                {alertas.data && alertas.data.total > alertas.data.data.length && (
+                  <li style={{ color: 'var(--text-muted)' }}>
+                    {t.masAlertas.replace('{n}', String(alertas.data.total - alertas.data.data.length))}
+                  </li>
+                )}
+              </ul>
+            )}
+          </Card>
           <Card title={t.accesos}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
               {accesos.map((a) => (

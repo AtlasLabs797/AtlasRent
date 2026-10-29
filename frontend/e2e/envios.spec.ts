@@ -1,3 +1,4 @@
+import { problema } from './apiFalsa';
 import { capturarClaroOscuro } from './capturas';
 import { EMPLEADO, conSesion, identidad } from './fixtures';
 import { expect, test } from './prueba';
@@ -44,6 +45,24 @@ test('envíos: historial con Enviando y Fallido, y el empleado no ve masivo ni r
   await expect(page.getByRole('tab', { name: 'Recordatorios' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reintentar' })).toHaveCount(0);
   await capturarClaroOscuro(page, 'envios-historial');
+});
+
+test('envíos: reintentar un fallido usa /reintentar y un 409 avisa de que cambió', async ({ page, api }) => {
+  conSesion(api, GERENTE);
+  api.responder('GET', '/envios', { body: pagina([ENVIO('e2', 'Fallido', { ultimoError: 'Servidor de correo no disponible' })]) });
+  api.responder('POST', '/envios/e2/reintentar', (p) =>
+    p.numero === 1
+      ? { body: ENVIO('e2', 'Pendiente') }
+      : problema(409, 'ENV-009', 'Conflicto', 'El envío ya no está fallido o lo está reintentando otra persona.'),
+  );
+  await page.goto('/envios');
+  await page.getByRole('button', { name: 'Reintentar' }).click();
+  await expect(page.getByText('Envío reintentado')).toBeVisible();
+  await page.getByRole('button', { name: 'Reintentar' }).click();
+  await expect(page.getByText('El envío ya no se puede reintentar')).toBeVisible();
+  await expect(page.getByText(/lo está reintentando otra persona/)).toBeVisible();
+  expect(api.llamadas('POST', '/envios/e2/reintentar')).toBe(2);
+  expect(api.ultimoCuerpo('POST', '/envios/e2/reintentar')).toBeFalsy();
 });
 
 test('envío masivo: preparar, revisar con vista previa, confirmar y reintentar fallidos', async ({ page, api }) => {
@@ -127,11 +146,14 @@ test('recordatorios: confirmar un aviso que vuelve Omitido muestra el motivo, si
     createdAt: '2026-10-28T13:00:00Z',
   };
   api.responder('GET', '/recordatorios', { body: pagina([fila]) });
+  api.responder('GET', '/recordatorios/modo', { body: { modo: 'Manual' } });
+
   api.responder('POST', '/recordatorios/r1/enviar', { body: { ...fila, estado: 'Omitido', motivoOmision: 'El cliente ya pagó.' } });
 
   await page.goto('/envios');
   await page.getByRole('tab', { name: 'Recordatorios' }).click();
   await expect(page.getByText('Unidad 4B')).toBeVisible();
+  await expect(page.getByText('Modo: Manual')).toBeVisible();
   await capturarClaroOscuro(page, 'envios-recordatorios');
   await page.getByRole('button', { name: 'Confirmar y enviar' }).click();
   await expect(page.getByText('El aviso se ha omitido')).toBeVisible();

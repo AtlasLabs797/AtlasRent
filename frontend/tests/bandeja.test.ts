@@ -9,15 +9,14 @@ import {
   caducidadDePropuesta,
   cuerpoRechazo,
   esSolicitudCambiada,
+  nombreTipoAlerta,
 } from '../src/modulos/bandeja/modelo.ts';
 import {
   cuerpoMasivo,
-  cuerpoReintento,
   estadoDeEnvio,
   etiquetaMotivoExclusion,
   loteTerminado,
   porcentajeLote,
-  type EnvioFila,
 } from '../src/modulos/envios/modelo.ts';
 import { accesosRapidos, comparacionMensual, mesLegible } from '../src/modulos/panel/modelo.ts';
 
@@ -28,7 +27,7 @@ test('bandeja y envíos se filtran con la acción de su endpoint', () => {
   assert.ok(!claves(empleado).includes('bandeja'));
   assert.equal(puedeVerRuta(empleado, '/bandeja'), false);
   assert.ok(claves(empleado).includes('envios'));
-  assert.ok(claves([ACCIONES.contratoEstado]).includes('bandeja'));
+  assert.ok(claves([ACCIONES.clienteVer]).includes('bandeja'));
 });
 
 test('un 409 es solicitud cambiada y el rechazo exige comentario recortado', () => {
@@ -63,10 +62,6 @@ test('envíos: Enviando es un estado propio, el lote avanza y el reintento no fu
   assert.equal(c.filtro.vencidas, true);
   assert.equal(c.filtro.moneda, 'USD');
   assert.equal(c.forzar, false);
-  const e = { tipo: 'Factura', documentoId: 'd', documentoAnio: 2026, clienteId: null, destinatarioEmail: 'a@b.test', idioma: 'es' } as EnvioFila;
-  const r = cuerpoReintento(e);
-  assert.equal(r.forzar, false);
-  assert.ok(!('clienteId' in r));
 });
 
 test('panel: comparación con el mes anterior y accesos según permisos', () => {
@@ -76,4 +71,9 @@ test('panel: comparación con el mes anterior y accesos según permisos', () => 
   assert.equal(comparacionMensual([], 'cobradoUsd').actual, null);
   assert.deepEqual(accesosRapidos([ACCIONES.sesionVer]), []);
   assert.deepEqual(accesosRapidos([ACCIONES.facturaVer, ACCIONES.informeVer]).map((a) => a.clave), ['envios', 'informes']);
+});
+
+test('alertas: tipos traducidos y un tipo desconocido se enseña tal cual', () => {
+  assert.equal(nombreTipoAlerta('tipo_cambio'), 'Tipo de cambio');
+  assert.equal(nombreTipoAlerta('nuevo_tipo'), 'nuevo_tipo');
 });

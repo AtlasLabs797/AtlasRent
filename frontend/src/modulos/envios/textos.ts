@@ -42,6 +42,8 @@ export const textosEnvios = {
     reintentado: 'Envío reintentado',
     reintentadoCuerpo: 'El correo se ha vuelto a mandar.',
     errorReintento: 'No se ha podido reintentar',
+    reintentoCambiado: 'El envío ya no se puede reintentar',
+    reintentoCambiadoCuerpo: 'Otra persona lo ha reintentado o ya no está fallido. Se ha recargado la lista.',
     errorDescarga: 'No se ha podido descargar la copia',
     sinFecha: '—',
   },
@@ -100,12 +102,9 @@ export const textosEnvios = {
     titulo: 'Avisos de pago',
     modo: 'Modo',
     modos: { Apagado: 'Apagado', Manual: 'Manual', Automatico: 'Automático' },
-    modoDesconocido: 'El modo lo ve y lo cambia el administrador en Configuración.',
     notaManual:
       'En modo manual la app prepara la lista y tú confirmas cada aviso. El saldo que se menciona se recalcula al confirmar: si el cliente pagó mientras tanto, el aviso se omite.',
     notaAutomatico: 'En modo automático la app los manda sola cada día; aquí revisas qué salió y qué se saltó.',
-    notaGeneral:
-      'En manual confirmas cada aviso aquí y el saldo se recalcula al confirmar; en automático la app los manda sola cada día.',
     notaApagado: 'Los avisos están apagados: no se prepara ni se manda ninguno.',
     estado: 'Estado',
     todosEstados: 'Todos los estados',

@@ -71,9 +71,29 @@ export const DASHBOARD = {
 
 const PAGINA_VACIA = { data: [], total: 0, page: 1, pageSize: 25, totalPages: 1 };
 
+/** `AlertaFila` con la forma de `GET /alertas`. Datos inventados. */
+export const ALERTA = (id: string, tipo: string, mensaje: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  tipo,
+  mensaje,
+  ocurridoAt: '2026-10-27T15:00:00Z',
+  repeticiones: 1,
+  resueltaAt: null,
+  ...extra,
+});
+
+export const ALERTAS_PANEL = {
+  data: [ALERTA('a1', 'seguridad', 'Entrada desde una IP nueva'), ALERTA('a2', 'factura', 'Factura periódica fallida', { repeticiones: 3 })],
+  total: 2,
+  page: 1,
+  pageSize: 5,
+  totalPages: 1,
+};
+
 /** Respuestas del panel de inicio para quien tiene todos los permisos. */
 export function panelAdmin(api: ApiFalsa): void {
   api.responder('GET', '/informes/dashboard', { body: DASHBOARD });
   api.responder('GET', '/contratos/solicitudes', { body: PAGINA_VACIA });
   api.responder('GET', '/ia/propuestas', { body: PAGINA_VACIA });
+  api.responder('GET', '/alertas', { body: ALERTAS_PANEL });
 }

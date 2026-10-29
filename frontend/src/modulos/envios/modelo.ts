@@ -212,27 +212,6 @@ export function loteTerminado(p: Pick<ProgresoLote, 'pendientes'>): boolean {
   return p.pendientes === 0;
 }
 
-/** Cuerpo de reenviar un envío fallido por el endpoint de envío suelto. */
-export function cuerpoReintento(e: EnvioFila): {
-  tipoDocumento: TipoDocumento;
-  documentoId: string;
-  documentoAnio?: number;
-  clienteId?: string;
-  email: string;
-  idioma: string;
-  forzar: false;
-} {
-  return {
-    tipoDocumento: e.tipo,
-    documentoId: e.documentoId,
-    ...(e.documentoAnio !== null ? { documentoAnio: e.documentoAnio } : {}),
-    ...(e.clienteId !== null ? { clienteId: e.clienteId } : {}),
-    email: e.destinatarioEmail,
-    idioma: e.idioma,
-    forzar: false,
-  };
-}
-
 /** Modo de recordatorios para enseñarlo; un valor desconocido se muestra tal cual. */
 export function etiquetaModo(modo: string): string {
   return (textosEnvios.recordatorios.modos as Record<string, string>)[modo] ?? modo;

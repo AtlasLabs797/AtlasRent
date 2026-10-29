@@ -22,16 +22,15 @@ const TONO: Record<EstadoRecordatorio, 'neutral' | 'success' | 'warning'> = {
 };
 
 /**
- * Avisos de pago (F4-05, D12). El modo (apagado/manual/automático) lo guarda Configuración y solo lo
- * lee `configuracion.editar`; sin esa acción no se pide ni se inventa. En manual cada aviso se
+ * Avisos de pago (F4-05, D12). El modo (apagado/manual/automático) viene de `GET /recordatorios/modo`. En manual cada aviso se
  * confirma aquí, y el saldo del mensaje se recalcula en la API al confirmar.
  */
-export function Recordatorios({ puedeVerModo, puedePausar }: { puedeVerModo: boolean; puedePausar: boolean }) {
+export function Recordatorios({ puedePausar }: { puedePausar: boolean }) {
   const r = t.recordatorios;
   const [pagina, setPagina] = useState(1);
   const [estado, setEstado] = useState<EstadoRecordatorio | ''>('');
   const consulta = useRecordatorios(pagina, estado);
-  const modo = useModoRecordatorios(puedeVerModo);
+  const modo = useModoRecordatorios();
   const enviar = useEnviarRecordatorio();
   const pausar = usePausarRecordatorios();
   const [aviso, setAviso] = useState<{ tono: 'success' | 'warning' | 'danger'; titulo: string; cuerpo: string } | null>(null);
@@ -70,15 +69,9 @@ export function Recordatorios({ puedeVerModo, puedePausar }: { puedeVerModo: boo
   return (
     <>
       <div style={{ display: 'grid', gap: 'var(--space-6)', marginBottom: 'var(--space-9)' }}>
-        {puedeVerModo ? (
-          modo.data && (
-            <Alert tone="info" title={`${r.modo}: ${etiquetaModo(modo.data)}`}>
-              {nota}
-            </Alert>
-          )
-        ) : (
-          <Alert tone="info" title={r.modoDesconocido}>
-            {r.notaGeneral}
+        {modo.data && (
+          <Alert tone="info" title={`${r.modo}: ${etiquetaModo(modo.data)}`}>
+            {nota}
           </Alert>
         )}
         {aviso && (
