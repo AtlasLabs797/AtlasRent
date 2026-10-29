@@ -129,6 +129,46 @@
 - ¿Hubo exposición real? Sí/No. Si sí: qué datos y a quién se notificó.
 ```
 
+### SEC-034 · Endurecimientos menores de la revisión de cierre
+- Fecha detectado: 29/10/2026 · Gravedad: Baja · Estado: **ABIERTO** · Componente: API / logs / despliegue
+- Detectado por: revisión de seguridad de cierre AUD-10 (agente, 29/10/2026); informe en el registro de AUD-10 del CHANGELOG
+- Descripción: (a) `FiltroAccionAgente` toma el primer `[Accion]` y `FiltroAccionGlobal` el último: hoy ningún controlador usa `[Accion]` de clase, así que no es explotable, pero las dos lecturas deberían coincidir. (b) El límite de peticiones de login es solo por IP; `mfa/activar` y `mfa/confirmar` solo tienen el límite global (el bloqueo de cuenta cubre gran parte). (c) Serilog sin redacción automática (hoy no se registran datos personales). (d) `AllowedHosts` = `*` y sin lista de destinos HTTP salientes permitidos.
+- Evidencia: `Authorization/FiltroAccionAgente.cs`, `Authorization/FiltroAccionGlobal.cs`, `Program.cs`, `appsettings.json`.
+- Solución propuesta: (a) leer el `[Accion]` igual en los dos filtros (o prohibir varios). (b) límite por usuario en login y límite específico en MFA. (c) enricher de redacción. (d) `AllowedHosts` con el dominio real en el despliegue (FP-01) y lista de salidas.
+- Corrección: pendiente (antes de producción, FP-01).
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
+### SEC-033 · Huecos de prueba de la matriz de permisos y enmascarado por lista negra
+- Fecha detectado: 29/10/2026 · Gravedad: Baja · Estado: **ABIERTO** · Componente: pruebas / auditoría
+- Detectado por: revisión de seguridad de cierre AUD-10 (agente, 29/10/2026); informe en el registro de AUD-10 del CHANGELOG
+- Descripción: (a) `MatrizEndpointsApiTests` solo prueba el primer GET y la primera escritura de cada controlador: los endpoints nuevos de AUD-11 tienen pruebas por rol en sus propias clases, pero no entran en la matriz. (b) `GET /api/v1/auditoria` enmascara por lista negra de nombres de clave: hoy ningún `datos` lleva documento de identidad (comprobado en clientes, prospectos, contactos y emergencia), pero una clave futura como `documento` saldría en claro, y el email `destino` de los envíos sale en claro a quien tiene `auditoria.ver` (admin y gerente, que ya lo ven en la ficha).
+- Evidencia: `backend/AtlasRent.Tests/Permisos/MatrizEndpointsApiTests.cs`, `Services/ServicioLecturaAuditoria.cs`.
+- Solución propuesta: (a) recorrer todos los endpoints por reflexión en la matriz. (b) añadir `documento` a la lista y una prueba que falle si un `DatosJson` nuevo lleva una clave de la lista de datos personales.
+- Corrección: pendiente.
+- ¿Hubo exposición real? Exposición real: no.
+
+### SEC-032 · Importe en texto con separador de miles se leía cien veces mayor
+- Fecha detectado: 29/10/2026 · Fecha resuelto: 29/10/2026 · Gravedad: **Media** · Estado: **CORREGIDO** · Componente: API
+- Detectado por: revisión de seguridad de cierre AUD-10 (agente, 29/10/2026); informe en el registro de AUD-10 del CHANGELOG
+- Descripción: `ImporteJsonConverter` leía los importes en texto con `NumberStyles.Number`, que admite separador de miles: `"1,50"` entraba como 150,00. El frontend normaliza la coma, pero la API es el límite de confianza (tokens de agente, scripts, importaciones).
+- Evidencia: `DTOs/ImporteJsonConverter.cs`.
+- Solución: solo signo y punto decimal; cualquier otro texto es `JsonException` (400).
+- Corrección: AUD-10.
+- Verificación: `Api/SerializacionJsonTests.UnImporteEnTextoSoloAdmiteSignoYPuntoDecimal` (clase 9/9).
+- Commit/PR: rama `tarea/AUD-01-auditoria`, commit ced8d58.
+- ¿Hubo exposición real? Exposición real: no (no está en producción).
+
+### SEC-031 · Un token de agente con `cliente.ver` veía y cerraba cualquier alerta
+- Fecha detectado: 29/10/2026 · Fecha resuelto: 29/10/2026 · Gravedad: **Media** · Estado: **CORREGIDO** · Componente: API / agentes
+- Detectado por: revisión de seguridad de cierre AUD-10 (agente, 29/10/2026); informe en el registro de AUD-10 del CHANGELOG
+- Descripción: `GET /alertas` y `POST /alertas/{id}/cerrar` (AUD-11) se declaran con `cliente.ver`, que está en la lista blanca de agentes; el control por tipo miraba los permisos del propietario del token y no las acciones del token. Un token de un administrador con solo `cliente.ver` veía las alertas de backup, seguridad y auditoría y podía cerrarlas: una mutación hecha por un agente sin aprobación humana (contra SEC-010/011).
+- Evidencia: `Services/ServicioBandejaAlertas.cs`.
+- Solución: con token de agente cada tipo exige además que su acción esté en la lista blanca y en el token; cerrar está vedado a cualquier token de agente (403 auditado).
+- Corrección: AUD-10.
+- Verificación: `Agentes/TokenAgenteTests.UnTokenConClienteVerNoVeAlertasAjenasNiCierraNinguna`; `TokenAgenteTests` + `BandejaAlertasApiTests` 37/37.
+- Commit/PR: rama `tarea/AUD-01-auditoria`, commit 36c0a6a.
+- ¿Hubo exposición real? Exposición real: no (el endpoint no ha salido de la rama).
+
 ### SEC-030 · Endurecimiento varios
 - Fecha detectado: 26/10/2026 · Fecha resuelto: 26/10/2026 (punto e abierto) · Gravedad: Baja · Estado: **MITIGADO** · Componente: API / cifrado
 - Detectado por: auditoría (agentes)
@@ -415,6 +455,7 @@
 - Descripción: `ServicioIdempotencia` guarda el **cuerpo completo de la respuesta** de una mutación en la tabla `idempotencia`, como JSON y **sin cifrar**. Aunque el dato principal esté cifrado en su tabla (caso del documento de identidad, SEC-004), cualquier dato personal que una mutación devuelva queda en claro en `idempotencia`.
 - Por qué no se resolvió aquí: en F1-09 se esquivó **no devolviendo el documento de identidad en las respuestas de alta y edición** (solo en `GET /clientes/{id}`). Eso protege hoy, pero es un rodeo: el problema es de fondo y volverá con el primer campo personal nuevo que se añada a una respuesta de mutación.
 - **Decisión pendiente:** (a) cifrar el cuerpo guardado con `ServicioCifrado`, o (b) guardar una versión redactada sin los campos sensibles. La opción (a) es más simple de usar y evita que cada_endpoint tenga que acordarse de qué puede devolver.
+- **Revisión AUD-10 (29/10/2026):** sigue ABIERTO. Las respuestas nuevas de `POST /prospectos/{id}/convertir` y `POST /envios/{id}/reintentar` también quedan en claro en `idempotencia` (email, teléfono, asunto); ninguna devuelve documento de identidad.
 - Riesgo residual actual: contenido en claro en `idempotencia` hasta que se decida.
 
 ### SEC-002 · Auditoría borrable
