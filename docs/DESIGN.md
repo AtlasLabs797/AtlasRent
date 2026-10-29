@@ -147,6 +147,8 @@ Paridad completa (D31 de la especificación). Los tokens del tema oscuro están 
 - **Pantallas**: siempre `AppShell` + `PageHeader`. Nada de shells, dropdowns o filas de detalle hechas a mano — usar AppShell, Menu, KeyValueList, UnitCard.
 - **Empleado sin permisos**: totales con `RestrictedValue`, no ocultos en silencio.
 - **IA**: toda acción de agente pasa por `ApprovalCard` (Aprobar / Rechazar / Modificar y aprobar) con `AgentBadge` y evidencia.
+- **Búsqueda remota** (AUD-11): `Combobox` con la prop `onSearch` no filtra en local; la pantalla consulta la API con debounce de 300 ms y conserva la opción ya elegida. Es lo que usan los selectores de cliente y de contrato (cartera de más de 200).
+- **Detalle de auditoría**: tarjeta bajo la tabla, no modal; `datos` como JSON formateado en `<pre>`, nunca como HTML.
 
 ---
 
@@ -192,4 +194,6 @@ Diseño base **[Supuesto, A2]**: se ajusta cuando el responsable aporte los ejem
 - `--surface-sunken` en oscuro (`#151517`) apenas se distingue del fondo de la barra superior: el control de tema (`SegmentedControl`) pierde su pista. Revisar el token en el DS.
 - Los componentes con textos fijos en español (`Dialog` "Cerrar", `Pagination` "de", `ApprovalCard`, etc.) no están en `i18n/textos.ts`: cuando se active el inglés habrá que parametrizarlos.
 - Los desplegables (`Select`, `Combobox`, `DatePicker`, `Menu`) cierran con clic fuera y Escape pero `Dialog` y `Drawer` no atrapan el foco; `ConfirmarDestructivo` solo añade Escape.
+- La lista de fianzas (Cliente, Unidad y siete columnas de importes) no cabe a 1280 px: Saldo y Estado quedan fuera de la vista. Igual que la tabla de cuentas de 11 columnas: hace falta un criterio de columnas prioritarias.
+- La prop `onSearch` de `Combobox` está en el frontend y en `Atlas Rent Design System/components/forms/`; revisar que el DS la documente en su muestra.
 - Accesibilidad: el DS cubre contraste, `:focus-visible` e iconos `aria-hidden`. Roles ARIA y navegación por teclado se verifican al portar cada componente (F1-13).
