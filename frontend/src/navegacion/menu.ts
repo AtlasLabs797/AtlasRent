@@ -3,7 +3,7 @@
 import { textos } from '../i18n/textos.ts';
 import { MODULOS } from '../modulos/lista.ts';
 import type { DefinicionModulo, GrupoMenuId } from '../modulos/tipos.ts';
-import { ACCIONES, type Accion } from '../permisos.ts';
+import type { Accion } from '../permisos.ts';
 
 /**
  * Módulos de Atlas Rent y su entrada de menú. Cada módulo declara el identificador de acción del
@@ -45,9 +45,7 @@ const ORDEN: Record<GrupoMenuId, Clave[]> = {
 };
 
 /** Módulos sin pantalla todavía: acción del backend que los habilitará y qué falta. */
-const PENDIENTES: Partial<Record<Clave, [Accion, string]>> = {
-  auditoria: [ACCIONES.auditoriaVer, 'pantalla de auditoría'],
-};
+const PENDIENTES: Partial<Record<Clave, [Accion, string]>> = {};
 
 function entrada(clave: Clave, registrado: DefinicionModulo | undefined): EntradaMenu | null {
   const texto = textos.navegacion.modulos[clave];

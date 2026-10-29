@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { clienteHttp } from '../../api/cliente';
 import { claveIdempotencia, type Pagina } from '../../api/pagina';
 import {
-  cuerpoReintento,
   type CuerpoMasivo,
   type EnvioFila,
   type EstadoEnvio,
@@ -43,12 +42,12 @@ export async function descargarCopia(envio: Pick<EnvioFila, 'id' | 'nombreArchiv
   URL.revokeObjectURL(url);
 }
 
-/** Reintento de un envío fallido por `POST /envios` (`cotizacion.enviar`). */
+/** Reintento de un envío fallido: `POST /envios/{id}/reintentar` (`cotizacion.enviar`), sin cuerpo. Un 409 es «ya no es reintentable». */
 export function useReintentarEnvio() {
   const cliente = useQueryClient();
   return useMutation({
     mutationFn: async (envio: EnvioFila) => {
-      const { data } = await clienteHttp.post<EnvioFila>('/envios', cuerpoReintento(envio), {
+      const { data } = await clienteHttp.post<EnvioFila>(`/envios/${envio.id}/reintentar`, undefined, {
         headers: claveIdempotencia(),
       });
       return data;
@@ -141,17 +140,13 @@ export function usePausarRecordatorios() {
   });
 }
 
-/**
- * Modo de recordatorios: vive en `GET /config/ajustes`, que exige `configuracion.editar` (solo
- * administrador). Sin esa acción no se pide.
- */
-export function useModoRecordatorios(habilitado: boolean) {
+/** Modo de recordatorios: `GET /recordatorios/modo` (`mensajeria.masivo`, la misma acción que la pestaña). */
+export function useModoRecordatorios() {
   return useQuery({
-    queryKey: ['config', 'ajustes'],
-    enabled: habilitado,
+    queryKey: ['envios', 'recordatorios', 'modo'],
     queryFn: async () => {
-      const { data } = await clienteHttp.get<{ modoRecordatorios: ModoRecordatorios }>('/config/ajustes');
-      return data.modoRecordatorios;
+      const { data } = await clienteHttp.get<{ modo: ModoRecordatorios }>('/recordatorios/modo');
+      return data.modo;
     },
   });
 }

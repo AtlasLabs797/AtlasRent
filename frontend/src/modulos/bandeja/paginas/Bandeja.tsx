@@ -21,6 +21,8 @@ import { aErrorApi } from '../../../api/errores';
 import {
   useDecisionContrato,
   useDecisionPropuesta,
+  useAlertas,
+  useCerrarAlerta,
   usePropuestasIa,
   useSolicitudesContrato,
 } from '../api';
@@ -30,6 +32,9 @@ import {
   cambioDeRenta,
   caducidadDePropuesta,
   esSolicitudCambiada,
+  nombreTipoAlerta,
+  type Alerta,
+  type EstadoAlertas,
   type PropuestaIa,
   type SolicitudContrato,
 } from '../modelo';
@@ -353,19 +358,132 @@ function PestanaPropuestas({
 
 function PestanaAlertas() {
   const a = t.alertas;
+  const [pagina, setPagina] = useState(1);
+  const [tipo, setTipo] = useState('');
+  const [estado, setEstado] = useState<EstadoAlertas>('abiertas');
+  const consulta = useAlertas(pagina, tipo, estado);
+  const cerrar = useCerrarAlerta();
+  const [error, setError] = useState<unknown>(null);
+
+  function cerrarFila(alerta: Alerta) {
+    setError(null);
+    cerrar.mutate(alerta.id, { onError: setError });
+  }
+
   return (
-    <Card title={a.titulo}>
-      <EmptyState icon="bell" title={a.vacioTitulo}>
-        {a.vacioCuerpo}
-      </EmptyState>
-      <div className="ar-overline" style={{ marginTop: 'var(--space-9)' }}>
-        {a.tiposTitulo}
-      </div>
-      <ul style={{ margin: 'var(--space-4) 0 0', paddingLeft: 'var(--space-9)', color: 'var(--text-muted)' }}>
-        {a.tipos.map((tipo) => (
-          <li key={tipo}>{tipo}</li>
-        ))}
-      </ul>
-    </Card>
+    <>
+      <Alert tone="info" title={a.aviso} />
+      <div style={{ height: 'var(--space-6)' }} />
+      {error !== null && (
+        <>
+          <ErrorAlerta error={error} titulo={a.errorCerrar} />
+          <div style={{ height: 'var(--space-6)' }} />
+        </>
+      )}
+      <Card
+        title={a.titulo}
+        padded={false}
+        actions={
+          <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+            <div className="ar-control" style={{ minWidth: 180 }}>
+              <select
+                aria-label={a.filtroTipo}
+                value={tipo}
+                onChange={(ev) => {
+                  setTipo(ev.target.value);
+                  setPagina(1);
+                }}
+              >
+                <option value="">{a.todosTipos}</option>
+                {Object.entries(a.tipos).map(([valor, etiqueta]) => (
+                  <option key={valor} value={valor}>
+                    {etiqueta}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="ar-control" style={{ minWidth: 140 }}>
+              <select
+                aria-label={a.filtroEstado}
+                value={estado}
+                onChange={(ev) => {
+                  setEstado(ev.target.value as EstadoAlertas);
+                  setPagina(1);
+                }}
+              >
+                {(Object.keys(a.estados) as EstadoAlertas[]).map((e) => (
+                  <option key={e} value={e}>
+                    {a.estados[e]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        }
+      >
+        {consulta.isPending ? (
+          <p style={{ margin: 'var(--space-9)', color: 'var(--text-muted)' }}>{t.cargando}</p>
+        ) : consulta.isError ? (
+          <div style={{ padding: 'var(--space-9)' }}>
+            <ErrorAlerta error={consulta.error} titulo={t.errorCarga} />
+          </div>
+        ) : (
+          <>
+            <DataTable
+              rows={consulta.data.data}
+              empty={
+                <EmptyState icon="bell" title={a.vacioTitulo}>
+                  {a.vacioCuerpo}
+                </EmptyState>
+              }
+              columns={[
+                {
+                  key: 'alerta',
+                  label: a.columnas.alerta,
+                  render: (x: Alerta) => (
+                    <div>
+                      <Badge tone={x.resueltaAt ? 'neutral' : 'warning'}>{nombreTipoAlerta(x.tipo)}</Badge>
+                      <div style={{ marginTop: 4 }}>{x.mensaje}</div>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'fecha',
+                  label: a.columnas.fecha,
+                  render: (x: Alerta) => (
+                    <div>
+                      <span className="mono">{formatearMarca(x.ocurridoAt)}</span>
+                      {x.resueltaAt && (
+                        <div style={{ color: 'var(--text-muted)' }}>
+                          {a.cerrada.replace('{fecha}', formatearMarca(x.resueltaAt))}
+                        </div>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  key: 'repeticiones',
+                  label: a.columnas.repeticiones,
+                  align: 'right',
+                  render: (x: Alerta) => <span className="mono">{x.repeticiones === 1 ? a.repeticionUna : a.repeticiones.replace('{n}', String(x.repeticiones))}</span>,
+                },
+                {
+                  key: 'acciones',
+                  label: a.columnas.acciones,
+                  align: 'right',
+                  render: (x: Alerta) =>
+                    x.resueltaAt ? null : (
+                      <Button variant="secondary" size="sm" icon="check" disabled={cerrar.isPending} onClick={() => cerrarFila(x)}>
+                        {a.cerrar}
+                      </Button>
+                    ),
+                },
+              ]}
+            />
+            <Pagination page={pagina} pageSize={consulta.data.pageSize} total={consulta.data.total} onChange={setPagina} />
+          </>
+        )}
+      </Card>
+    </>
   );
 }

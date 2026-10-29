@@ -21,7 +21,7 @@ export function HistorialEnvios({ puedeReintentar }: { puedeReintentar: boolean 
   const [estado, setEstado] = useState<EstadoEnvio | ''>('');
   const consulta = useEnvios(pagina, estado);
   const reintento = useReintentarEnvio();
-  const [aviso, setAviso] = useState<{ tono: 'success' | 'danger'; titulo: string; cuerpo: string } | null>(null);
+  const [aviso, setAviso] = useState<{ tono: 'success' | 'warning' | 'danger'; titulo: string; cuerpo: string } | null>(null);
 
   async function descargar(e: EnvioFila) {
     setAviso(null);
@@ -37,7 +37,12 @@ export function HistorialEnvios({ puedeReintentar }: { puedeReintentar: boolean 
     reintento.mutate(e, {
       onSuccess: () => setAviso({ tono: 'success', titulo: h.reintentado, cuerpo: h.reintentadoCuerpo }),
       onError: (err) =>
-        setAviso({ tono: 'danger', titulo: h.errorReintento, cuerpo: aErrorApi(err).detail ?? aErrorApi(err).title }),
+        setAviso(
+          // 409: ya no es Fallido o alguien lo reclamó. La lista se recarga sola (onSettled).
+          aErrorApi(err).status === 409
+            ? { tono: 'warning', titulo: h.reintentoCambiado, cuerpo: aErrorApi(err).detail ?? h.reintentoCambiadoCuerpo }
+            : { tono: 'danger', titulo: h.errorReintento, cuerpo: aErrorApi(err).detail ?? aErrorApi(err).title },
+        ),
     });
   }
 

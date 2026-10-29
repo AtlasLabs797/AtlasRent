@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { clienteHttp } from '../../api/cliente';
 import { claveIdempotencia, type Pagina } from '../../api/pagina';
-import { cuerpoRechazo, type PropuestaIa, type SolicitudContrato } from './modelo.ts';
+import { cuerpoRechazo, type Alerta, type EstadoAlertas, type PropuestaIa, type SolicitudContrato } from './modelo.ts';
 
 /**
  * Bandeja de aprobaciones. Contratos: `contrato.estado`. Propuestas: listar `ia.proponer`, decidir
@@ -10,6 +10,7 @@ import { cuerpoRechazo, type PropuestaIa, type SolicitudContrato } from './model
 export const CLAVES = {
   contratos: ['bandeja', 'contratos'] as const,
   propuestas: ['bandeja', 'propuestas'] as const,
+  alertas: ['bandeja', 'alertas'] as const,
 };
 
 export function useSolicitudesContrato(page: number, habilitado: boolean) {
@@ -75,4 +76,29 @@ export function useDecisionPropuesta() {
     onSettled: refrescar,
   });
   return { aprobar, rechazar };
+}
+
+/** Alertas (`cliente.ver`): la API filtra por tipo según el rol. `tipo` vacío = todos. */
+export function useAlertas(page: number, tipo: string, estado: EstadoAlertas, pageSize = 25) {
+  return useQuery({
+    queryKey: [...CLAVES.alertas, page, tipo, estado, pageSize],
+    queryFn: async () => {
+      const { data } = await clienteHttp.get<Pagina<Alerta>>('/alertas', {
+        params: { page, pageSize, estado, ...(tipo ? { tipo } : {}) },
+      });
+      return data;
+    },
+  });
+}
+
+/** Cierra una alerta. Idempotente en la API; vuelve a abrirse sola si el problema persiste. */
+export function useCerrarAlerta() {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await clienteHttp.post<Alerta>(`/alertas/${id}/cerrar`, undefined, { headers: claveIdempotencia() });
+      return data;
+    },
+    onSettled: () => cliente.invalidateQueries({ queryKey: CLAVES.alertas }),
+  });
 }

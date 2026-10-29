@@ -44,10 +44,7 @@ export default function Envios() {
       {activa === 'historial' && <HistorialEnvios puedeReintentar={puede(identidad, ACCIONES.cotizacionEnviar)} />}
       {activa === 'masivo' && <EnvioMasivo />}
       {activa === 'recordatorios' && (
-        <Recordatorios
-          puedeVerModo={puede(identidad, ACCIONES.configuracionEditar)}
-          puedePausar={puede(identidad, ACCIONES.clienteEditar)}
-        />
+        <Recordatorios puedePausar={puede(identidad, ACCIONES.clienteEditar)} />
       )}
     </>
   );
