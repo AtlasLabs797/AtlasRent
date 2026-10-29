@@ -93,7 +93,8 @@ public sealed class HuecosApiTests(ContenedorBdFixture bd, ApiTestFactory api)
             new { nombre = $"Sub {Guid.NewGuid():N}"[..16], propietaria = false, facturadora = true, activa = true }, ct);
 
         using var gerente = await AyudaFacturas.SesionAsync(bd, api, Roles.Gerente, ct);
-        var filas = await Datos(gerente, "/api/v1/catalogos/subempresas", ct);
+        // La base es compartida: en la suite completa hay más de una página de subempresas.
+        var filas = await TodasAsync(gerente, "/api/v1/catalogos/subempresas", ct);
 
         var a = filas.Single(f => f.GetProperty("id").GetGuid() == soloPropietaria);
         a.GetProperty("propietaria").GetBoolean().Should().BeTrue();
@@ -252,6 +253,20 @@ public sealed class HuecosApiTests(ContenedorBdFixture bd, ApiTestFactory api)
 
     private static async Task<List<JsonElement>> Datos(SesionCliente sesion, string ruta, CancellationToken ct) =>
         [.. (await Leer(sesion, ruta, ct)).GetProperty("data").EnumerateArray()];
+
+    private static async Task<List<JsonElement>> TodasAsync(SesionCliente sesion, string ruta, CancellationToken ct)
+    {
+        var filas = new List<JsonElement>();
+        for (var pagina = 1; ; pagina++)
+        {
+            var respuesta = await Leer(sesion, $"{ruta}?page={pagina}", ct);
+            filas.AddRange(respuesta.GetProperty("data").EnumerateArray());
+            if (pagina >= respuesta.GetProperty("totalPages").GetInt32())
+            {
+                return filas;
+            }
+        }
+    }
 
     private static decimal Decimal(JsonElement valor) =>
         valor.ValueKind == JsonValueKind.String
