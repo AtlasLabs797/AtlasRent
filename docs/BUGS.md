@@ -22,6 +22,42 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-058 · GET /auditoria da 500 cuando `datos` lleva arrays
+- Fecha detectado: 29/10/2026 · Fecha corregido: 29/10/2026
+- Gravedad: **Alta** · Estado: CORREGIDO · Módulo: auditoría (lectura, AUD-11)
+- Detectado por: suite completa tras integrar AUD-11
+- Síntoma: la pantalla de auditoría no carga (500) en cuanto alguna fila de la página tiene un array en `datos`.
+- Cómo reproducir: `GET /api/v1/auditoria` con filas de auditoría de facturas (llevan líneas).
+- Causa raíz: el enmascarado de campos sensibles reasignaba cada nodo a su propio padre (`lista[i] = Enmascarar(lista[i])`), y System.Text.Json lanza «The node already has a parent». En la clase de test aislada no había arrays.
+- Solución: recorrer en sitio y sustituir solo los valores sensibles.
+- Test que lo cubre: `Bandeja/BandejaAlertasApiTests.EnmascararRecorreArraysYObjetosAnidadosSinRomper`.
+- Commit/PR: rama `tarea/AUD-01-auditoria`, commit `fix(auditoria): enmascarar datos con arrays…`.
+- Datos afectados: Ninguno: es una lectura.
+
+### BUG-057 · Desactivar un inmueble no comprueba contratos ni reservas vivos
+- Fecha detectado: 28/10/2026 · Fecha corregido: 29/10/2026
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: inmuebles
+- Detectado por: agente (AUD-11, al implementar la baja de unidad)
+- Síntoma: `DELETE /api/v1/inmuebles/{id}` desactiva el inmueble aunque tenga unidades con contrato o reserva vivos; la baja de unidad (AUD-11) sí lo impide con 409.
+- Cómo reproducir: inmueble con una unidad con contrato Activo → `DELETE /inmuebles/{id}` → 200.
+- Causa raíz: `ServicioInmuebles.DesactivarAsync` solo cambia el indicador.
+- Solución: `DesactivarAsync` aplica a todas las unidades del inmueble la misma comprobación que la baja de unidad (contrato no Finalizado/Liquidado o reserva Activa/EnConflicto → 409), extraída a `TieneContratosOReservasVivosAsync`.
+- Test que lo cubre: `Inmuebles/UnidadGlobalTests.UnInmuebleConUnaReservaVivaNoSeDesactiva` (namespace Inmuebles 30/30).
+- Commit/PR: rama `tarea/AUD-01-auditoria`, commit `fix(inmuebles): no desactivar un inmueble con contratos o reservas vivos`.
+- Datos afectados: sin datos reales todavía (no hay producción); al migrar desde Factusol, comprobar que ningún inmueble inactivo tenga contratos vivos.
+
+### BUG-056 · El recordatorio manual recomponía siempre el PDF al enviar
+- Fecha detectado: 29/10/2026 · Fecha corregido: 29/10/2026
+- Gravedad: **Baja** · Estado: CORREGIDO · Módulo: recordatorios
+- Detectado por: suite completa (`RecordatorioContenidoTests.ElEnvioMandaLaCopiaCompuestaAlPreparar`)
+- Síntoma: el adjunto enviado no era la copia preparada y revisada, sino otra generación del mismo PDF; el test fallaba de forma intermitente.
+- Cómo reproducir: preparar un recordatorio manual y confirmarlo en otro segundo sin cambiar el saldo.
+- Causa raíz: la corrección de BUG-040 recompone asunto, cuerpo y PDF en cada envío. El PDF lleva fecha de creación al segundo: si preparar y enviar caían en el mismo segundo los bytes coincidían y el test pasaba por casualidad.
+- Solución: recomponer solo si el asunto o el cuerpo calculados con el saldo de ahora difieren de los preparados; si no, sale la copia preparada. Cumple BUG-040 y §3.14.
+- Test que lo cubre: `Recordatorios/RecordatorioContenidoTests` (namespace Recordatorios 18/18).
+- Commit/PR: rama `tarea/AUD-01-auditoria`, commit `fix(recordatorios): recomponer el aviso al enviar solo si cambió el saldo`.
+- Datos afectados: Ninguno.
+
 ### BUG-055 · EnvioMasivoResumenTests.PrepararNoEnviaNada depende del orden de ejecución
 - Fecha detectado: 28/10/2026 · Fecha corregido: 28/10/2026
 - Gravedad: **Baja** · Estado: CORREGIDO · Módulo: pruebas / mensajería
