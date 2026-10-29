@@ -34,6 +34,28 @@ public sealed class ServicioCatalogos(AtlasRentDbContext contexto, ServicioConfi
             ["nombre"] = (q, desc) => desc ? q.OrderByDescending(s => s.Nombre) : q.OrderBy(s => s.Nombre),
         };
 
+    private static readonly Dictionary<string, Func<IQueryable<TipoItbis>, bool, IOrderedQueryable<TipoItbis>>> OrdenesItbis =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["nombre"] = (q, desc) => desc ? q.OrderByDescending(t => t.Nombre) : q.OrderBy(t => t.Nombre),
+        };
+
+    private static readonly Dictionary<string, Func<IQueryable<TipoRetencion>, bool, IOrderedQueryable<TipoRetencion>>> OrdenesRetencion =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["nombre"] = (q, desc) => desc ? q.OrderByDescending(t => t.Nombre) : q.OrderBy(t => t.Nombre),
+        };
+
+    public Task<Pagina<TipoItbisCatalogo>> TiposItbisAsync(ConsultaLista p, CancellationToken ct) =>
+        ConsultaPaginada.PaginarAsync(
+            contexto.TipoItbis.AsNoTracking().Where(t => t.Activo), OrdenesItbis, "nombre", p,
+            t => new TipoItbisCatalogo(t.Id, t.Nombre, t.Porcentaje), ct);
+
+    public Task<Pagina<TipoRetencionCatalogo>> TiposRetencionAsync(ConsultaLista p, CancellationToken ct) =>
+        ConsultaPaginada.PaginarAsync(
+            contexto.TipoRetencion.AsNoTracking().Where(t => t.Activo), OrdenesRetencion, "nombre", p,
+            t => new TipoRetencionCatalogo(t.Id, t.Nombre, t.Porcentaje, t.Base, t.EsDefecto), ct);
+
     public Task<Pagina<SerieCatalogo>> SeriesAsync(ConsultaLista p, CancellationToken ct) =>
         ConsultaPaginada.PaginarAsync(
             contexto.Serie.AsNoTracking().Where(s => s.Activa), OrdenesSerie, "numero", p,
@@ -52,7 +74,7 @@ public sealed class ServicioCatalogos(AtlasRentDbContext contexto, ServicioConfi
     public Task<Pagina<SubempresaCatalogo>> SubempresasAsync(ConsultaLista p, CancellationToken ct) =>
         ConsultaPaginada.PaginarAsync(
             contexto.Subempresa.AsNoTracking().Where(s => s.Activa), OrdenesSubempresa, "nombre", p,
-            s => new SubempresaCatalogo(s.Id, s.Nombre), ct);
+            s => new SubempresaCatalogo(s.Id, s.Nombre, s.Propietaria, s.Facturadora), ct);
 
     /// <summary>Misma fuente que <c>ServicioCobros</c>: <c>ajuste_general</c> vía <see cref="ServicioConfiguracion"/>.</summary>
     public async Task<ParametrosCobroRespuesta> ParametrosCobroAsync(CancellationToken ct)

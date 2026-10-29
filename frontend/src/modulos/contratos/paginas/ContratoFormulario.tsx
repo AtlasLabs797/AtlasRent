@@ -17,7 +17,8 @@ import { textos } from '../../../i18n/textos';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
 import { useTransferencia } from '../../cotizaciones/api';
-import { useClientes, useInmuebles, useUnidades } from '../../operacion/api';
+import { useRetardo } from '../../clientes/useRetardo';
+import { useBuscarClientes, useClientePorId, useInmuebles, useUnidades } from '../../operacion/api';
 import { MONEDAS, REGLAS_RENOVACION, type ReglaRenovacionApi } from '../../operacion/etiquetas';
 import { SelectorUnidad } from '../../operacion/Selectores';
 import type { MonedaApi, UnidadConInmueble } from '../../operacion/tipos';
@@ -60,7 +61,8 @@ export default function ContratoFormulario() {
   const existente = useContrato(id);
   const reserva = useReserva(reservaId ?? undefined);
   const cotizacion = useTransferencia(cotizacionId, 'contrato');
-  const clientes = useClientes();
+  const [consultaCliente, setConsultaCliente] = useState('');
+  const clientes = useBuscarClientes(useRetardo(consultaCliente, 300));
   const inmuebles = useInmuebles();
   const plantillas = usePlantillas();
   const guardar = useGuardarContrato(id);
@@ -103,7 +105,13 @@ export default function ContratoFormulario() {
     const inmueble = inmuebles.data?.data.find((i) => i.id === u.inmuebleId);
     if (inmueble?.plantillaContratoPorDefecto && v.plantillaContratoId === '') setValue('plantillaContratoId', inmueble.plantillaContratoPorDefecto);
   }, [id, v.unidadId, v.facturadoraId, v.plantillaContratoId, unidades, inmuebles.data, setValue]);
-  const opcionesCliente = useMemo(() => (clientes.data?.data ?? []).map((c) => ({ value: c.id, label: c.nombre, sub: c.email ?? undefined, meta: `CLI-${String(c.numero).padStart(5, '0')}` })), [clientes.data]);
+  const clienteElegido = useClientePorId(v.clienteId || null);
+  const opcionesCliente = useMemo(() => {
+    const encontrados = clientes.data?.data ?? [];
+    // El cliente ya elegido (reserva, cotización o edición) puede no salir en la búsqueda actual.
+    const lista = clienteElegido.data && !encontrados.some((c) => c.id === clienteElegido.data.id) ? [clienteElegido.data, ...encontrados] : encontrados;
+    return lista.map((c) => ({ value: c.id, label: c.nombre, sub: c.email ?? undefined, meta: `CLI-${String(c.numero).padStart(5, '0')}` }));
+  }, [clientes.data, clienteElegido.data]);
   const opcionesPlantilla = (plantillas.data?.data ?? []).filter((p) => p.activa || p.codigo === v.plantillaContratoId).map((p) => ({ value: p.codigo, label: `${p.nombre} · ${p.codigo}` }));
 
   function alElegirUnidad(unidadId: string | null, unidad: UnidadConInmueble | null) {
@@ -181,9 +189,10 @@ export default function ContratoFormulario() {
               options={opcionesCliente}
               value={v.clienteId}
               onChange={(c) => setValue('clienteId', c)}
+              onSearch={setConsultaCliente}
               error={ver(errores.cliente)}
               disabled={reservaId !== null}
-              emptyText="Sin resultados"
+              emptyText={clientes.isFetching ? 'Buscando…' : 'Sin resultados'}
             />
             <div>
               <SelectorUnidad

@@ -51,9 +51,8 @@ export function useRetardado<T>(valor: T, ms = 300): T {
 }
 
 /**
- * Cliente con búsqueda remota (`GET /clientes?q=`). El Combobox del DS filtra en local y no avisa de
- * lo que se teclea: se escucha el `input` que burbujea hasta el contenedor. El cliente elegido se
- * conserva en las opciones aunque la búsqueda siguiente ya no lo traiga.
+ * Cliente con búsqueda remota (`GET /clientes?q=`) mediante `onSearch` del Combobox. El cliente
+ * elegido se conserva en las opciones aunque la búsqueda siguiente ya no lo traiga.
  */
 export function SelectorCliente({
   value,
@@ -75,20 +74,16 @@ export function SelectorCliente({
   const opciones: ComboboxOption[] = [...(resultados.data ?? [])];
   if (elegido.data && !opciones.some((o) => o.value === elegido.data.value)) opciones.unshift(elegido.data);
   return (
-    <div onInput={(e) => setTexto((e.target as HTMLInputElement).value)}>
-      <Combobox
-        label={etiqueta}
-        placeholder={t.buscarCliente}
-        required={required}
-        error={error}
-        options={opciones}
-        value={value || null}
-        onChange={(v) => {
-          setTexto('');
-          onChange(v ?? '');
-        }}
-      />
-    </div>
+    <Combobox
+      label={etiqueta}
+      placeholder={t.buscarCliente}
+      required={required}
+      error={error}
+      options={opciones}
+      value={value || null}
+      onChange={(v) => onChange(v ?? '')}
+      onSearch={setTexto}
+    />
   );
 }
 

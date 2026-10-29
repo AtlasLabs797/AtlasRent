@@ -46,6 +46,7 @@ export const inmueble = {
 export const unidad = {
   id: UNIDAD_ID,
   inmuebleId: INMUEBLE_ID,
+  inmuebleNombre: 'Torre Marina',
   nombre: 'A-101',
   tipo: 'Apartamento',
   propietariaId: null,

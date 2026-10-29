@@ -75,7 +75,13 @@ export function catalogos(api: ApiFalsa): void {
   api.responder('GET', `/clientes/${CLIENTE_ID}`, { body: { id: CLIENTE_ID, numero: 1873, nombre: 'Inversiones Caribe SRL' } });
   api.responder('GET', '/inmuebles', pagina([{ id: 'inm1', nombre: 'Torre Marina' }]));
   api.responder('GET', '/inmuebles/inm1/unidades', pagina([{ id: 'u1', nombre: 'Apto 3B' }]));
-  api.responder('GET', '/catalogos/subempresas', pagina([{ id: 'sub1', nombre: 'Atlas Propiedades SRL' }]));
+  api.responder('GET', '/catalogos/subempresas', pagina([
+    { id: 'sub1', nombre: 'Atlas Propiedades SRL', propietaria: true, facturadora: true },
+    { id: 'sub2', nombre: 'Solo Propietaria SRL', propietaria: true, facturadora: false },
+    { id: 'sub3', nombre: 'Solo Facturadora SRL', propietaria: false, facturadora: true },
+  ]));
+  api.responder('GET', '/catalogos/tipos-itbis', pagina([{ id: 'itbis1', nombre: 'ITBIS general', porcentaje: '18.0000' }]));
+  api.responder('GET', '/catalogos/tipos-retencion', pagina([{ id: 'ret1', nombre: 'Retención ISR', porcentaje: '10.0000', base: 'Subtotal', esDefecto: true }]));
   api.responder('GET', '/catalogos/formas-pago', pagina([{ id: FORMA_ID, nombre: 'Transferencia' }]));
   api.responder('GET', '/catalogos/cuentas-receptoras', pagina([{ id: CUENTA_ID, nombre: 'Cuenta DOP', banco: 'Banco', moneda: 'DOP' }, { id: 'c2', nombre: 'Cuenta USD', banco: 'Banco', moneda: 'USD' }]));
   api.responder('GET', '/catalogos/series', pagina([{ id: SERIE_ID, numero: 1, prefijo: 'A', moneda: 'USD', tipo: 'Normal', generaComprobante: false }]));

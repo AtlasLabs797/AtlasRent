@@ -6,20 +6,6 @@ import type { ClienteLista, InmuebleLista, Pagina, ProspectoLista, UnidadConInmu
 /** Tamaño máximo de página de la API (`ConsultaLista.PageSizeMaximo`). */
 export const PAGINA_MAXIMA = 200;
 
-/**
- * Clientes completos hasta 200, para quien filtra en local (el formulario de contratos). Los
- * selectores de cotizaciones y reservas buscan en remoto con `useBuscarClientes`.
- * TODO(A#): el formulario de contratos sigue con esta carga; si la cartera pasa de 200 clientes
- * necesita la búsqueda remota.
- */
-export function useClientes() {
-  return useQuery({
-    queryKey: ['operacion', 'clientes'],
-    queryFn: async () => (await clienteHttp.get<Pagina<ClienteLista>>('/clientes', { params: { pageSize: PAGINA_MAXIMA } })).data,
-    staleTime: 60_000,
-  });
-}
-
 /** Resultados que enseña el selector de clientes por búsqueda. */
 export const RESULTADOS_BUSQUEDA = 20;
 
@@ -65,22 +51,14 @@ export function useInmuebles() {
   });
 }
 
-/** Unidades activas con el nombre de su inmueble: `GET /inmuebles/unidades` (listado global) y los inmuebles. */
+/** Unidades activas con el nombre de su inmueble (`inmuebleNombre` de `GET /inmuebles/unidades`). */
 export function useUnidades(): { unidades: UnidadConInmueble[]; cargando: boolean; error: unknown } {
-  const inmuebles = useInmuebles();
   const global = useQuery({
     queryKey: ['operacion', 'unidades'],
     queryFn: async () =>
       (await clienteHttp.get<Pagina<UnidadLista>>('/inmuebles/unidades', { params: { activa: true, pageSize: PAGINA_MAXIMA } })).data,
     staleTime: 60_000,
   });
-  const unidades = useMemo(() => {
-    const nombres = new Map((inmuebles.data?.data ?? []).map((i) => [i.id, i.nombre]));
-    return (global.data?.data ?? []).map((u) => ({ ...u, inmueble: nombres.get(u.inmuebleId) ?? '' }));
-  }, [global.data, inmuebles.data]);
-  return {
-    unidades,
-    cargando: inmuebles.isPending || global.isPending,
-    error: inmuebles.error ?? global.error ?? null,
-  };
+  const unidades = useMemo(() => (global.data?.data ?? []).map((u) => ({ ...u, inmueble: u.inmuebleNombre })), [global.data]);
+  return { unidades, cargando: global.isPending, error: global.error ?? null };
 }

@@ -147,7 +147,7 @@ export default function FianzaFicha() {
           count={x.numeroFianzas}
           collected={Number(x.cobrado)}
           currency={x.moneda}
-          contract={x.contratoId.slice(0, 8)}
+          contract={`${x.clienteNombre} · ${x.unidadNombre}`}
           status={ESTADO_DS[x.estado]}
           deductions={devoluciones.filter((r) => Number(r.importeDescontado) > 0).map((r) => ({ reason: r.motivo ?? f.descontado, amount: Number(r.importeDescontado) }))}
           {...(devoluciones.length > 0 ? { returned: Number(x.devuelto) } : {})}

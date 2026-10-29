@@ -156,7 +156,8 @@ export default function Cuentas() {
   ];
 
   const datos = cuentas.data;
-  const subs = subempresas.data ?? [];
+  const propietarias = (subempresas.data ?? []).filter((s) => s.propietaria);
+  const facturadoras = (subempresas.data ?? []).filter((s) => s.facturadora);
 
   return (
     <>
@@ -207,13 +208,13 @@ export default function Cuentas() {
           <Select
             label={t.filtros.propietaria}
             value={filtros.propietariaId}
-            options={[{ value: '', label: tc.todas }, ...subs.map((s) => ({ value: s.id, label: s.nombre }))]}
+            options={[{ value: '', label: tc.todas }, ...propietarias.map((s) => ({ value: s.id, label: s.nombre }))]}
             onChange={(e) => cambiar({ propietariaId: e.target.value })}
           />
           <Select
             label={t.filtros.facturadora}
             value={filtros.facturadoraId}
-            options={[{ value: '', label: tc.todas }, ...subs.map((s) => ({ value: s.id, label: s.nombre }))]}
+            options={[{ value: '', label: tc.todas }, ...facturadoras.map((s) => ({ value: s.id, label: s.nombre }))]}
             onChange={(e) => cambiar({ facturadoraId: e.target.value })}
           />
         </RejillaFiltros>

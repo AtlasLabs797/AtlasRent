@@ -98,7 +98,7 @@ public sealed class ServicioInmuebles(
             inmueble.RenovacionDefectoMeses,
             inmueble.Activo,
             inmueble.CreatedAt,
-            [.. inmueble.Unidades.Select(AUnidad).OrderBy(u => u.Nombre, StringComparer.Ordinal)]);
+            [.. inmueble.Unidades.Select(u => AUnidad(u, inmueble.Nombre)).OrderBy(u => u.Nombre, StringComparer.Ordinal)]);
     }
 
     public Task<InmuebleResumen> CrearAsync(
@@ -222,7 +222,7 @@ public sealed class ServicioInmuebles(
     /// <summary>
     /// Listado global de unidades. <paramref name="activa"/> en null devuelve activas e inactivas.
     /// </summary>
-    public Task<Pagina<UnidadRespuesta>> ListarTodasUnidadesAsync(
+    public async Task<Pagina<UnidadRespuesta>> ListarTodasUnidadesAsync(
         ConsultaLista paginacion,
         string? busqueda,
         Guid? inmuebleId,
@@ -257,12 +257,36 @@ public sealed class ServicioInmuebles(
             consulta = consulta.Where(u => u.Modalidades.Any(x => x.Modalidad == m));
         }
 
-        return ConsultaPaginada.PaginarAsync(
-            consulta, OrdenesUnidad, "nombre", paginacion, AUnidad, ct);
+        return await ConPaginaDeInmueblesAsync(
+            await ConsultaPaginada.PaginarAsync(consulta, OrdenesUnidad, "nombre", paginacion, u => u, ct), ct);
     }
 
-    public async Task<UnidadRespuesta> LeerUnidadAsync(Guid id, CancellationToken ct) =>
-        AUnidad(await CargarUnidadAsync(id, ct, rastrear: false));
+    public async Task<UnidadRespuesta> LeerUnidadAsync(Guid id, CancellationToken ct)
+    {
+        var unidad = await CargarUnidadAsync(id, ct, rastrear: false);
+
+        return AUnidad(unidad, await NombreInmuebleAsync(unidad.InmuebleId, ct));
+    }
+
+    /// <summary>Nombre del inmueble de una unidad (una consulta por escritura o ficha).</summary>
+    private async Task<string> NombreInmuebleAsync(Guid inmuebleId, CancellationToken ct) =>
+        await contexto.Inmueble.AsNoTracking()
+            .Where(i => i.Id == inmuebleId).Select(i => i.Nombre).SingleAsync(ct);
+
+    /// <summary>Pone el nombre del inmueble a una página de unidades con una sola consulta (sin N+1).</summary>
+    private async Task<Pagina<UnidadRespuesta>> ConPaginaDeInmueblesAsync(Pagina<Unidad> pagina, CancellationToken ct)
+    {
+        var ids = pagina.Data.Select(u => u.InmuebleId).Distinct().ToList();
+        var nombres = await contexto.Inmueble.AsNoTracking()
+            .Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.Nombre, ct);
+
+        return new Pagina<UnidadRespuesta>(
+            [.. pagina.Data.Select(u => AUnidad(u, nombres[u.InmuebleId]))],
+            pagina.Total,
+            pagina.Page,
+            pagina.PageSize,
+            pagina.TotalPages);
+    }
 
     /// <summary>
     /// Baja lógica de la unidad. Se rechaza (409) si tiene contratos sin finalizar o reservas vivas:
@@ -291,9 +315,10 @@ public sealed class ServicioInmuebles(
         CancellationToken ct)
     {
         var unidad = await CargarUnidadAsync(id, ct, rastrear: true);
+        var inmuebleNombre = await NombreInmuebleAsync(unidad.InmuebleId, ct);
         if (!unidad.Activo)
         {
-            return AUnidad(unidad);
+            return AUnidad(unidad, inmuebleNombre);
         }
 
         if (await TieneContratosOReservasVivosAsync([id], ct))
@@ -313,7 +338,7 @@ public sealed class ServicioInmuebles(
             usuario,
             ip,
             mutacion,
-            proyectar: AUnidad,
+            proyectar: u => AUnidad(u, inmuebleNombre),
             datosAuditoria: DatosAuditoriaUnidad,
             ct: ct);
     }
@@ -327,9 +352,10 @@ public sealed class ServicioInmuebles(
         CancellationToken ct)
     {
         var unidad = await CargarUnidadAsync(id, ct, rastrear: true);
+        var inmuebleNombre = await NombreInmuebleAsync(unidad.InmuebleId, ct);
         if (unidad.Activo)
         {
-            return AUnidad(unidad);
+            return AUnidad(unidad, inmuebleNombre);
         }
 
         if (!await contexto.Inmueble.AnyAsync(i => i.Id == unidad.InmuebleId && i.Activo, ct))
@@ -349,7 +375,7 @@ public sealed class ServicioInmuebles(
             usuario,
             ip,
             mutacion,
-            proyectar: AUnidad,
+            proyectar: u => AUnidad(u, inmuebleNombre),
             datosAuditoria: DatosAuditoriaUnidad,
             ct: ct);
     }
@@ -370,7 +396,7 @@ public sealed class ServicioInmuebles(
     /// Unidades de un inmueble. El filtro por estado manual es el que usa la pantalla de
     /// disponibilidad: corta las que están en mantenimiento o fuera de servicio.
     /// </summary>
-    public Task<Pagina<UnidadRespuesta>> ListarUnidadesAsync(
+    public async Task<Pagina<UnidadRespuesta>> ListarUnidadesAsync(
         Guid inmuebleId,
         ConsultaLista paginacion,
         EstadoUnidad? estado,
@@ -387,8 +413,10 @@ public sealed class ServicioInmuebles(
             consulta = consulta.Where(u => u.EstadoManual == estado);
         }
 
-        return ConsultaPaginada.PaginarAsync(
-            consulta, OrdenesUnidad, "nombre", paginacion, AUnidad, ct);
+        var nombre = await NombreInmuebleAsync(inmuebleId, ct);
+
+        return await ConsultaPaginada.PaginarAsync(
+            consulta, OrdenesUnidad, "nombre", paginacion, u => AUnidad(u, nombre), ct);
     }
 
     public async Task<UnidadRespuesta> CrearUnidadAsync(
@@ -420,7 +448,7 @@ public sealed class ServicioInmuebles(
             usuario,
             ip,
             mutacion,
-            proyectar: AUnidad,
+            proyectar: u => AUnidad(u, inmueble.Nombre),
             datosAuditoria: DatosAuditoriaUnidad,
             ct: ct);
     }
@@ -438,6 +466,7 @@ public sealed class ServicioInmuebles(
             .Include(u => u.Tarifas)
             .SingleOrDefaultAsync(u => u.Id == id, ct)
             ?? throw new KeyNotFoundException($"No existe la unidad '{id:D}'.");
+        var inmuebleNombre = await NombreInmuebleAsync(unidad.InmuebleId, ct);
 
         AplicarUnidad(unidad, peticion, esAlta: false);
 
@@ -450,7 +479,7 @@ public sealed class ServicioInmuebles(
             usuario,
             ip,
             mutacion,
-            proyectar: AUnidad,
+            proyectar: u => AUnidad(u, inmuebleNombre),
             datosAuditoria: DatosAuditoriaUnidad,
             ct: ct);
     }
@@ -521,10 +550,11 @@ public sealed class ServicioInmuebles(
             inmueble.Activo,
             inmueble.CreatedAt);
 
-    private static UnidadRespuesta AUnidad(Unidad unidad) =>
+    private static UnidadRespuesta AUnidad(Unidad unidad, string inmuebleNombre) =>
         new(
             unidad.Id,
             unidad.InmuebleId,
+            inmuebleNombre,
             unidad.Nombre,
             unidad.Tipo,
             unidad.PropietariaId,

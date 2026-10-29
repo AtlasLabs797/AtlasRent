@@ -28,8 +28,9 @@ public sealed class ProspectosController(
         [FromQuery] string? sortBy,
         [FromQuery] string? sortDir,
         [FromQuery] string? q,
+        [FromQuery] bool incluirInactivos,
         CancellationToken ct) =>
-        await EnvoltorioAsync(prospectos.ListarAsync(Paginacion(page, pageSize, sortBy, sortDir), q, ct));
+        await EnvoltorioAsync(prospectos.ListarAsync(Paginacion(page, pageSize, sortBy, sortDir), q, incluirInactivos, ct));
 
     [HttpGet("{id:guid}")]
     [Accion(Acciones.ClienteVer)]

@@ -124,7 +124,7 @@ public sealed class CatalogosApiTests(ContenedorBdFixture bd, ApiTestFactory api
     // ---------------------------------------------------------------- subempresas
 
     [Fact]
-    public async Task SubempresasSoloActivasSoloIdYNombreSinRnc()
+    public async Task SubempresasSoloActivasSinRncNiDatosDeContacto()
     {
         var ct = TestContext.Current.CancellationToken;
         using var admin = await AyudaFacturas.SesionAsync(bd, api, Roles.Admin, ct);
@@ -140,7 +140,7 @@ public sealed class CatalogosApiTests(ContenedorBdFixture bd, ApiTestFactory api
             var filas = await Datos(sesion, "/api/v1/catalogos/subempresas", ct);
 
             filas.Select(f => f.GetProperty("id").GetGuid()).Should().Contain(activa).And.NotContain(inactiva);
-            filas.First().EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(["id", "nombre"]);
+            filas.First().EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(["id", "nombre", "propietaria", "facturadora"]);
         }
     }
 

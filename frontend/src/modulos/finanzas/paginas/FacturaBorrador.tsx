@@ -110,10 +110,8 @@ const LINEA_VACIA: FormLinea = { tipo: 'Servicio', concepto: '', cantidad: '1', 
 const signo = (tipo: TipoLinea) => (tipo === 'Descuento' ? '-' : '');
 
 function Lineas({ factura }: { factura: Factura }): JSX.Element {
-  const identidad = useSesion((s) => s.identidad);
-  const veImpuestos = puede(identidad, ACCIONES.configuracionEditar);
-  const itbis = useTiposImpuesto('itbis', veImpuestos);
-  const retenciones = useTiposImpuesto('retencion', veImpuestos);
+  const itbis = useTiposImpuesto('itbis');
+  const retenciones = useTiposImpuesto('retencion');
   const mutar = useLineaBorrador(factura.id);
   const [form, setForm] = useState<FormLinea>(LINEA_VACIA);
   const [editando, setEditando] = useState<FacturaLinea | null>(null);
@@ -124,7 +122,6 @@ function Lineas({ factura }: { factura: Factura }): JSX.Element {
   const previa = cantidad !== null && precio !== null ? centimosDeLinea(cantidad, precio) : null;
   const valido =
     form.concepto.trim() !== '' && cantidad !== null && precio !== null && (!esRetencion || form.tipoRetencionId !== '');
-  const tiposDisponibles = TIPOS_LINEA.filter((x) => x !== 'Retencion' || veImpuestos);
 
   function reiniciar() {
     setForm(LINEA_VACIA);
@@ -203,7 +200,7 @@ function Lineas({ factura }: { factura: Factura }): JSX.Element {
       <div style={{ padding: 'var(--space-9)', borderTop: '1px solid var(--border-subtle)', display: 'grid', gap: 'var(--space-6)' }}>
         <div className="ar-overline">{editando ? t.editarLinea : t.nuevaLinea}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 'var(--space-6)', alignItems: 'end' }}>
-          <Select label={t.tipo} value={form.tipo} options={tiposDisponibles.map((x) => ({ value: x, label: x }))} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoLinea }))} />
+          <Select label={t.tipo} value={form.tipo} options={TIPOS_LINEA.map((x) => ({ value: x, label: x }))} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoLinea }))} />
           <Input id="linea-concepto" label={textosFinanzas.facturas.ficha.lineaConcepto} required maxLength={300} value={form.concepto} onChange={(e) => setForm((f) => ({ ...f, concepto: e.target.value }))} />
           {!esRetencion && (
             <>
@@ -224,7 +221,7 @@ function Lineas({ factura }: { factura: Factura }): JSX.Element {
               />
             </>
           )}
-          {!esRetencion && veImpuestos && (
+          {!esRetencion && (
             <Select
               label={t.itbis}
               value={form.tipoItbisId}
@@ -243,7 +240,6 @@ function Lineas({ factura }: { factura: Factura }): JSX.Element {
             />
           )}
         </div>
-        {!veImpuestos && <Alert tone="info">{t.sinCatalogoImpuestos}</Alert>}
         {previa !== null && !esRetencion && (
           <p style={{ margin: 0, color: 'var(--text-muted)' }} className="mono">
             {t.previa.replace('{importe}', `${signo(form.tipo)}${centimosATexto(previa)} ${factura.moneda}`)}

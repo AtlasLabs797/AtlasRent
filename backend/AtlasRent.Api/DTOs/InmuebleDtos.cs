@@ -154,6 +154,7 @@ public sealed record TarifaRespuesta(
 public sealed record UnidadRespuesta(
     Guid Id,
     Guid InmuebleId,
+    string InmuebleNombre,
     string Nombre,
     [property: JsonConverter(typeof(JsonStringEnumConverter<TipoUnidad>))] TipoUnidad Tipo,
     Guid? PropietariaId,

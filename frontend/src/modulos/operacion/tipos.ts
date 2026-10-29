@@ -54,6 +54,7 @@ export interface TarifaUnidad {
 export interface UnidadLista {
   id: string;
   inmuebleId: string;
+  inmuebleNombre: string;
   nombre: string;
   tipo: string;
   facturadoraPorDefectoId: string | null;

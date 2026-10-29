@@ -178,7 +178,6 @@ export interface TipoImpuesto {
   id: string;
   nombre: string;
   porcentaje: Importe;
-  activo: boolean;
 }
 
 export interface CobroAfectadoPorFactura {
@@ -346,6 +345,10 @@ export interface CobroPeticion {
 export interface FianzaResumen {
   id: string;
   contratoId: string;
+  clienteId: string;
+  clienteNombre: string;
+  unidadId: string;
+  unidadNombre: string;
   importeExigido: Importe;
   moneda: Moneda;
   numeroFianzas: number;
@@ -395,6 +398,8 @@ export interface Serie {
 export interface Subempresa {
   id: string;
   nombre: string;
+  propietaria: boolean;
+  facturadora: boolean;
 }
 
 /** `GET /catalogos/parametros-cobro`: `null` = sin configurar. */

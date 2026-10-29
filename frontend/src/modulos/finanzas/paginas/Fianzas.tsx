@@ -31,14 +31,15 @@ export default function Fianzas() {
 
   const columnas: DataTableColumn[] = [
     {
-      key: 'contrato',
-      label: t.columnas.contrato,
+      key: 'cliente',
+      label: t.columnas.cliente,
       render: (x: FianzaResumen) => (
-        <Link className="mono" to={`/fianzas/${x.id}`} onClick={(e) => e.stopPropagation()}>
-          {x.contratoId.slice(0, 8)}
+        <Link to={`/fianzas/${x.id}`} onClick={(e) => e.stopPropagation()}>
+          {x.clienteNombre}
         </Link>
       ),
     },
+    { key: 'unidad', label: t.columnas.unidad, render: (x: FianzaResumen) => x.unidadNombre },
     { key: 'exigido', label: t.columnas.exigido, align: 'right', render: (x: FianzaResumen) => <Money amount={x.importeExigido} currency={x.moneda} /> },
     { key: 'numero', label: t.columnas.numero, align: 'right', render: (x: FianzaResumen) => <span className="mono">{x.numeroFianzas}</span> },
     { key: 'cobrado', label: t.columnas.cobrado, align: 'right', render: (x: FianzaResumen) => <Money amount={x.cobrado} currency={x.moneda} /> },

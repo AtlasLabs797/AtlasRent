@@ -15,6 +15,7 @@ import { Drawer } from '../../../design-system/components/feedback/Drawer';
 import { EmptyState } from '../../../design-system/components/feedback/EmptyState';
 import { Skeleton } from '../../../design-system/components/feedback/Skeleton';
 import { Input } from '../../../design-system/components/forms/Input';
+import { Switch } from '../../../design-system/components/forms/Switch';
 import { Select } from '../../../design-system/components/forms/Select';
 import { Textarea } from '../../../design-system/components/forms/Textarea';
 import { FilterBar } from '../../../design-system/components/navigation/FilterBar';
@@ -47,11 +48,12 @@ export default function Prospectos() {
   const editar = puede(identidad, ACCIONES.clienteEditar);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const [incluirInactivos, setIncluirInactivos] = useState(false);
   const [seleccion, setSeleccion] = useState<string | 'nuevo' | null>(null);
   const qRetardada = useRetardo(q, 300);
-  useEffect(() => setPage(1), [qRetardada]);
+  useEffect(() => setPage(1), [qRetardada, incluirInactivos]);
 
-  const lista = useListaProspectos({ q: qRetardada, page, pageSize: POR_PAGINA });
+  const lista = useListaProspectos({ q: qRetardada, page, pageSize: POR_PAGINA, incluirInactivos });
   const filas = lista.data?.data ?? [];
 
   return (
@@ -70,7 +72,9 @@ export default function Prospectos() {
       />
       <div style={{ height: 16 }} />
       <Card padded={false}>
-        <FilterBar searchPlaceholder={p.buscar} search={q} onSearch={setQ} />
+        <FilterBar searchPlaceholder={p.buscar} search={q} onSearch={setQ}>
+          <Switch label={p.inactivos} checked={incluirInactivos} onChange={setIncluirInactivos} />
+        </FilterBar>
         {lista.isPending ? (
           <div style={{ padding: 'var(--space-9)' }}>
             <Skeleton lines={5} height={20} />
@@ -93,7 +97,7 @@ export default function Prospectos() {
                 { key: 'tipo', label: p.columnas.tipo, render: (f: ProspectoResumen) => t.tipos[f.tipo] },
                 { key: 'email', label: p.columnas.email, render: (f: ProspectoResumen) => f.email ?? '—' },
                 { key: 'telefono', label: p.columnas.telefono, render: (f: ProspectoResumen) => <span className="mono">{f.telefono ?? '—'}</span> },
-                { key: 'estado', label: p.columnas.estado, render: (f: ProspectoResumen) => (f.activo ? <Badge status="activo" /> : <Badge tone="neutral">{t.estados.inactivo}</Badge>) },
+                { key: 'estado', label: p.columnas.estado, render: (f: ProspectoResumen) => (f.clienteId ? <Badge tone="info">{t.estados.convertido}</Badge> : f.activo ? <Badge status="activo" /> : <Badge tone="neutral">{t.estados.inactivo}</Badge>) },
               ]}
             />
             <Pagination page={lista.data?.page ?? page} pageSize={POR_PAGINA} total={lista.data?.total ?? 0} onChange={setPage} />
