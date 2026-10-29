@@ -26,7 +26,7 @@ import {
 } from '../logica';
 import { textosFinanzas } from '../textos';
 import type { Cobro, CobroSimulacion, CuentaFila, Moneda } from '../tipos';
-import { esSinPermiso, fechaHoyNegocio } from './Comunes';
+import { fechaHoyNegocio } from './Comunes';
 
 const t = textosFinanzas.panel;
 const tc = textosFinanzas.comun;
@@ -115,9 +115,9 @@ export function PanelCobro({ seleccion, onCerrar, onRegistrado }: PanelCobroProp
     setLineas((actuales) => actuales?.map((l, i) => (i === indice ? { ...l, importe } : l)) ?? null);
   }
 
-  const catalogoDenegado = esSinPermiso(formas.error) || esSinPermiso(cuentas.error);
+  const catalogoDenegado = formas.isError || cuentas.isError;
   const opcionesCuenta = (() => {
-    const activas = (cuentas.data ?? []).filter((c) => c.activa);
+    const activas = cuentas.data ?? [];
     const deMoneda = activas.filter((c) => c.moneda === form.monedaRecibida);
     return (deMoneda.length > 0 ? deMoneda : activas).map((c) => ({ value: c.id, label: `${c.nombre} · ${c.moneda}` }));
   })();
@@ -166,7 +166,6 @@ export function PanelCobro({ seleccion, onCerrar, onRegistrado }: PanelCobroProp
 
         {catalogoDenegado && (
           <Alert tone="warning" title={tc.sinCatalogoTitulo}>
-            {/* TODO(A#): lectura de catálogos con cobro.registrar; hoy solo configuracion.editar. */}
             {tc.sinCatalogoCuerpo}
           </Alert>
         )}
@@ -230,7 +229,7 @@ export function PanelCobro({ seleccion, onCerrar, onRegistrado }: PanelCobroProp
             required
             placeholder="—"
             value={form.formaPagoId}
-            options={(formas.data ?? []).filter((x) => x.activa).map((x) => ({ value: x.id, label: x.nombre }))}
+            options={(formas.data ?? []).map((x) => ({ value: x.id, label: x.nombre }))}
             onChange={(e) => cambiar({ formaPagoId: e.target.value })}
             error={msgError('formaPagoId')}
           />

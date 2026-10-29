@@ -1,7 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { clienteHttp } from '../../../api/cliente';
 import { Badge } from '../../../design-system/components/core/Badge';
 import { Button } from '../../../design-system/components/core/Button';
 import { Card } from '../../../design-system/components/core/Card';
@@ -20,7 +18,7 @@ import { textos } from '../../../i18n/textos';
 import SinPermiso from '../../../paginas/SinPermiso';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
-import { useCuentas, abrirPdf } from '../api';
+import { useCuentas, useSubempresas, abrirPdf } from '../api';
 import { CargandoTabla, FalloCarga, InsigniaFila, RejillaFiltros, SelectorCliente, SelectoresInmuebleUnidad, useReinicio } from '../componentes/Comunes';
 import { PanelCobro } from '../componentes/PanelCobro';
 import {
@@ -32,19 +30,11 @@ import {
   type FiltrosCuentas,
 } from '../logica';
 import { textosFinanzas } from '../textos';
-import type { Cobro, CuentaFila, Pagina } from '../tipos';
+import type { Cobro, CuentaFila } from '../tipos';
 
 const t = textosFinanzas.cuentas;
 const tc = textosFinanzas.comun;
 const PAGE_SIZE = 25;
-
-interface Subempresa {
-  id: string;
-  nombre: string;
-  propietaria: boolean;
-  facturadora: boolean;
-  activa: boolean;
-}
 
 export default function Cuentas() {
   const identidad = useSesion((s) => s.identidad);
@@ -56,12 +46,7 @@ export default function Cuentas() {
   const [registrado, setRegistrado] = useState<Cobro | null>(null);
 
   const cuentas = useCuentas(consultaCuentas(filtros, PAGE_SIZE));
-  const esAdmin = puede(identidad, ACCIONES.configuracionEditar);
-  const subempresas = useQuery({
-    queryKey: ['finanzas', 'subempresas'],
-    enabled: esAdmin,
-    queryFn: async () => (await clienteHttp.get<Pagina<Subempresa>>('/config/subempresas', { params: { pageSize: 200 } })).data.data,
-  });
+  const subempresas = useSubempresas();
 
   const huellaFiltros = parametrosDeFiltros({ ...filtros, page: 1 }).toString();
   const limpiarSeleccion = useCallback(() => setMarcadas(new Map()), []);
@@ -219,25 +204,32 @@ export default function Cuentas() {
           <DatePicker label={tc.desde} value={filtros.desde} onChange={(e) => cambiar({ desde: e.target.value })} />
           <DatePicker label={tc.hasta} value={filtros.hasta} onChange={(e) => cambiar({ hasta: e.target.value })} />
           <Input label={t.filtros.anio} inputMode="numeric" value={filtros.anio} onChange={(e) => cambiar({ anio: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
-          {esAdmin && (
-            <>
-              <Select
-                label={t.filtros.propietaria}
-                value={filtros.propietariaId}
-                options={[{ value: '', label: tc.todas }, ...subs.filter((s) => s.propietaria).map((s) => ({ value: s.id, label: s.nombre }))]}
-                onChange={(e) => cambiar({ propietariaId: e.target.value })}
-              />
-              <Select
-                label={t.filtros.facturadora}
-                value={filtros.facturadoraId}
-                options={[{ value: '', label: tc.todas }, ...subs.filter((s) => s.facturadora).map((s) => ({ value: s.id, label: s.nombre }))]}
-                onChange={(e) => cambiar({ facturadoraId: e.target.value })}
-              />
-            </>
-          )}
+          <Select
+            label={t.filtros.propietaria}
+            value={filtros.propietariaId}
+            options={[{ value: '', label: tc.todas }, ...subs.map((s) => ({ value: s.id, label: s.nombre }))]}
+            onChange={(e) => cambiar({ propietariaId: e.target.value })}
+          />
+          <Select
+            label={t.filtros.facturadora}
+            value={filtros.facturadoraId}
+            options={[{ value: '', label: tc.todas }, ...subs.map((s) => ({ value: s.id, label: s.nombre }))]}
+            onChange={(e) => cambiar({ facturadoraId: e.target.value })}
+          />
         </RejillaFiltros>
-        {/* TODO(A#): propietaria y facturadora salen de /config/subempresas, que solo lee configuracion.editar. */}
-        {!esAdmin && <p style={{ margin: '12px 0 0', color: 'var(--text-subtle)' }}>{t.filtros.sinCatalogo}</p>}
+        {filtros.contratoId && (
+          <div style={{ marginTop: 'var(--space-6)' }}>
+            <Alert
+              tone="info"
+              title={t.filtros.contrato}
+              action={
+                <Button size="sm" variant="secondary" onClick={() => cambiar({ contratoId: '' })}>
+                  {t.filtros.quitarContrato}
+                </Button>
+              }
+            />
+          </div>
+        )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-9)', marginTop: 'var(--space-7)', alignItems: 'center' }}>
           <Checkbox label={t.filtros.vencidas} checked={filtros.vencidas} onChange={(e) => cambiar({ vencidas: e.target.checked })} />
           <Checkbox label={t.filtros.noEnviadas} checked={filtros.noEnviadas} onChange={(e) => cambiar({ noEnviadas: e.target.checked })} />

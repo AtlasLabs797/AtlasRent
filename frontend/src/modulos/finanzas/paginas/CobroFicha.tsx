@@ -17,6 +17,7 @@ import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
 import { abrirPdf, useAnularCobro, useCobro } from '../api';
 import { CargandoTabla, FalloCarga } from '../componentes/Comunes';
+import { esPositivo } from '../decimal';
 import { textosFinanzas } from '../textos';
 import type { CobroAsignacion } from '../tipos';
 
@@ -113,9 +114,9 @@ export default function CobroFicha() {
               { label: f.saldoUsado, value: <Money amount={x.saldoFavorUsado} currency={x.monedaRecibida} /> },
               { label: f.excedente, value: <Money amount={x.excedente} currency={x.monedaRecibida} /> },
               { label: f.asignado, value: <Money amount={x.totalAsignado} currency={x.monedaRecibida} /> },
+              ...(esPositivo(x.importeDevuelto) ? [{ label: f.devuelto, value: <Money amount={x.importeDevuelto} currency={x.monedaRecibida} /> }] : []),
             ]}
           />
-          {/* TODO(A#): CobroRespuesta no expone el importe devuelto/revertido de un cobro anulado. */}
         </Card>
         <Card title={f.asignaciones} padded={false}>
           <DataTable columns={columnas} rows={x.asignaciones} empty={tc.vacio} />

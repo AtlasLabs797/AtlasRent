@@ -46,7 +46,7 @@ export const COBRO = {
   id: COBRO_ID, clienteId: CLIENTE_ID, clienteNombre: 'Inversiones Caribe SRL', contratoId: CONTRATO_ID, fechaEfectiva: '2026-10-28',
   monedaRecibida: 'DOP', importeRecibido: '59500.00', formaPagoId: FORMA_ID, formaPagoNombre: 'Transferencia', referencia: 'TRF-0001',
   cuentaReceptoraId: CUENTA_ID, cuentaReceptoraNombre: 'Cuenta DOP', tipoCambioValor: '59.500000', tipoCambioFecha: '2026-10-28', tipoCambioId: null,
-  saldoFavorUsado: '0.00', excedente: '0.00', totalAsignado: '59500.00', estado: 'Registrado', anuladoAt: null, anuladoPor: null, motivoAnulacion: null,
+  saldoFavorUsado: '0.00', excedente: '0.00', totalAsignado: '59500.00', importeDevuelto: '0.00', estado: 'Registrado', anuladoAt: null, anuladoPor: null, motivoAnulacion: null,
   createdAt: '2026-10-28T14:00:00Z',
   asignaciones: [{ id: 'a1', facturaId: FACTURA_ID, fianzaId: null, facturaNumero: 412, facturaVencimiento: '2026-10-05', facturaMoneda: 'USD', importe: '1000.00', importeRecibido: '59500.00', tipoCambioValor: '59.500000', vigente: true, createdAt: '2026-10-28T14:00:00Z' }],
 };
@@ -56,18 +56,28 @@ export const FACTURA = {
   serieId: SERIE_ID, serieNumero: 1, numero: 412, estado: 'Emitida', tipoSerie: 'Normal', moneda: 'USD', fechaEmision: '2026-10-01', fechaVencimiento: '2026-10-05',
   concepto: 'Renta octubre', subtotal: '1000.00', itbis: '0.00', total: '1000.00', retencion: '0.00', netoACobrar: '1000.00', tipoCambioValor: '59.500000', tipoCambioFecha: '2026-10-01',
   tipoCambioId: null, createdAt: '2026-10-01T12:00:00Z', updatedAt: null, cobrado: '0.00', ajustado: '0.00', pendiente: '1000.00', estadoCobro: 'Pendiente', vencida: true,
-  retencionSinComprobante: false, referenciaEfactura: null,
+  retencionSinComprobante: false, referenciaEfactura: null, comprobanteFiscal: null, comprobanteFiscalId: null, modificadaTrasEnvio: false, comprobanteRetencionId: null,
   lineas: [{ id: 'l1', posicion: 1, tipo: 'Renta', concepto: 'Renta octubre', cantidad: '1.00', precioUnitario: '1000.00', importe: '1000.00', tipoItbisId: null, tipoItbisNombre: null, porcentajeItbis: null, itbisImporte: '0.00', tipoRetencionId: null, tipoRetencionNombre: null, porcentajeRetencion: null, baseRetencion: null }],
 };
 
-/** Respuestas comunes de las pantallas de finanzas: filtros (clientes, inmuebles) y, para el administrador, catálogos. */
-export function catalogos(api: ApiFalsa, admin: boolean): void {
-  api.responder('GET', '/clientes', { body: { data: [{ id: CLIENTE_ID, numero: 1873, nombre: 'Inversiones Caribe SRL' }], total: 1, page: 1, pageSize: 200, totalPages: 1 } });
-  api.responder('GET', '/inmuebles', { body: { data: [{ id: 'inm1', nombre: 'Torre Marina' }], total: 1, page: 1, pageSize: 200, totalPages: 1 } });
-  if (admin) {
-    api.responder('GET', '/config/subempresas', { body: { data: [], total: 0, page: 1, pageSize: 200, totalPages: 0 } });
-    api.responder('GET', '/config/formas-pago', { body: { data: [{ id: FORMA_ID, nombre: 'Transferencia', activa: true }], total: 1, page: 1, pageSize: 200, totalPages: 1 } });
-    api.responder('GET', '/config/cuentas', { body: { data: [{ id: CUENTA_ID, nombre: 'Cuenta DOP', banco: 'Banco', moneda: 'DOP', activa: true }, { id: 'c2', nombre: 'Cuenta USD', banco: 'Banco', moneda: 'USD', activa: true }], total: 2, page: 1, pageSize: 200, totalPages: 1 } });
-    api.responder('GET', '/config/series', { body: { data: [{ id: SERIE_ID, numero: 1, prefijo: 'A', moneda: 'USD', tipo: 'Normal', activa: true }], total: 1, page: 1, pageSize: 200, totalPages: 1 } });
-  }
+export const RETENCION_ID = '77777777-0000-0000-0000-000000000001';
+
+export const COMPROBANTE_RETENCION = {
+  id: RETENCION_ID, facturaId: FACTURA_ID, tipo: 'Retención ISR 10 %', base: 'Subtotal', porcentaje: '10.00', importe: '100.00', estado: 'Pendiente',
+  numero: null, fechaRecepcion: null, recibidoAt: null, recibidoPor: null, createdAt: '2026-10-01T12:00:00Z',
+};
+
+const pagina = (data: unknown[]) => ({ body: { data, total: data.length, page: 1, pageSize: 200, totalPages: 1 } });
+
+/** Respuestas comunes de las pantallas de finanzas: filtros (clientes, inmuebles) y catálogos mínimos de /catalogos/* (sin permiso de configuración). */
+export function catalogos(api: ApiFalsa): void {
+  api.responder('GET', '/clientes', pagina([{ id: CLIENTE_ID, numero: 1873, nombre: 'Inversiones Caribe SRL' }]));
+  api.responder('GET', `/clientes/${CLIENTE_ID}`, { body: { id: CLIENTE_ID, numero: 1873, nombre: 'Inversiones Caribe SRL' } });
+  api.responder('GET', '/inmuebles', pagina([{ id: 'inm1', nombre: 'Torre Marina' }]));
+  api.responder('GET', '/inmuebles/inm1/unidades', pagina([{ id: 'u1', nombre: 'Apto 3B' }]));
+  api.responder('GET', '/catalogos/subempresas', pagina([{ id: 'sub1', nombre: 'Atlas Propiedades SRL' }]));
+  api.responder('GET', '/catalogos/formas-pago', pagina([{ id: FORMA_ID, nombre: 'Transferencia' }]));
+  api.responder('GET', '/catalogos/cuentas-receptoras', pagina([{ id: CUENTA_ID, nombre: 'Cuenta DOP', banco: 'Banco', moneda: 'DOP' }, { id: 'c2', nombre: 'Cuenta USD', banco: 'Banco', moneda: 'USD' }]));
+  api.responder('GET', '/catalogos/series', pagina([{ id: SERIE_ID, numero: 1, prefijo: 'A', moneda: 'USD', tipo: 'Normal', generaComprobante: false }]));
+  api.responder('GET', '/catalogos/parametros-cobro', { body: { toleranciaCambioUsd: '5.00', toleranciaCambioDop: null } });
 }

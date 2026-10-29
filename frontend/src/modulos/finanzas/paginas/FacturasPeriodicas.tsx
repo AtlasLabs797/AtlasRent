@@ -9,20 +9,29 @@ import { Money } from '../../../design-system/components/data/Money';
 import { Alert } from '../../../design-system/components/feedback/Alert';
 import { Dialog } from '../../../design-system/components/feedback/Dialog';
 import { Input } from '../../../design-system/components/forms/Input';
-import { Select } from '../../../design-system/components/forms/Select';
 import { PageHeader } from '../../../design-system/components/navigation/PageHeader';
 import { formatearFecha } from '../../../dominio/fechas';
 import { textos } from '../../../i18n/textos';
 import SinPermiso from '../../../paginas/SinPermiso';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
-import { useGenerarPeriodica, useSeries, useSimularPeriodica } from '../api';
+import { useGenerarPeriodica, useSimularPeriodica } from '../api';
+import { SelectorSerie } from '../componentes/Comunes';
 import { claveParaIntento } from '../logica';
 import { textosFinanzas } from '../textos';
 import type { FacturaItemSimulado, GeneracionPeriodicaRespuesta, SimulacionPeriodicaRespuesta } from '../tipos';
 
 const t = textosFinanzas.periodicas;
 const tc = textosFinanzas.comun;
+
+/** Unidad e inmueble; si se llaman igual se muestra uno solo. */
+function ubicacion(i: FacturaItemSimulado): string {
+  return i.unidadNombre === i.inmuebleNombre ? i.unidadNombre : `${i.inmuebleNombre} · ${i.unidadNombre}`;
+}
+
+function etiquetaContrato(i: FacturaItemSimulado): string {
+  return `${i.clienteNombre} (${ubicacion(i)})`;
+}
 
 function mesActual(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
@@ -32,7 +41,6 @@ function mesActual(): string {
 export default function FacturasPeriodicas() {
   const identidad = useSesion((s) => s.identidad);
   const navegar = useNavigate();
-  const series = useSeries();
   const simular = useSimularPeriodica();
   const generar = useGenerarPeriodica();
   const [mes, setMes] = useState(mesActual());
@@ -40,6 +48,8 @@ export default function FacturasPeriodicas() {
   const [sim, setSim] = useState<SimulacionPeriodicaRespuesta | null>(null);
   const [resultado, setResultado] = useState<GeneracionPeriodicaRespuesta | null>(null);
   const [confirmar, setConfirmar] = useState(false);
+  // Nombre de cada contrato visto en la simulación, para rotular también el resultado.
+  const [nombres, setNombres] = useState<Map<string, string>>(new Map());
   const intento = useRef<{ huella: string; clave: string } | null>(null);
 
   if (!puede(identidad, ACCIONES.facturaEmitir)) return <SinPermiso />;
@@ -50,7 +60,15 @@ export default function FacturasPeriodicas() {
 
   function lanzarSimulacion() {
     setResultado(null);
-    simular.mutate({ periodo, serieId }, { onSuccess: setSim });
+    simular.mutate(
+      { periodo, serieId },
+      {
+        onSuccess: (r) => {
+          setSim(r);
+          setNombres(new Map(r.items.map((i) => [i.contratoId, etiquetaContrato(i)])));
+        },
+      },
+    );
   }
 
   function lanzarGeneracion() {
@@ -69,7 +87,18 @@ export default function FacturasPeriodicas() {
   }
 
   const columnas: DataTableColumn[] = [
-    { key: 'contrato', label: t.columnas.contrato, render: (i: FacturaItemSimulado) => <span className="mono">{i.contratoId.slice(0, 8)}</span> },
+    {
+      key: 'contrato',
+      label: t.columnas.contrato,
+      render: (i: FacturaItemSimulado) => (
+        <div>
+          <div>{i.clienteNombre}</div>
+          <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+            {ubicacion(i)} · {t.desde.replace('{fecha}', formatearFecha(i.contratoFechaInicio))}
+          </div>
+        </div>
+      ),
+    },
     { key: 'periodo', label: t.columnas.periodo, render: (i: FacturaItemSimulado) => <span className="mono">{formatearFecha(i.periodoInicio)} → {formatearFecha(i.periodoFin)}</span> },
     {
       key: 'dias',
@@ -107,18 +136,14 @@ export default function FacturasPeriodicas() {
       <Card>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 'var(--space-6)', alignItems: 'end' }}>
           <Input label={t.periodo} type="month" value={mes} onChange={(e) => { setMes(e.target.value); setSim(null); }} />
-          {series.isError ? (
-            <Alert tone="warning" title={tc.sinCatalogoTitulo}>{t.sinSeries}</Alert>
-          ) : (
-            <Select
-              label={t.serie}
-              required
-              placeholder="—"
-              value={serieId}
-              options={(series.data ?? []).filter((s) => s.activa).map((s) => ({ value: s.id, label: `${s.numero}${s.prefijo ? ' · ' + s.prefijo : ''} · ${s.tipo}` }))}
-              onChange={(e) => { setSerieId(e.target.value); setSim(null); }}
-            />
-          )}
+          <SelectorSerie
+            etiqueta={t.serie}
+            valor={serieId}
+            onChange={(v) => {
+              setSerieId(v);
+              setSim(null);
+            }}
+          />
           <div>
             <Button variant="secondary" disabled={!mes || !serieId || simular.isPending} onClick={lanzarSimulacion}>
               {t.simular}
@@ -141,7 +166,6 @@ export default function FacturasPeriodicas() {
             {monedas.size === 1 && <> · <Money amount={sim.importeTotal} currency={[...monedas][0]!} /></>}
           </div>
           <DataTable columns={columnas} rows={sim.items} rowKey="contratoId" empty={tc.vacio} />
-          <p style={{ margin: 0, padding: 'var(--space-9)', color: 'var(--text-subtle)' }}>{t.nombresPendientes}</p>
         </Card>
       )}
 
@@ -152,7 +176,7 @@ export default function FacturasPeriodicas() {
               {t.resultado.fallidasCuerpo}
               <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
                 {resultado.fallidos.map((x) => (
-                  <li key={x.contratoId}><span className="mono">{x.contratoId.slice(0, 8)}</span> · {x.motivo}</li>
+                  <li key={x.contratoId}>{nombres.get(x.contratoId) ?? x.contratoId.slice(0, 8)} · {x.motivo}</li>
                 ))}
               </ul>
             </Alert>
@@ -180,7 +204,7 @@ export default function FacturasPeriodicas() {
                 <div className="ar-overline" style={{ margin: '24px 0 8px' }}>{t.resultado.omitidosTitulo}</div>
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
                   {resultado.omitidos.map((x) => (
-                    <li key={x.contratoId}><span className="mono">{x.contratoId.slice(0, 8)}</span> · {x.motivo}</li>
+                    <li key={x.contratoId}>{nombres.get(x.contratoId) ?? x.contratoId.slice(0, 8)} · {x.motivo}</li>
                   ))}
                 </ul>
               </>

@@ -123,7 +123,62 @@ export interface Factura extends Omit<FacturaResumen, 'lineas'> {
   tipoCambioValor: Importe | null;
   tipoCambioFecha: string | null;
   updatedAt: string | null;
+  /** "Tipo Número" del comprobante fiscal asignado al emitir; `null` si la serie no lo lleva o es borrador. */
+  comprobanteFiscal: string | null;
+  comprobanteFiscalId: string | null;
+  modificadaTrasEnvio: boolean;
+  comprobanteRetencionId: string | null;
   lineas: FacturaLinea[];
+}
+
+/** Tipos de línea que acepta la API (`TipoLineaFactura`). */
+export const TIPOS_LINEA = ['Renta', 'Mora', 'Ajuste', 'Servicio', 'Suministro', 'Cargo', 'Descuento', 'Retencion'] as const;
+export type TipoLinea = (typeof TIPOS_LINEA)[number];
+
+/** Cuerpo de `POST/PUT /facturas`. */
+export interface FacturaPeticion {
+  clienteId: string;
+  unidadId?: string;
+  contratoId?: string;
+  serieId: string;
+  moneda: Moneda;
+  fechaVencimiento: string;
+  concepto: string;
+}
+
+/** Cuerpo de `POST/PUT /facturas/{id}/lineas`. */
+export interface FacturaLineaPeticion {
+  tipo: TipoLinea;
+  concepto: string;
+  cantidad: string;
+  precioUnitario: string;
+  tipoItbisId?: string | null;
+  tipoRetencionId?: string | null;
+}
+
+export type EstadoComprobanteRetencion = 'Pendiente' | 'Recibido';
+
+export interface ComprobanteRetencion {
+  id: string;
+  facturaId: string;
+  tipo: string;
+  base: string;
+  porcentaje: Importe;
+  importe: Importe;
+  estado: EstadoComprobanteRetencion;
+  numero: string | null;
+  fechaRecepcion: string | null;
+  recibidoAt: string | null;
+  recibidoPor: string | null;
+  createdAt: string;
+}
+
+/** Tipos de ITBIS y de retención, tal como los lista `/config/tipos-*` (solo `configuracion.editar`). */
+export interface TipoImpuesto {
+  id: string;
+  nombre: string;
+  porcentaje: Importe;
+  activo: boolean;
 }
 
 export interface CobroAfectadoPorFactura {
@@ -164,6 +219,11 @@ export interface FacturaDuplicacionRespuesta {
 export interface FacturaItemSimulado {
   contratoId: string;
   clienteId: string;
+  clienteNombre: string;
+  unidadNombre: string;
+  inmuebleId: string;
+  inmuebleNombre: string;
+  contratoFechaInicio: string;
   moneda: Moneda;
   periodoInicio: string;
   periodoFin: string;
@@ -234,6 +294,8 @@ export interface CobroAsignacion {
 export interface Cobro extends CobroResumen {
   referencia: string | null;
   totalAsignado: Importe;
+  /** Parte devuelta al anular facturas del cobro (moneda recibida); "0.00" si nada. */
+  importeDevuelto: Importe;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
   asignaciones: CobroAsignacion[];
@@ -308,10 +370,10 @@ export interface Fianza {
   devoluciones: FianzaDevolucion[];
 }
 
+/** Catálogos de `GET /catalogos/*`: solo activos y con los campos justos para elegir. */
 export interface FormaPago {
   id: string;
   nombre: string;
-  activa: boolean;
 }
 
 export interface CuentaReceptora {
@@ -319,7 +381,6 @@ export interface CuentaReceptora {
   nombre: string;
   banco: string | null;
   moneda: Moneda;
-  activa: boolean;
 }
 
 export interface Serie {
@@ -328,7 +389,26 @@ export interface Serie {
   prefijo: string | null;
   moneda: Moneda | null;
   tipo: TipoSerie;
-  activa: boolean;
+  generaComprobante: boolean;
+}
+
+export interface Subempresa {
+  id: string;
+  nombre: string;
+}
+
+/** `GET /catalogos/parametros-cobro`: `null` = sin configurar. */
+export interface ParametrosCobro {
+  toleranciaCambioUsd: Importe | null;
+  toleranciaCambioDop: Importe | null;
+}
+
+/** Cuerpo de `POST /fianzas`. */
+export interface FianzaPeticion {
+  contratoId: string;
+  importeExigido: string;
+  moneda: Moneda;
+  numeroFianzas: number;
 }
 
 export interface TipoCambioActual {

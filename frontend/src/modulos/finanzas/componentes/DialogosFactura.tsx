@@ -15,10 +15,11 @@ import {
   useAnularFactura,
   useConvertirProforma,
   useModificarFactura,
+  useParametrosCobro,
   useRehacerMoneda,
-  useSeries,
   useSimularAnulacion,
 } from '../api';
+import { SelectorSerie } from './Comunes';
 import { aDecimal, entradaADecimal, esPositivo } from '../decimal';
 import { textosFinanzas } from '../textos';
 import type { Factura, FacturaLinea, Moneda } from '../tipos';
@@ -167,24 +168,6 @@ export function ModificarLineas({ factura, onCerrar }: { factura: Factura; onCer
   );
 }
 
-function SelectorSerie({ valor, onChange, opcional }: { valor: string; onChange: (v: string) => void; opcional?: boolean }): JSX.Element {
-  const series = useSeries();
-  if (series.isError) {
-    return <Alert tone="warning" title={tc.sinCatalogoTitulo}>{tc.sinCatalogoCuerpo}</Alert>;
-  }
-  const opciones = (series.data ?? []).filter((s) => s.activa).map((s) => ({ value: s.id, label: `${s.numero}${s.prefijo ? ' · ' + s.prefijo : ''} · ${s.tipo}` }));
-  return (
-    <Select
-      label={opcional ? t.convertir.serie : t.rehacer.serie}
-      required={!opcional}
-      placeholder="—"
-      value={valor}
-      options={opcional ? [{ value: '', label: '—' }, ...opciones] : opciones}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  );
-}
-
 export function RehacerEnOtraMoneda({ factura, onCerrar, onCreado }: { factura: Factura; onCerrar: () => void; onCreado: (id: string) => void }): JSX.Element {
   const r = t.rehacer;
   const rehacer = useRehacerMoneda(factura.id);
@@ -216,7 +199,7 @@ export function RehacerEnOtraMoneda({ factura, onCerrar, onCreado }: { factura: 
     >
       <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
         <Select label={r.moneda} value={moneda} options={['USD', 'DOP']} onChange={(e) => setMoneda(e.target.value as Moneda)} />
-        <SelectorSerie valor={serieId} onChange={setSerieId} />
+        <SelectorSerie valor={serieId} onChange={setSerieId} etiqueta={r.serie} moneda={moneda} />
         <Input label={r.total} required inputMode="decimal" suffix={moneda} value={total} onChange={(e) => setTotal(e.target.value)} />
         <Textarea label={r.motivo} required rows={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
         {rehacer.isError && <ErrorAlerta error={rehacer.error} titulo={r.titulo} />}
@@ -245,7 +228,7 @@ export function ConvertirProforma({ factura, onCerrar, onCreado }: { factura: Fa
       }
     >
       <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
-        <SelectorSerie valor={serieId} onChange={setSerieId} opcional />
+        <SelectorSerie valor={serieId} onChange={setSerieId} etiqueta={c.serie} opcional />
         {convertir.isError && <ErrorAlerta error={convertir.error} titulo={c.titulo} />}
       </div>
     </Dialog>
@@ -255,6 +238,8 @@ export function ConvertirProforma({ factura, onCerrar, onCreado }: { factura: Fa
 export function AjusteDiferenciaCambio({ factura, onCerrar }: { factura: Factura; onCerrar: () => void }): JSX.Element {
   const a = t.ajuste;
   const ajuste = useAjusteCambio();
+  const parametros = useParametrosCobro();
+  const tolerancia = factura.moneda === 'USD' ? parametros.data?.toleranciaCambioUsd : parametros.data?.toleranciaCambioDop;
   const [cambio, setCambio] = useState('');
   const [motivo, setMotivo] = useState('');
   const tcv = entradaADecimal(cambio, 6);
@@ -278,6 +263,9 @@ export function AjusteDiferenciaCambio({ factura, onCerrar }: { factura: Factura
       }
     >
       <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
+        {parametros.data && (
+          <Alert tone="info">{tolerancia == null ? a.toleranciaSinConfigurar : a.tolerancia.replace('{importe}', formatearImporte(tolerancia, factura.moneda))}</Alert>
+        )}
         <Input label={a.cambio} required inputMode="decimal" value={cambio} onChange={(e) => setCambio(e.target.value)} />
         <Textarea label={a.motivo} required rows={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
         {ajuste.isError && <ErrorAlerta error={ajuste.error} titulo={a.titulo} />}

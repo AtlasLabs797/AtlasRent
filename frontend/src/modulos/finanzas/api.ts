@@ -5,7 +5,14 @@ import type {
   CobroPeticion,
   CobroResumen,
   CobroSimulacion,
+  ComprobanteRetencion,
   CuentaReceptora,
+  FacturaPeticion,
+  FacturaLineaPeticion,
+  FianzaPeticion,
+  ParametrosCobro,
+  Subempresa,
+  TipoImpuesto,
   CuentasRespuesta,
   Factura,
   FacturaAnulacionSimulacion,
@@ -57,6 +64,7 @@ export function useFacturas(consulta: Consulta) {
 export function useFactura(id: string) {
   return useQuery({
     queryKey: ['finanzas', 'factura', id],
+    enabled: id !== '',
     queryFn: async () => (await clienteHttp.get<Factura>(`/facturas/${id}`)).data,
   });
 }
@@ -98,15 +106,13 @@ export function useTipoCambioActual(moneda: Moneda, activo: boolean) {
   });
 }
 
-// TODO(A#): estos catálogos solo los lee `configuracion.editar` (ConfigController). El gerente, que
-// registra cobros y emite facturas, recibe 403: hace falta una lectura de catálogos con `cobro.registrar`
-// / `factura.emitir`. Mientras tanto la pantalla lo explica en vez de dejar el selector vacío.
+/** Catálogos de lectura mínima (`/catalogos/*`): cada uno exige solo la acción de quien lo usa. */
 export function useFormasPago(activo = true) {
   return useQuery({
     queryKey: ['finanzas', 'formas-pago'],
     enabled: activo,
     retry: false,
-    queryFn: async () => (await clienteHttp.get<Pagina<FormaPago>>('/config/formas-pago', { params: { pageSize: 200 } })).data.data,
+    queryFn: async () => (await clienteHttp.get<Pagina<FormaPago>>('/catalogos/formas-pago')).data.data,
   });
 }
 
@@ -115,7 +121,7 @@ export function useCuentasReceptoras(activo = true) {
     queryKey: ['finanzas', 'cuentas-receptoras'],
     enabled: activo,
     retry: false,
-    queryFn: async () => (await clienteHttp.get<Pagina<CuentaReceptora>>('/config/cuentas', { params: { pageSize: 200 } })).data.data,
+    queryFn: async () => (await clienteHttp.get<Pagina<CuentaReceptora>>('/catalogos/cuentas-receptoras')).data.data,
   });
 }
 
@@ -124,7 +130,45 @@ export function useSeries(activo = true) {
     queryKey: ['finanzas', 'series'],
     enabled: activo,
     retry: false,
-    queryFn: async () => (await clienteHttp.get<Pagina<Serie>>('/config/series', { params: { pageSize: 200 } })).data.data,
+    queryFn: async () => (await clienteHttp.get<Pagina<Serie>>('/catalogos/series')).data.data,
+  });
+}
+
+export function useSubempresas(activo = true) {
+  return useQuery({
+    queryKey: ['finanzas', 'subempresas'],
+    enabled: activo,
+    retry: false,
+    queryFn: async () => (await clienteHttp.get<Pagina<Subempresa>>('/catalogos/subempresas')).data.data,
+  });
+}
+
+/** Tolerancia de diferencia de cambio que aplicará la API al cerrar una factura. */
+export function useParametrosCobro(activo = true) {
+  return useQuery({
+    queryKey: ['finanzas', 'parametros-cobro'],
+    enabled: activo,
+    retry: false,
+    queryFn: async () => (await clienteHttp.get<ParametrosCobro>('/catalogos/parametros-cobro')).data,
+  });
+}
+
+/** Tipos de ITBIS y de retención: solo los lista `configuracion.editar` (no hay catálogo mínimo). */
+export function useTiposImpuesto(tipo: 'itbis' | 'retencion', activo: boolean) {
+  return useQuery({
+    queryKey: ['finanzas', 'tipos', tipo],
+    enabled: activo,
+    retry: false,
+    queryFn: async () => (await clienteHttp.get<Pagina<TipoImpuesto>>(`/config/tipos-${tipo}`, { params: { pageSize: 200 } })).data.data.filter((t) => t.activo),
+  });
+}
+
+export function useComprobanteRetencion(facturaId: string, activo: boolean) {
+  return useQuery({
+    queryKey: ['finanzas', 'comprobante-retencion', facturaId],
+    enabled: activo,
+    queryFn: async () =>
+      (await clienteHttp.get<Pagina<ComprobanteRetencion>>('/comprobantes-retencion', { params: { facturaId, pageSize: 1 } })).data.data[0] ?? null,
   });
 }
 
@@ -133,14 +177,32 @@ export interface OpcionRef {
   label: string;
 }
 
-// La búsqueda del Combobox es local: se traen los 200 primeros (tope de la API). TODO(A#): búsqueda remota si hay más.
-export function useClientes() {
+interface ClienteRef {
+  id: string;
+  numero: number;
+  nombre: string;
+}
+
+const aOpcionCliente = (c: ClienteRef) => ({ value: c.id, label: c.nombre, meta: `CLI-${String(c.numero).padStart(5, '0')}` });
+
+/** Búsqueda remota de clientes por nombre o número (la consulta se debouncea en quien llama). */
+export function useBuscarClientes(q: string) {
   return useQuery({
-    queryKey: ['finanzas', 'clientes'],
+    queryKey: ['finanzas', 'clientes', q],
+    placeholderData: (anterior) => anterior,
     queryFn: async () => {
-      const { data } = await clienteHttp.get<Pagina<{ id: string; numero: number; nombre: string }>>('/clientes', { params: { pageSize: 200 } });
-      return data.data.map((c) => ({ value: c.id, label: c.nombre, meta: `CLI-${String(c.numero).padStart(5, '0')}` }));
+      const { data } = await clienteHttp.get<Pagina<ClienteRef>>('/clientes', { params: limpia({ q: q.trim(), pageSize: 20 }) });
+      return data.data.map(aOpcionCliente);
     },
+  });
+}
+
+/** El cliente ya elegido (p. ej. desde la URL), para poder mostrar su nombre aunque no esté en la búsqueda. */
+export function useClienteElegido(id: string) {
+  return useQuery({
+    queryKey: ['finanzas', 'cliente', id],
+    enabled: id !== '',
+    queryFn: async () => aOpcionCliente((await clienteHttp.get<ClienteRef>(`/clientes/${id}`)).data),
   });
 }
 
@@ -156,6 +218,24 @@ export function useUnidadesDeInmueble(inmuebleId: string) {
     queryKey: ['finanzas', 'unidades', inmuebleId],
     enabled: inmuebleId !== '',
     queryFn: async () => (await clienteHttp.get<Pagina<{ id: string; nombre: string }>>(`/inmuebles/${inmuebleId}/unidades`, { params: { pageSize: 200 } })).data.data,
+  });
+}
+
+export interface ContratoRef {
+  id: string;
+  cliente: string | null;
+  unidad: string | null;
+  moneda: Moneda;
+  fechaInicio: string;
+}
+
+/** Contratos para elegir al dar de alta una fianza (búsqueda remota por `q`). */
+export function useContratos(q: string, activo: boolean) {
+  return useQuery({
+    queryKey: ['finanzas', 'contratos', q],
+    enabled: activo,
+    placeholderData: (anterior) => anterior,
+    queryFn: async () => (await clienteHttp.get<Pagina<ContratoRef>>('/contratos', { params: limpia({ q: q.trim(), pageSize: 20 }) })).data.data,
   });
 }
 
@@ -264,6 +344,55 @@ export function useAccionFianza(id: string, accion: 'devolver' | 'retener' | 'li
   const invalidar = useInvalidar();
   return useMutation({
     mutationFn: async (cuerpo: unknown = undefined) => (await clienteHttp.post<Fianza>(`/fianzas/${id}/${accion}`, cuerpo, conClave(crypto.randomUUID()))).data,
+    onSuccess: invalidar,
+  });
+}
+
+// ---------------------------------------------------------------- borradores, comprobante de retención y alta de fianza
+
+export function useCrearBorrador() {
+  const invalidar = useInvalidar();
+  return useMutation({
+    mutationFn: async ({ cuerpo, clave }: ConClave<FacturaPeticion>) => (await clienteHttp.post<Factura>('/facturas', cuerpo, conClave(clave))).data,
+    onSuccess: invalidar,
+  });
+}
+
+export function useActualizarBorrador(id: string) {
+  const invalidar = useInvalidar();
+  return useMutation({
+    mutationFn: async (cuerpo: FacturaPeticion) => (await clienteHttp.put<Factura>(`/facturas/${id}`, cuerpo, conClave(crypto.randomUUID()))).data,
+    onSuccess: invalidar,
+  });
+}
+
+/** Alta, edición (con `lineaId`) y baja de líneas; todas devuelven la factura con los totales recalculados por la API. */
+export function useLineaBorrador(id: string) {
+  const invalidar = useInvalidar();
+  return useMutation({
+    mutationFn: async (a: { lineaId?: string; cuerpo?: FacturaLineaPeticion; borrar?: boolean }) => {
+      const base = `/facturas/${id}/lineas`;
+      if (a.borrar && a.lineaId) return (await clienteHttp.delete<Factura>(`${base}/${a.lineaId}`, conClave(crypto.randomUUID()))).data;
+      if (a.lineaId) return (await clienteHttp.put<Factura>(`${base}/${a.lineaId}`, a.cuerpo, conClave(crypto.randomUUID()))).data;
+      return (await clienteHttp.post<Factura>(base, a.cuerpo, conClave(crypto.randomUUID()))).data;
+    },
+    onSuccess: invalidar,
+  });
+}
+
+export function useRecibirComprobanteRetencion(id: string) {
+  const invalidar = useInvalidar();
+  return useMutation({
+    mutationFn: async (cuerpo: { numero: string; fechaRecepcion: string }) =>
+      (await clienteHttp.put<ComprobanteRetencion>(`/comprobantes-retencion/${id}/recibir`, cuerpo, conClave(crypto.randomUUID()))).data,
+    onSuccess: invalidar,
+  });
+}
+
+export function useCrearFianza() {
+  const invalidar = useInvalidar();
+  return useMutation({
+    mutationFn: async ({ cuerpo, clave }: ConClave<FianzaPeticion>) => (await clienteHttp.post<Fianza>('/fianzas', cuerpo, conClave(clave))).data,
     onSuccess: invalidar,
   });
 }

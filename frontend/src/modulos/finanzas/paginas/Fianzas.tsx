@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { Button } from '../../../design-system/components/core/Button';
 import { Card } from '../../../design-system/components/core/Card';
 import { DataTable, type DataTableColumn } from '../../../design-system/components/data/DataTable';
 import { Money } from '../../../design-system/components/data/Money';
@@ -11,6 +12,7 @@ import SinPermiso from '../../../paginas/SinPermiso';
 import { ACCIONES } from '../../../permisos';
 import { puede, useSesion } from '../../../sesion/store';
 import { useFianzas } from '../api';
+import { AltaFianza } from '../componentes/AltaFianza';
 import { CargandoTabla, FalloCarga, InsigniaFila, RejillaFiltros } from '../componentes/Comunes';
 import { textosFinanzas } from '../textos';
 import type { FianzaResumen } from '../tipos';
@@ -23,6 +25,7 @@ export default function Fianzas() {
   const identidad = useSesion((s) => s.identidad);
   const navegar = useNavigate();
   const [f, setF] = useState({ moneda: '', page: 1 });
+  const [alta, setAlta] = useState(false);
   const lista = useFianzas({ ...f, pageSize: PAGE_SIZE });
   if (!puede(identidad, ACCIONES.facturaVer)) return <SinPermiso />;
 
@@ -52,7 +55,13 @@ export default function Fianzas() {
         title={t.titulo}
         description={t.descripcion}
         breadcrumbs={[{ label: textos.navegacion.grupos.finanzas }, { label: textos.navegacion.modulos.fianzas.etiqueta }]}
-      />
+      >
+        {puede(identidad, ACCIONES.fianzaMover) && (
+          <Button icon="plus" onClick={() => setAlta(true)}>
+            {t.alta.accion}
+          </Button>
+        )}
+      </PageHeader>
       <Card>
         <RejillaFiltros>
           <Select label={tc.moneda} value={f.moneda} options={[{ value: '', label: tc.todas }, 'USD', 'DOP']} onChange={(e) => setF({ moneda: e.target.value, page: 1 })} />
@@ -73,6 +82,7 @@ export default function Fianzas() {
           </>
         )}
       </Card>
+      {alta && <AltaFianza onCerrar={() => setAlta(false)} onCreada={(id) => navegar(`/fianzas/${id}`)} />}
     </>
   );
 }
