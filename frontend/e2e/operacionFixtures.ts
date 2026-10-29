@@ -86,6 +86,8 @@ export function responderSelectores(api: ApiFalsa): void {
   api.responder('GET', '/prospectos', { body: pagina([]) });
   api.responder('GET', '/inmuebles', { body: pagina([inmueble]) });
   api.responder('GET', `/inmuebles/${INMUEBLE_ID}/unidades`, { body: pagina([unidad]) });
+  api.responder('GET', '/inmuebles/unidades', { body: pagina([unidad]) });
+  api.responder('GET', `/clientes/${CLIENTE_ID}`, { body: cliente });
 }
 
 // ---------------------------------------------------------------- calendario

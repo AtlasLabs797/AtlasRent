@@ -34,6 +34,9 @@ export const textosUnidades = {
     desactivarCuerpo:
       'El inmueble deja de aparecer en las listas. Un inmueble con contratos o facturas detrás no se borra nunca.',
     desactivarConfirmar: 'Desactivar',
+    reactivar: 'Reactivar',
+    reactivando: 'Reactivando…',
+    errorReactivar: 'No se pudo reactivar el inmueble.',
     inactivoAviso: 'Este inmueble está desactivado.',
     errorTitulo: 'No se pudo cargar el inmueble',
     noEncontrado: 'Este inmueble no existe.',
@@ -50,6 +53,14 @@ export const textosUnidades = {
     sinUnidades: 'Sin unidades activas',
     inactivaAviso: 'Esta unidad está desactivada.',
     detalle: 'Unidad',
+    desactivar: 'Desactivar unidad',
+    desactivarTitulo: 'Desactivar unidad',
+    desactivarCuerpo:
+      'La unidad deja de ofrecerse para contratos y reservas nuevos. Si tiene un contrato o una reserva vivos, la API no lo permite: hay que terminarlos o cancelarlos antes.',
+    desactivarConfirmar: 'Desactivar',
+    desactivarError: 'No se pudo desactivar la unidad.',
+    reactivar: 'Reactivar unidad',
+    reactivarError: 'No se pudo reactivar la unidad.',
   },
   formularioInmueble: {
     tituloAlta: 'Nuevo inmueble',

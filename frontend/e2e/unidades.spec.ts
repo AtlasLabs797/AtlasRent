@@ -118,3 +118,37 @@ test('empleado: ve inmuebles y unidades pero no la pestaña de documentos ni pid
   await expect(page.getByRole('tab', { name: 'Documentos' })).toHaveCount(0);
   expect(api.llamadas('GET', `/inmuebles/${INMUEBLE.id}/documentos`)).toBe(0);
 });
+
+test('unidad: desactivar muestra el 409 si tiene contrato o reserva vivos, y una unidad inactiva se reactiva', async ({ page, api }) => {
+  conSesion(api);
+  const inactiva = { ...UNIDAD_MANT, activo: false };
+  api.responder('GET', `/inmuebles/${INMUEBLE.id}`, { body: { ...FICHA, unidades: [UNIDAD, inactiva] } });
+  api.responder('GET', `/inmuebles/${INMUEBLE.id}/documentos`, { body: pagina([]) });
+  api.responder('DELETE', `/inmuebles/unidades/${UNIDAD.id}`, problema(409, 'CON-002', 'Conflicto', 'La unidad tiene una reserva viva.'));
+  api.responder('POST', `/inmuebles/unidades/${UNIDAD_MANT.id}/reactivar`, { body: UNIDAD_MANT });
+
+  await page.goto(`/unidades/${INMUEBLE.id}`);
+  await page.getByRole('button', { name: /Apto 2B/ }).click();
+  await page.getByRole('button', { name: 'Desactivar unidad' }).click();
+  await capturarClaroOscuro(page, 'unidad-desactivar');
+  await page.getByRole('dialog').getByRole('button', { name: 'Desactivar', exact: true }).click();
+  await expect(page.getByText('La unidad tiene una reserva viva.')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancelar' }).click();
+
+  await page.getByRole('button', { name: /Apto 3A/ }).click();
+  await expect(page.getByRole('button', { name: 'Desactivar unidad' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reactivar unidad' }).click();
+  await expect.poll(() => api.llamadas('POST', `/inmuebles/unidades/${UNIDAD_MANT.id}/reactivar`)).toBe(1);
+});
+
+test('inmueble desactivado: se reactiva desde la ficha', async ({ page, api }) => {
+  conSesion(api);
+  api.responder('GET', `/inmuebles/${INMUEBLE.id}`, { body: { ...FICHA, activo: false } });
+  api.responder('GET', `/inmuebles/${INMUEBLE.id}/documentos`, { body: pagina([]) });
+  api.responder('POST', `/inmuebles/${INMUEBLE.id}/reactivar`, { body: INMUEBLE });
+
+  await page.goto(`/unidades/${INMUEBLE.id}`);
+  await expect(page.getByText('Este inmueble está desactivado.')).toBeVisible();
+  await page.getByRole('button', { name: 'Reactivar' }).click();
+  await expect.poll(() => api.llamadas('POST', `/inmuebles/${INMUEBLE.id}/reactivar`)).toBe(1);
+});

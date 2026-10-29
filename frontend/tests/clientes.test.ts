@@ -75,6 +75,8 @@ test('convertir un prospecto copia solo sus datos compartidos y deja las marcas 
   const val = valoresClienteDesdeProspecto({
     id: 'p', nombre: 'Pro', tipo: 'Empresa', documento: '1-01-00000-1', email: null, telefono: '809', notas: null,
     activo: true, createdAt: '2026-10-01T00:00:00Z',
+    clienteId: null,
+    convertidoAt: null,
   });
   assert.equal(val.nombre, 'Pro');
   assert.equal(val.tipo, 'Empresa');

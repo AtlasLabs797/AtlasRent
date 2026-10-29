@@ -49,6 +49,9 @@ export interface ProspectoResumen {
   telefono: string | null;
   activo: boolean;
   createdAt: string;
+  /** Cliente en que se convirtió; `null` mientras sigue siendo prospecto. */
+  clienteId: string | null;
+  convertidoAt: string | null;
 }
 
 export interface ProspectoFicha extends ProspectoResumen {

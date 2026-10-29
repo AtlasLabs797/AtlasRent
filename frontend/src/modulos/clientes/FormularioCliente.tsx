@@ -1,5 +1,6 @@
 import { useEffect, useState, type JSX } from 'react';
 import { useForm } from 'react-hook-form';
+import { aErrorApi } from '../../api/errores';
 import { aplicarErroresApi } from '../../api/formularios';
 import { Button } from '../../design-system/components/core/Button';
 import { Alert } from '../../design-system/components/feedback/Alert';
@@ -10,7 +11,7 @@ import { Select } from '../../design-system/components/forms/Select';
 import { Textarea } from '../../design-system/components/forms/Textarea';
 import { ACCIONES } from '../../permisos';
 import { puede, useSesion } from '../../sesion/store';
-import { useGuardarCliente } from './api';
+import { useConvertirProspecto, useGuardarCliente } from './api';
 import { cuerpoCliente, emailPlausible, numeroValido, TIPOS, valoresCliente, type ValoresCliente } from './logica';
 import { textosClientes } from './textos';
 import type { ClienteFicha, ClienteResumen } from './tipos';
@@ -25,15 +26,20 @@ interface Props {
   ficha?: ClienteFicha | undefined;
   /** Valores de partida de un alta (p. ej. copiados de un prospecto). */
   inicial?: ValoresCliente | undefined;
+  /** Si se indica, el alta convierte este prospecto (`POST /prospectos/{id}/convertir`) en vez de crear un cliente suelto. */
+  convertirProspectoId?: string | undefined;
   onGuardado: (cliente: ClienteResumen) => void;
 }
 
 /** Alta y edición de cliente en un panel lateral. El número solo se ofrece a quien puede fijarlo. */
-export function FormularioCliente({ open, onClose, ficha, inicial, onGuardado }: Props): JSX.Element {
+export function FormularioCliente({ open, onClose, ficha, inicial, convertirProspectoId, onGuardado }: Props): JSX.Element {
   const alta = ficha === undefined;
   const identidad = useSesion((s) => s.identidad);
-  const puedeFijarNumero = alta && puede(identidad, ACCIONES.configuracionEditar);
+  const convirtiendo = convertirProspectoId !== undefined;
+  // La API rechaza el número al convertir: lo asigna la secuencia.
+  const puedeFijarNumero = alta && !convirtiendo && puede(identidad, ACCIONES.configuracionEditar);
   const guardar = useGuardarCliente();
+  const convertir = useConvertirProspecto();
   const [general, setGeneral] = useState<string | null>(null);
   const { register, handleSubmit, setError, reset, watch, setValue, formState } = useForm<ValoresCliente>({
     defaultValues: ficha ? valoresCliente(ficha) : (inicial ?? valoresCliente()),
@@ -49,12 +55,20 @@ export function FormularioCliente({ open, onClose, ficha, inicial, onGuardado }:
   async function enviar(v: ValoresCliente) {
     setGeneral(null);
     try {
-      const guardado = await guardar.mutateAsync({
-        ...(ficha ? { id: ficha.id } : {}),
-        cuerpo: cuerpoCliente(v, { alta, puedeFijarNumero }),
-      });
+      const cuerpo = cuerpoCliente(v, { alta, puedeFijarNumero });
+      const guardado = convirtiendo
+        ? await convertir.mutateAsync({ id: convertirProspectoId, cuerpo })
+        : await guardar.mutateAsync({ ...(ficha ? { id: ficha.id } : {}), cuerpo });
       onGuardado(guardado);
     } catch (e) {
+      const api = aErrorApi(e);
+      if (convirtiendo && api.status === 409) {
+        // 409: el prospecto ya se convirtió o el documento ya es de otro cliente. El texto lo da la API.
+        const detalle = api.detail ?? textosClientes.prospectos.convertirConflicto;
+        if (/documento/i.test(detalle)) setError('documento', { type: 'servidor', message: detalle });
+        setGeneral(detalle);
+        return;
+      }
       setGeneral(aplicarErroresApi(e, setError, CAMPOS, t.errorGeneral));
     }
   }
@@ -65,8 +79,8 @@ export function FormularioCliente({ open, onClose, ficha, inicial, onGuardado }:
     <Drawer
       open={open}
       onClose={isSubmitting ? undefined : onClose}
-      title={alta ? t.tituloAlta : t.tituloEdicion}
-      description={alta ? t.descripcionAlta : undefined}
+      title={convirtiendo ? textosClientes.prospectos.convertirTitulo : alta ? t.tituloAlta : t.tituloEdicion}
+      description={convirtiendo ? textosClientes.prospectos.convertirDescripcion : alta ? t.descripcionAlta : undefined}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>
@@ -80,7 +94,7 @@ export function FormularioCliente({ open, onClose, ficha, inicial, onGuardado }:
     >
       <form id="formulario-cliente" onSubmit={handleSubmit(enviar)} noValidate style={{ display: 'grid', gap: 'var(--space-7)' }}>
         {general && (
-          <Alert tone="danger" title={t.errorGeneral}>
+          <Alert tone="danger" title={convirtiendo ? t.errorConvertir : t.errorGeneral}>
             {general}
           </Alert>
         )}

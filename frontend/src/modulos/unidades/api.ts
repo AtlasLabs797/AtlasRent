@@ -59,6 +59,16 @@ export function useDesactivarInmueble() {
   });
 }
 
+export function useReactivarInmueble() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await clienteHttp.post(`/inmuebles/${id}/reactivar`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inmuebles'] }),
+  });
+}
+
 /** Alta (con `inmuebleId`) o cambio (con `unidadId`) de una unidad. */
 export function useGuardarUnidad(inmuebleId: string) {
   const qc = useQueryClient();
@@ -68,6 +78,25 @@ export function useGuardarUnidad(inmuebleId: string) {
         ? (await clienteHttp.put<Unidad>(`/inmuebles/unidades/${unidadId}`, cuerpo)).data
         : (await clienteHttp.post<Unidad>(`/inmuebles/${inmuebleId}/unidades`, cuerpo)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['inmuebles', 'ficha', inmuebleId] }),
+  });
+}
+
+/**
+ * Baja lógica de una unidad (`DELETE /inmuebles/unidades/{id}`): 409 si tiene un contrato o una
+ * reserva vivos. Reactivar: `POST /inmuebles/unidades/{id}/reactivar`.
+ */
+export function useCambiarActivaUnidad(inmuebleId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ unidadId, activar }: { unidadId: string; activar: boolean }) =>
+      activar
+        ? (await clienteHttp.post<Unidad>(`/inmuebles/unidades/${unidadId}/reactivar`)).data
+        : (await clienteHttp.delete<Unidad>(`/inmuebles/unidades/${unidadId}`)).data,
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ['inmuebles', 'ficha', inmuebleId] }),
+        qc.invalidateQueries({ queryKey: ['operacion', 'unidades'] }),
+      ]),
   });
 }
 

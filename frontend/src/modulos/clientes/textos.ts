@@ -30,6 +30,8 @@ export const textosClientes = {
     migas: 'Clientes',
     editar: 'Editar',
     desactivar: 'Desactivar',
+    reactivar: 'Reactivar',
+    reactivando: 'Reactivando…',
     estadoCuenta: 'Estado de cuenta (PDF)',
     descargando: 'Descargando…',
     errorDescarga: 'No se pudo descargar el PDF.',
@@ -56,6 +58,7 @@ export const textosClientes = {
     desactivarCuerpo:
       'El cliente deja de aparecer en las listas, pero conserva sus facturas y cobros. Un cliente con facturas nunca se borra.',
     desactivarConfirmar: 'Desactivar',
+    errorReactivar: 'No se pudo reactivar el cliente.',
     contactoVacioTitulo: 'Sin contactos',
     contactoVacioCuerpo: 'Añade personas de contacto con su email y teléfono.',
   },
@@ -95,6 +98,7 @@ export const textosClientes = {
     guardando: 'Guardando…',
     cancelar: 'Cancelar',
     errorGeneral: 'No se pudo guardar. Inténtalo de nuevo.',
+    errorConvertir: 'No se pudo convertir el prospecto.',
     errores: {
       obligatorio: 'Este campo es obligatorio.',
       email: 'Escribe un email válido.',
@@ -114,10 +118,18 @@ export const textosClientes = {
     tituloAlta: 'Nuevo prospecto',
     tituloEdicion: 'Editar prospecto',
     cargando: 'Cargando prospecto…',
-    crearCliente: 'Crear cliente con estos datos',
-    crearClienteAviso:
-      // TODO(A#): la API no tiene "convertir prospecto en cliente". Esto abre el alta de cliente con los datos copiados y el prospecto sigue como está; falta decidir si debe desactivarse y vincularse.
-      'La API todavía no convierte prospectos: se abre el alta de cliente con estos datos y el prospecto se queda como está.',
+    convertir: 'Convertir en cliente',
+    convertirAviso:
+      'Se abre el alta de cliente con los datos del prospecto. Al guardar, el prospecto queda convertido y sus cotizaciones y reservas pasan al cliente nuevo.',
+    convertirTitulo: 'Convertir prospecto en cliente',
+    convertirDescripcion:
+      'Revisa los datos. Al guardar se crea el cliente y las cotizaciones y reservas de este prospecto pasan a él. Un prospecto convertido no se puede volver a convertir.',
+    convertirConflicto: 'El prospecto ya se convirtió en cliente o el documento ya pertenece a otro cliente.',
+    convertido: 'Este prospecto ya es cliente.',
+    verCliente: 'Ver cliente',
+    reactivar: 'Reactivar',
+    reactivarError: 'No se pudo reactivar el prospecto.',
+    inactivoAviso: 'Este prospecto está desactivado.',
     desactivar: 'Desactivar',
     desactivarTitulo: 'Desactivar prospecto',
     desactivarCuerpo: 'El prospecto deja de aparecer en las listas. Sus cotizaciones se conservan.',

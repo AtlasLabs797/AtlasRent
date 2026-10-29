@@ -1,15 +1,17 @@
 import { useEffect, useState, type JSX } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { aErrorApi } from '../../api/errores';
 import { aplicarErroresApi } from '../../api/formularios';
 import { Badge } from '../../design-system/components/core/Badge';
 import { Button } from '../../design-system/components/core/Button';
 import { Alert } from '../../design-system/components/feedback/Alert';
+import { Dialog } from '../../design-system/components/feedback/Dialog';
 import { Drawer } from '../../design-system/components/feedback/Drawer';
 import { Checkbox } from '../../design-system/components/forms/Checkbox';
 import { Input } from '../../design-system/components/forms/Input';
 import { Select } from '../../design-system/components/forms/Select';
 import { Textarea } from '../../design-system/components/forms/Textarea';
-import { useGuardarUnidad } from './api';
+import { useCambiarActivaUnidad, useGuardarUnidad } from './api';
 import {
   claveTarifa,
   cuerpoUnidad,
@@ -27,6 +29,7 @@ import { textosUnidades } from './textos';
 import type { EstadoUnidad, ModalidadAlquiler, TipoUnidad, Unidad } from './tipos';
 
 const t = textosUnidades.formularioUnidad;
+const u = textosUnidades.unidades;
 const CAMPOS = ['nombre', 'tipo', 'estadoManual', 'modalidades', 'tarifas', 'metrosCuadrados', 'capacidad', 'habitaciones', 'banos', 'medidor', 'notas'] as const;
 
 interface Props {
@@ -40,6 +43,8 @@ interface Props {
 export function FormularioUnidad({ inmuebleId, unidad, onClose }: Props): JSX.Element {
   const existente = unidad !== null && unidad !== 'nueva' ? unidad : undefined;
   const guardar = useGuardarUnidad(inmuebleId);
+  const cambiarActiva = useCambiarActivaUnidad(inmuebleId);
+  const [confirmando, setConfirmando] = useState(false);
   const [general, setGeneral] = useState<string | null>(null);
   const { register, handleSubmit, reset, setError, watch, setValue, control, formState } = useForm<ValoresUnidad>({ defaultValues: valoresUnidad(existente) });
   const { errors, isSubmitting } = formState;
@@ -61,6 +66,20 @@ export function FormularioUnidad({ inmuebleId, unidad, onClose }: Props): JSX.El
     }
   }
 
+  /** Desactivar (409 si hay contrato o reserva vivos: la API da el motivo) o reactivar. */
+  async function cambiarEstado(activar: boolean) {
+    if (!existente) return;
+    setGeneral(null);
+    try {
+      await cambiarActiva.mutateAsync({ unidadId: existente.id, activar });
+      setConfirmando(false);
+      onClose();
+    } catch (e) {
+      setConfirmando(false);
+      setGeneral(aErrorApi(e).detail ?? (activar ? u.reactivarError : u.desactivarError));
+    }
+  }
+
   function alternarModalidad(m: ModalidadAlquiler, marcada: boolean) {
     const actuales = watch('modalidades');
     setValue('modalidades', marcada ? [...actuales, m] : actuales.filter((x) => x !== m), { shouldValidate: true });
@@ -71,6 +90,7 @@ export function FormularioUnidad({ inmuebleId, unidad, onClose }: Props): JSX.El
   const entero = (v: string) => enteroValido(v) || t.numeroError;
 
   return (
+    <>
     <Drawer
       open={unidad !== null}
       onClose={isSubmitting ? undefined : onClose}
@@ -78,6 +98,16 @@ export function FormularioUnidad({ inmuebleId, unidad, onClose }: Props): JSX.El
       description={existente ? textosUnidades.unidades.detalle : undefined}
       footer={
         <>
+          {existente?.activo && (
+            <Button variant="ghost" onClick={() => setConfirmando(true)} disabled={isSubmitting} style={{ marginRight: 'auto' }}>
+              {u.desactivar}
+            </Button>
+          )}
+          {existente && !existente.activo && (
+            <Button variant="secondary" onClick={() => void cambiarEstado(true)} disabled={isSubmitting || cambiarActiva.isPending} style={{ marginRight: 'auto' }}>
+              {u.reactivar}
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>
             {t.cancelar}
           </Button>
@@ -161,5 +191,23 @@ export function FormularioUnidad({ inmuebleId, unidad, onClose }: Props): JSX.El
         <Textarea label={t.notas} rows={3} error={errors.notas?.message} {...register('notas', { maxLength: largo(1000) })} />
       </form>
     </Drawer>
+    <Dialog
+      open={confirmando}
+      title={u.desactivarTitulo}
+      onClose={() => setConfirmando(false)}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setConfirmando(false)}>
+            {t.cancelar}
+          </Button>
+          <Button variant="danger" disabled={cambiarActiva.isPending} onClick={() => void cambiarEstado(false)}>
+            {u.desactivarConfirmar}
+          </Button>
+        </>
+      }
+    >
+      <p style={{ margin: 0, color: 'var(--text-muted)' }}>{u.desactivarCuerpo}</p>
+    </Dialog>
+    </>
   );
 }
