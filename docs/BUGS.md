@@ -22,6 +22,18 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-060 · La API no arrancaba con el planificador de jobs activo: `AddOrUpdate` recibía `options: null`
+- Fecha detectado: 02/11/2026 · Fecha corregido: 02/11/2026
+- Gravedad: **Alta** · Estado: CORREGIDO · Módulo: backend / jobs (F1-12)
+- Detectado por: arranque real de la API en desarrollo (`dotnet run`), primer intento de levantar el back
+- Síntoma: la aplicación moría al arrancar con `System.ArgumentNullException: Value cannot be null. (Parameter 'options')` en `Hangfire.RecurringJobManager.AddOrUpdate`, desde `ProgramacionJobs.Registrar` (`Program.cs:552`). **La API no llegaba a abrir el puerto ni a servir una sola petición**, y sin embargo las pruebas verdes: el arranque real no se había ejecutado nunca en esta máquina.
+- Cómo reproducir: `dotnet run` sobre `backend/AtlasRent.Api` con `Jobs__ServidorActivo` activo (valor por defecto) y una base `atlas_rent_jobs` alcanzable. Falla en cuanto el planificador registra el primer trabajo.
+- Causa raíz: `ProgramacionJobs.Registrar` pasaba `null!` como `RecurringJobOptions` a las dos llamadas de `AddOrUpdate`. En Hangfire 1.8.25 esa sobrecarga **exige** un objeto de opciones y lanza `ArgumentNullException` si recibe `null`; el `null!` solo callaba al compilador. El doble de pruebas del repo (`RecurrentesFalsos`) aceptaba `null` sin validar, así que el test de registro pasaba con el defecto presente y nadie lo vio.
+- Solución: se pasa `new RecurringJobOptions()` en las dos llamadas (valores por defecto de Hangfire: zona UTC y `MisfireHandling.Relaxed`, que es lo que ya documenta `docs/DOC_TECNICA.md` §8). Además, el doble de pruebas **valida** que las opciones no sean nulas, igual que hace la librería real, para que el defecto no pueda volver a pasar inadvertido.
+- Test que lo cubre: `Jobs/ProgramacionJobsTests` (28/28 en verde). Comprobado en las dos direcciones: con el defecto reintroducido el test falla; restaurado, pasa.
+- Commit/PR: pendiente del orquestador.
+- Datos afectados: ninguno. Es un fallo de arranque, no de datos.
+
 ### BUG-059 · HuecosApiTests.SubempresasTraenPropietariaYFacturadora depende del tamaño de la base compartida
 - Fecha detectado: 29/10/2026 · Fecha corregido: 29/10/2026
 - Gravedad: **Baja** · Estado: CORREGIDO · Módulo: pruebas / catálogos

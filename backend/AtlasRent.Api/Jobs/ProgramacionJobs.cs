@@ -254,7 +254,7 @@ public static class ProgramacionJobs
                 trabajo.Ruta,
                 new Job(trabajo.Tipo, trabajo.Tipo.GetMethod(trabajo.Metodo)!, [CancellationToken.None]),
                 trabajo.Cron,
-                null!);
+                new RecurringJobOptions());
         }
 
         recurrentes.AddOrUpdate(
@@ -264,7 +264,7 @@ public static class ProgramacionJobs
                 typeof(TrabajoBarridoEnvios).GetMethod(nameof(TrabajoBarridoEnvios.EjecutarAsync))!,
                 [CancellationToken.None]),
             CronBarridoEnvios,
-            null!);
+            new RecurringJobOptions());
     }
 
     /// <summary>

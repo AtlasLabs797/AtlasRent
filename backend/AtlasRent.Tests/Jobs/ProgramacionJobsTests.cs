@@ -497,7 +497,13 @@ public sealed class ProgramacionJobsTests
             Job job,
             string cronExpression,
             RecurringJobOptions options)
-            => Registrados.Add((recurringJobId, job, cronExpression));
+        {
+            // Hangfire 1.8 lanza ArgumentNullException si las opciones llegan nulas. El doble las
+            // valida igual que la librería real: si no, el registro de los trabajos deja de fallar
+            // en el test y vuelve a fallar al arrancar la API (BUG-060).
+            options.Should().NotBeNull("Hangfire no admite opciones nulas al registrar un trabajo recurrente.");
+            Registrados.Add((recurringJobId, job, cronExpression));
+        }
 
         public void Trigger(string recurringJobId) => throw new NotSupportedException();
 

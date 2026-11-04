@@ -175,6 +175,9 @@ En la respuesta final separa **verificado**, **bloqueado** y **pendiente**. No d
 - PostgreSQL de desarrollo: `docker compose -f docker-compose.dev.yml up -d`, puerto **5433** (el 5432 lo ocupa otro PostgreSQL en esta máquina; no lo toques).
 - Base `atlas_rent` con roles `rent_owner`, `rent_migrador`, `rent_app`, `rent_backup`, creados desde `db/scripts/01_roles.sql` y `02_basedatos.sql`. `03_auditoria_append_only.sql` se aplica desde la migración de F1-03.
 - Credenciales de desarrollo en `.env.dev` (ignorado por git; no leer ni imprimir). Al crear la API, pasarlas a `dotnet user-secrets`.
+- **En `dotnet user-secrets` las claves van con `:` y no con `__`.** El proveedor JSON de los secretos de usuario no traduce `__` a `:` (solo lo hace el de variables de entorno), así que `Seguridad__JwtClave` se guarda sin error y **no se lee**: la aplicación falla al arrancar diciendo que falta la clave. Es el mismo nombre de variable con otro separador según dónde esté: `Seguridad:JwtClave` en user-secrets, `Seguridad__JwtClave` en el entorno.
+- La API **no arranca sin** `Seguridad:JwtClave`, `Seguridad:CifradoClave`, `Seguridad:HmacDocumentoClave`, `Backup:CarpetaLocal`, `Backup:ClaveCifrado`, `Almacen:Documentos` y las cuatro cadenas de conexión. Falla al arrancar, con el nombre de la variable que falta: es a propósito, para que un despliegue sin secreto no lead con una clave inventada (AGENTS.md §6).
+- **Para arrancar el backend** con las migraciones aplicadas y una sesión: `dotnet ef database update` (toma `ConnectionStrings__Default` del entorno) y `dotnet run --project backend/AtlasRent.Api` con `ASPNETCORE_URLS=http://localhost:5100` (el 5100 es el que espera el proxy de Vite, `frontend/vite.config.ts`).
 - Herramientas: .NET SDK 10.0.302, `dotnet-ef` 10, Node 24, Docker Desktop, `gh`.
 - Estructura de carpetas: `docs/DOC_TECNICA.md` §3 (`backend/`, `frontend/`, `scripts/`, `db/scripts/`).
 
@@ -205,6 +208,7 @@ Atascos típicos en esta máquina: Vite/Chromium con `spawn EPERM`, servidores d
 - Toda herramienta larga (tests, docker, migraciones, builds) con timeout y en modo no interactivo. Antes de lanzarla, define criterio de éxito y alternativa si falla.
 - **Máximo dos intentos por la misma vía.** Si el error se repite, cambia de estrategia, pide elevación una vez o registra el bloqueo. Insistir no es rigor.
 - No arranques servidores dev de larga duración desde la shell "para mirar". Usa build finito, tests o Playwright con un proceso que arranca y se cierra dentro del timeout.
+- **Cuando el responsable pide la aplicación encendida, no basta con una tarea en segundo plano:** una tarea de fondo tiene fecha de caducidad (una hora) y **mata el proceso hijo al vencer**. Arranca el backend y el frontend **desacoplados** con `Start-Process` y sus logs redirigidos a un archivo (`C:\AtlasRent\data\`), no como tarea en segundo plano: así sobreviven al cierre de la sesión y se pueden comprobar con `Get-NetTCPConnection` y con `/health`. Verificado el 02/11/2026: las dos tareas en segundo plano (API y Vite) cayeron a la hora y los dos servicios se relanzaron así.
 - `apphost.exe` bloqueado: prueba `-p:UseAppHost=false`. No mates procesos a ciegas; identifica el PID.
 - Docker/Testcontainers no disponible: ejecuta la suite sin Docker y deja la tarea bloqueada por los tests pendientes. No finjas verde.
 - Limpiezas solo sobre rutas absolutas verificadas dentro del workspace. Nada de `robocopy /MIR`.
