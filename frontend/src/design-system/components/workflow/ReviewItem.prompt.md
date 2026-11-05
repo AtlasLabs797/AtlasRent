@@ -1,0 +1,1 @@
+Human-prepared operations. AI proposals use ApprovalCard instead — keep the two queues visually distinct. Rejecting opens a Dialog with a required Motivo.

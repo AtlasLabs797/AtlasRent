@@ -1,0 +1,3 @@
+/* Fuentes Geist y Geist Mono autoalojadas: las importa @fontsource desde main.tsx (DESIGN.md §1.4).
+   Antes esta hoja importaba Google Fonts; nada de red en tiempo de ejecución.
+   --font-sans ya incluye "Geist Sans", que es la familia que registra @fontsource/geist-sans. */

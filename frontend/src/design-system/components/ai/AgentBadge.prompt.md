@@ -1,0 +1,1 @@
+Every agent-created record, proposal or chat answer names its agent. Never use the accent for agents.

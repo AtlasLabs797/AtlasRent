@@ -1,0 +1,1 @@
+Dashboard "Ocupación" card and inmueble detail. `legend={false}` for a compact inline bar in tables.

@@ -37,7 +37,8 @@ Se hace en F1 y se documenta en `docs/DOC_TECNICA.md`:
 4. Fuentes Geist / Geist Mono: autoalojadas con `@fontsource/geist-sans` y `@fontsource/geist-mono` (pesos 300/400/600/700; mono 400/600), importadas en `main.tsx`. En la copia del frontend, `tokens/fonts.css` deja de importar Google Fonts y queda vacío: `--font-sans` ya incluye "Geist Sans", el nombre de familia que registra `@fontsource/geist-sans`.
 5. Tema claro/oscuro: mecanismo en §3.1 y en `docs/DOC_TECNICA.md` §3.1.
 6. Sin Tailwind, Bootstrap, shadcn ni CSS-in-JS. Clases del DS con prefijo `ar-` (BEM) y variables CSS de `tokens/`.
-7. Cuando se cambie algo del DS (tokens o componentes), se cambia primero en `Atlas Rent Design System/` y después se copia al frontend, para que las dos copias no diverjan.
+7. Están portados los 59 componentes del DS (`frontend/src/design-system/components/**`, cada uno con su `.prompt.md`) y se ven en `/componentes`, en claro y oscuro. Dos ajustes respecto al original: `Money` acepta `amount` como string decimal (se formatea sin coma flotante) y `Icon` lleva un mapa de alias porque lucide-react 1.x renombró `trash-2`, `building-2` y `file-signature`. `InvoiceLines`, `PaymentAllocation`, `DepositSummary` e `InventoryChecklist` suman con `Number` solo para vista previa: la API es quien calcula (AGENTS §6). Los ajustes de `Money` e `Icon` están solo en la copia del frontend: pendiente replicarlos en `Atlas Rent Design System/` (§1.8).
+8. Cuando se cambie algo del DS (tokens o componentes), se cambia primero en `Atlas Rent Design System/` y después se copia al frontend, para que las dos copias no diverjan.
 
 ## 2. Principios
 
@@ -146,8 +147,14 @@ Paridad completa (D31 de la especificación). Los tokens del tema oscuro están 
 - **Pantallas**: siempre `AppShell` + `PageHeader`. Nada de shells, dropdowns o filas de detalle hechas a mano — usar AppShell, Menu, KeyValueList, UnitCard.
 - **Empleado sin permisos**: totales con `RestrictedValue`, no ocultos en silencio.
 - **IA**: toda acción de agente pasa por `ApprovalCard` (Aprobar / Rechazar / Modificar y aprobar) con `AgentBadge` y evidencia.
+- **Búsqueda remota** (AUD-11): `Combobox` con la prop `onSearch` no filtra en local; la pantalla consulta la API con debounce de 300 ms y conserva la opción ya elegida. Es lo que usan los selectores de cliente y de contrato (cartera de más de 200).
+- **Detalle de auditoría**: tarjeta bajo la tabla, no modal; `datos` como JSON formateado en `<pre>`, nunca como HTML.
 
 ---
+
+### Patrón: calendario de disponibilidad (`frontend/src/modulos/calendario/`)
+
+Cuadrícula unidad × día (no es un componente del DS). Filas virtualizadas con TanStack Virtual, primera columna y cabecera fijas. Una casilla por día, solo con tokens de estado de unidad: libre `--success-soft`, contrato `--unit-ocupado`, reserva `--unit-reservado`, mantenimiento `--unit-mantenimiento`, fuera de servicio `--surface-sunken` con borde `--unit-fuera`. El estado no depende solo del color: lleva letra (C, R, D, M). Un único medio día reservado se pinta a medias. Cada casilla es un botón con `aria-label` "unidad, fecha: estado" y abre un `Drawer` con el detalle.
 
 ## 5. Contenido
 
@@ -184,4 +191,9 @@ Diseño base **[Supuesto, A2]**: se ajusta cuando el responsable aporte los ejem
 
 - Logo real (SVG) y fuentes propias si existen → `assets/` + `tokens/fonts.css`.
 - Ajustar el diseño de PDF con los ejemplos por serie de F0-06.
+- `--surface-sunken` en oscuro (`#151517`) apenas se distingue del fondo de la barra superior: el control de tema (`SegmentedControl`) pierde su pista. Revisar el token en el DS.
+- Los componentes con textos fijos en español (`Dialog` "Cerrar", `Pagination` "de", `ApprovalCard`, etc.) no están en `i18n/textos.ts`: cuando se active el inglés habrá que parametrizarlos.
+- Los desplegables (`Select`, `Combobox`, `DatePicker`, `Menu`) cierran con clic fuera y Escape pero `Dialog` y `Drawer` no atrapan el foco; `ConfirmarDestructivo` solo añade Escape.
+- La lista de fianzas (Cliente, Unidad y siete columnas de importes) no cabe a 1280 px: Saldo y Estado quedan fuera de la vista. Igual que la tabla de cuentas de 11 columnas: hace falta un criterio de columnas prioritarias.
+- La prop `onSearch` de `Combobox` está en el frontend y en `Atlas Rent Design System/components/forms/`; revisar que el DS la documente en su muestra.
 - Accesibilidad: el DS cubre contraste, `:focus-visible` e iconos `aria-hidden`. Roles ARIA y navegación por teclado se verifican al portar cada componente (F1-13).

@@ -32,6 +32,7 @@ Cada documento tiene un papel. Referencia, no dupliques.
 | `docs/ESPECIFICACION.md` | QUÉ construir. Fuente de verdad funcional; manda sobre el resto | Solo con decisión del responsable |
 | `docs/PLAN.md` | Fases, tareas, criterios de aceptación, estado | Al empezar y cerrar cada tarea |
 | `docs/PROCEDIMIENTOS.md` | Pasos fijos: siguiente tarea, cerrar tarea, registrar bug, registrar seguridad, revisión de seguridad | Si cambia el flujo de trabajo |
+| `docs/F0/` | Procedimiento de cada preparativo humano de la Fase 0 (`00-estado.md` es el índice) | Al cerrar o cambiar el estado de una tarea de F0 |
 | `docs/DESIGN.md` | **Todo lo de diseño**: reglas de interfaz, tokens, temas claro/oscuro, componentes, contenido, PDF y dónde está el design system | Al añadir o cambiar un patrón visual |
 | `docs/DOC_TECNICA.md` | CÓMO está construido: versiones, estructura, BD, API, jobs | En cada cambio estructural, de BD, API, jobs o versiones |
 | `docs/MANUAL_USUARIO.md` | Uso para usuarios finales, lenguaje simple | Al terminar una función visible |
@@ -63,11 +64,11 @@ Versiones exactas en `docs/DOC_TECNICA.md` §2. No cambies una versión ni añad
 
 Los pasos detallados están en `docs/PROCEDIMIENTOS.md`. En resumen:
 
-1. **Una tarea del plan por sesión.** Rama `tarea/<ID>-<nombre-corto>` desde `main`; márcala EN CURSO en `docs/PLAN.md` (§1 de PROCEDIMIENTOS).
+1. **Una tarea del plan por sesión.** Se trabaja en la rama `V-01.05`, la única activa además de `main`, que tiene todas las fases y la auditoría. No se crean ramas por tarea. Marca la tarea EN CURSO en `docs/PLAN.md` (§1 de PROCEDIMIENTOS).
 2. **Antes de escribir código**, resume en ~5 líneas qué vas a tocar y qué test probará cada criterio de aceptación. Espera confirmación. Para cambios triviales (typo, una línea obvia) no hace falta.
 3. Declara tus supuestos. Si la especificación es ambigua o contradictoria, para y pregunta: no inventes reglas de negocio ni cifras fiscales. Deja `// TODO(A#)` con la pregunta abierta.
 4. Implementa con tests. Cada tarea cabe en una sesión y un PR revisable; si no, propón dividirla.
-5. Cierra la tarea (§2 de PROCEDIMIENTOS): verificación §8 + registros §7. PR a `main`; otra persona revisa.
+5. Cierra la tarea (§2 de PROCEDIMIENTOS): verificación §8 + registros §7. Commit en `V-01.05`; a `main` solo se pasa por PR, cuando lo decida el responsable, y otra persona lo revisa.
 6. Bugs y seguridad: §3 y §4 de PROCEDIMIENTOS. Al cerrar cada fase: revisión de seguridad (§5).
 7. Commits pequeños `tipo(modulo): descripcion` (`feat`, `fix`, `sec`, `test`, `docs`, `refactor`, `chore`). Nunca commits directos a `main`, `push --force` ni `reset --hard`. No hagas push sin permiso.
 
@@ -139,6 +140,15 @@ dotnet test -c Release
 dotnet list package --vulnerable --include-transitive
 dotnet ef database update   # contra BD vacía de desarrollo
 ```
+**Aviso (19/10/2026):** `dotnet test` está aquí como nombre de la comprobación, no como comando que funcione. Los tests son xUnit v3 con runner en proceso y **`dotnet test` termina sin ejecutar una sola prueba**, silenciosamente, con todo en verde. Para ejecutarlos de verdad, el ejecutable de pruebas:
+```
+backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe                       # toda la suite
+backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe -namespace <ns>        # un namespace
+backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe -class <ns.Clase>      # una clase
+```
+En Linux (la CI): `dotnet backend/AtlasRent.Tests/bin/Release/net10.0/AtlasRent.Tests.dll`. El runner sale con 0 aunque se ejecuten 0 pruebas, así que la CI también falla si el total es 0 (BUG-047).
+Es también la forma de no lanzar la suite entera cuando solo toca comprobar una tarea: **dos ejecuciones a la vez se pelean por `bin\AtlasRent.Tests.dll`**, una espera a que la otra suelte el binario, y la suite tarda 15 minutos en vez de 10 por eso. Compila antes de ejecutar, que el binario es de la configuración `Release`.
+**Aviso (05/11/2026):** una suite verde en Windows **no** dice que la CI esté verde. La CI corre en Linux, y hay tres cosas que cambian el resultado sin que se note en local: la **cultura** del servidor (invariante en Linux: los importes salían "1.68" y no "1,68"), la **zona horaria** (las fechas de negocio son America/Santo_Domingo y no UTC) y el **orden** en que xUnit ejecuta las pruebas de una clase (un doble de prueba compartido se lleva el estado de la anterior). Cuando la CI falle en pruebas que en local pasaban, mira primero esas tres cosas antes de suspectar del código.
 Frontend (cuando exista `frontend/`):
 ```
 npm --prefix frontend ci
@@ -166,6 +176,9 @@ En la respuesta final separa **verificado**, **bloqueado** y **pendiente**. No d
 - PostgreSQL de desarrollo: `docker compose -f docker-compose.dev.yml up -d`, puerto **5433** (el 5432 lo ocupa otro PostgreSQL en esta máquina; no lo toques).
 - Base `atlas_rent` con roles `rent_owner`, `rent_migrador`, `rent_app`, `rent_backup`, creados desde `db/scripts/01_roles.sql` y `02_basedatos.sql`. `03_auditoria_append_only.sql` se aplica desde la migración de F1-03.
 - Credenciales de desarrollo en `.env.dev` (ignorado por git; no leer ni imprimir). Al crear la API, pasarlas a `dotnet user-secrets`.
+- **En `dotnet user-secrets` las claves van con `:` y no con `__`.** El proveedor JSON de los secretos de usuario no traduce `__` a `:` (solo lo hace el de variables de entorno), así que `Seguridad__JwtClave` se guarda sin error y **no se lee**: la aplicación falla al arrancar diciendo que falta la clave. Es el mismo nombre de variable con otro separador según dónde esté: `Seguridad:JwtClave` en user-secrets, `Seguridad__JwtClave` en el entorno.
+- La API **no arranca sin** `Seguridad:JwtClave`, `Seguridad:CifradoClave`, `Seguridad:HmacDocumentoClave`, `Backup:CarpetaLocal`, `Backup:ClaveCifrado`, `Almacen:Documentos` y las cuatro cadenas de conexión. Falla al arrancar, con el nombre de la variable que falta: es a propósito, para que un despliegue sin secreto no lead con una clave inventada (AGENTS.md §6).
+- **Para arrancar el backend** con las migraciones aplicadas y una sesión: `dotnet ef database update` (toma `ConnectionStrings__Default` del entorno) y `dotnet run --project backend/AtlasRent.Api` con `ASPNETCORE_URLS=http://localhost:5100` (el 5100 es el que espera el proxy de Vite, `frontend/vite.config.ts`).
 - Herramientas: .NET SDK 10.0.302, `dotnet-ef` 10, Node 24, Docker Desktop, `gh`.
 - Estructura de carpetas: `docs/DOC_TECNICA.md` §3 (`backend/`, `frontend/`, `scripts/`, `db/scripts/`).
 
@@ -196,6 +209,7 @@ Atascos típicos en esta máquina: Vite/Chromium con `spawn EPERM`, servidores d
 - Toda herramienta larga (tests, docker, migraciones, builds) con timeout y en modo no interactivo. Antes de lanzarla, define criterio de éxito y alternativa si falla.
 - **Máximo dos intentos por la misma vía.** Si el error se repite, cambia de estrategia, pide elevación una vez o registra el bloqueo. Insistir no es rigor.
 - No arranques servidores dev de larga duración desde la shell "para mirar". Usa build finito, tests o Playwright con un proceso que arranca y se cierra dentro del timeout.
+- **Cuando el responsable pide la aplicación encendida, no basta con una tarea en segundo plano:** una tarea de fondo tiene fecha de caducidad (una hora) y **mata el proceso hijo al vencer**. Arranca el backend y el frontend **desacoplados** con `Start-Process` y sus logs redirigidos a un archivo (`C:\AtlasRent\data\`), no como tarea en segundo plano: así sobreviven al cierre de la sesión y se pueden comprobar con `Get-NetTCPConnection` y con `/health`. Verificado el 02/11/2026: las dos tareas en segundo plano (API y Vite) cayeron a la hora y los dos servicios se relanzaron así.
 - `apphost.exe` bloqueado: prueba `-p:UseAppHost=false`. No mates procesos a ciegas; identifica el PID.
 - Docker/Testcontainers no disponible: ejecuta la suite sin Docker y deja la tarea bloqueada por los tests pendientes. No finjas verde.
 - Limpiezas solo sobre rutas absolutas verificadas dentro del workspace. Nada de `robocopy /MIR`.

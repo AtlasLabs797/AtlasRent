@@ -1,0 +1,489 @@
+using AtlasRent.Api.Authorization;
+using AtlasRent.Api.Data;
+using AtlasRent.Api.Dominio;
+using AtlasRent.Api.DTOs;
+using AtlasRent.Api.Services;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+
+namespace AtlasRent.Api.Controllers;
+
+/// <summary>
+/// Contratos (docs/ESPECIFICACION.md §3.5).
+/// <para>
+/// Permisos, sin crear ninguno nuevo. Cada transición lleva el que le toca según la matriz de §2:
+/// <list type="bullet">
+/// <item>
+/// <c>contrato.borrador</c> ("crear y editar contratos en borrador", fila 5) para crear, editar y
+/// <b>enviar a aprobación</b>: es el camino del empleado.
+/// </item>
+/// <item>
+/// <c>contrato.estado</c> (fila 6, "aprobar, activar, modificar activo, dar de baja y liquidar") para
+/// aprobar, rechazar, activar, modificar, dar de baja, anular la baja, finalizar y liquidar. La fila
+/// es de gerente y administrador, así que el empleado recibe 403 en todas ellas.
+/// </item>
+/// <item>
+/// <c>cliente.ver</c> para leer. La fila 2 de §2 es literalmente "Ver clientes, unidades, reservas y
+/// contratos", así que el mismo identificador que protege ver una reserva protege ver un contrato.
+/// <c>contrato.borrador</c> no es un permiso de lectura sino de escritura sobre el borrador, y
+/// usarlo para listar dejaría al gerente sin poder ver contratos si a alguien se le quitara.
+/// </item>
+/// </list>
+/// </para>
+/// <para>
+/// El 403 del filtro global y el del servicio son la misma regla por dos caminos: el atributo
+/// protege la entrada por HTTP y <c>ServicioContratos</c> vuelve a mirar el techo de permisos de quien
+/// llama antes de aprobar.
+/// </para>
+/// <para>
+/// La bandeja de aprobaciones de F2-10 son tres endpoints más aquí y no un controller aparte, y es a
+/// propósito: los botones de la bandeja llaman a los mismos servicios que los de la ficha, así que
+/// reutilizan su idempotencia y su traducción de errores en vez de tener una segunda copia.
+/// </para>
+/// </summary>
+[ApiController]
+[Route("api/v1/contratos")]
+public sealed class ContratosController(
+    ServicioContratos contratos,
+    ServicioAprobaciones aprobaciones,
+    ServicioRenovaciones renovaciones,
+    ServicioIncrementos increments,
+    ServicioPlantillas plantillas,
+    ServicioIdempotencia idempotencia,
+    ContextoSesion contextoSesion,
+    IResolutorIpPeticion resolutorIp)
+    : ControladorApiBase(idempotencia, contextoSesion, resolutorIp)
+{
+    [HttpGet]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> Listar(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortDir,
+        [FromQuery] EstadoContrato? estado,
+        [FromQuery] Guid? clienteId,
+        [FromQuery] Guid? unidadId,
+        [FromQuery] string? q,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(contratos.ListarAsync(
+            Paginacion(page, pageSize, sortBy, sortDir), q, estado, clienteId, unidadId, ct));
+
+    [HttpGet("{id:guid}")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> Leer(Guid id, CancellationToken ct) =>
+        await ResponderAsync(() => contratos.LeerAsync(id, ct));
+
+    /// <summary>
+    /// Incrementos de renta pactados con fecha, y si el trabajo diario ya los aplicó (F2-06).
+    /// <para>
+    /// Lectura pura, así que va con <c>cliente.ver</c> y no con <c>contrato.borrador</c>: la fila 2 de
+    /// §2 es literalmente "Ver clientes, unidades, reservas y contratos", y <c>contrato.borrador</c>
+    /// es permiso de escritura. Si un usuario pierde ese permiso, debe seguir viendo los
+    /// incrementos de un contrato suyo, no dejar de verlos de golpe. Lo que se escribe (crear,
+    /// editar, cancelar) sí exige <c>contrato.estado</c>, que es de gerente y administrador.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/incrementos")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> ListarIncrementos(Guid id, CancellationToken ct) =>
+        await ResponderAsync(() => increments.ListarAsync(id, ct));
+
+    /// <summary>Historial de bloques de renovación (F2-06). Lectura, con <c>cliente.ver</c>.</summary>
+    [HttpGet("{id:guid}/bloques")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> ListarBloques(Guid id, CancellationToken ct) =>
+        await ResponderAsync(() => renovaciones.ListarBloquesAsync(id, ct));
+
+    /// <summary>
+    /// Un incremento suelto, para ver su efecto.
+    /// </summary>
+    [HttpGet("{id:guid}/incrementos/{incrementoId:guid}")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> LeerIncremento(
+        Guid id,
+        Guid incrementoId,
+        CancellationToken ct) =>
+        await ResponderAsync(() => increments.LeerAsync(id, incrementoId, ct));
+
+    /// <summary>
+    /// Programa un incremento de renta (docs/ESPECIFICACION.md §3.5).
+    /// <para>
+    /// Exige <c>contrato.estado</c>, el mismo permiso que un cambio de renta en un contrato
+    /// vigente: subir la renta de alguien es una decisión de negocio, y el empleado prepara
+    /// contratos pero no decide cuánto se paga.
+    /// </para>
+    /// <para>
+    /// No toca la renta todavía: eso lo hace el trabajo diario cuando abre el bloque que contiene la
+    /// fecha de vigencia, que es lo que dice "se aplican solos con aviso interno".
+    /// </para>
+    /// </summary>
+    [HttpPost("{id:guid}/incrementos")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> CrearIncremento(
+        Guid id,
+        ContratoIncrementoPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/contratos/{id:D}/incrementos");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => increments.CrearAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct),
+            creado: true);
+    }
+
+    /// <summary>
+    /// Corrige un incremento que el trabajo todavía no aplicó. Con el efecto ya en la renta, 409:
+    /// eso es un cambio de contrato y va por su propio camino.
+    /// </summary>
+    [HttpPut("{id:guid}/incrementos/{incrementoId:guid}")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> EditarIncremento(
+        Guid id,
+        Guid incrementoId,
+        ContratoIncrementoPeticion peticion,
+        CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/contratos/{id:D}/incrementos/{incrementoId:D}");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => increments.ActualizarAsync(
+                id, incrementoId, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Cancela un incremento pendiente. No se borra: la fila queda con su marca, y ya aplicado el
+    /// trabajo, cancelarlo tampoco cabe.
+    /// </summary>
+    [HttpPost("{id:guid}/incrementos/{incrementoId:guid}/cancelacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> CancelarIncremento(Guid id, Guid incrementoId, CancellationToken ct)
+    {
+        var mutacion = Mutar(new { incrementoId }, $"/api/v1/contratos/{id:D}/incrementos/{incrementoId:D}/cancelacion");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => increments.CancelarAsync(id, incrementoId, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>Alta en borrador (docs/ESPECIFICACION.md §2: el empleado crea borradores).</summary>
+    [HttpPost]
+    [Accion(Acciones.ContratoBorrador)]
+    public async Task<IActionResult> Crear(ContratoPeticion peticion, CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, "/api/v1/contratos");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => contratos.CrearAsync(peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct), creado: true);
+    }
+
+    /// <summary>
+    /// Edición de un borrador o de un contrato pendiente de aprobación. Editar uno pendiente
+    /// <b>caduca su solicitud</b>: lo que cambió ya no es lo que se mandó a aprobar, así que hay que
+    /// volver a enviarlo. Un contrato vigente se modifica por <c>/cambios</c>, que crea versión.
+    /// </summary>
+    [HttpPut("{id:guid}")]
+    [Accion(Acciones.ContratoBorrador)]
+    public async Task<IActionResult> Actualizar(Guid id, ContratoPeticion peticion, CancellationToken ct)
+    {
+        var mutacion = Mutar(peticion, $"/api/v1/contratos/{id:D}");
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(
+            () => contratos.ActualizarAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), mutacion, ct));
+    }
+
+    /// <summary>
+    /// Cambio en un contrato vigente. Exige <c>contrato.estado</c> y genera versión nueva (§3.5).
+    /// </summary>
+    [HttpPost("{id:guid}/cambios")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Cambios(Guid id, ContratoCambioPeticion peticion, CancellationToken ct) =>
+        await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{id:D}/cambios", ct,
+            m => contratos.AplicarCambiosAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>Envío a aprobación: abre la solicitud con la huella del contenido que se manda.</summary>
+    [HttpPost("{id:guid}/solicitud")]
+    [Accion(Acciones.ContratoBorrador)]
+    public async Task<IActionResult> EnviarAprobacion(Guid id, ContratoEnvioPeticion peticion, CancellationToken ct) =>
+        await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{id:D}/solicitud", ct,
+            m => contratos.EnviarAprobacionAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>
+    /// Aprobación. Solo gerente y administrador; un empleado recibe 403 del filtro global antes de
+    /// llegar aquí, y si algún camino llegara, el servicio lo vuelve a comprobar.
+    /// </summary>
+    [HttpPost("{id:guid}/aprobacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Aprobar(Guid id, CancellationToken ct) =>
+        await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/aprobacion", ct,
+            m => contratos.AprobarAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>Rechazo: vuelve a borrador y exige comentario (§3.5).</summary>
+    [HttpPost("{id:guid}/rechazo")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Rechazar(Guid id, ContratoRechazoPeticion peticion, CancellationToken ct) =>
+        await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{id:D}/rechazo", ct,
+            m => contratos.RechazarAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    // ---------------------------------------------------------------- bandeja de aprobaciones (F2-10)
+
+    /// <summary>
+    /// Bandeja de aprobaciones (F2-10, §3.16): los contratos que están esperando decisión, con
+    /// quién los mandó, cuál es y el valor actual y el propuesto.
+    /// <para>
+    /// Va con <c>contrato.estado</c> y no con <c>cliente.ver</c> a propósito. La lista es
+    /// exactamente lo que esa persona puede aprobar, y un empleado recibe <b>403</b>: una bandeja
+    /// vacía esconde un error de permisos detrás de "no hay nada pendiente", que es la forma
+    /// habitual de que nadie entienda por qué su enlace no trae nada. Quien solo tenga
+    /// <c>cliente.ver</c> sigue viendo la ficha del contrato, con todas sus solicitudes.
+    /// </para>
+    /// <para>
+    /// La ruta literal no choca con <c>{id:guid}</c>: "solicitudes" no es un GUID, así que ASP.NET
+    /// nunca la resuelve contra la ficha.
+    /// </para>
+    /// </summary>
+    [HttpGet("solicitudes")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Bandeja(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortDir,
+        CancellationToken ct) =>
+        await EnvoltorioAsync(
+            aprobaciones.ListarAsync(Paginacion(page, pageSize, sortBy, sortDir), UsuarioDeLaPeticion(), ct));
+
+    /// <summary>
+    /// Aprobar desde la bandeja. Llama al <b>mismo</b> servicio que el botón de la ficha
+    /// (<c>ContratosController.Aprobar</c>): misma regla, misma caducidad por huella, misma
+    /// congelación de plantilla. No hay una segunda lógica de aprobación en el sistema.
+    /// <para>
+    /// La <c>Idempotency-Key</c> que entra en la huella de idempotencia es la del endpoint de
+    /// contratos, no la de esta ruta, y es a propósito: aprobar desde la bandeja y aprobar desde la
+    /// ficha son la misma operación, así que un usuario impaciente que repite el clic —o que abre
+    /// la ficha después de aprobar desde la bandeja— con la misma clave tiene que comerse el
+    /// resultado guardado, no una segunda aprobación.
+    /// </para>
+    /// </summary>
+    [HttpPost("solicitudes/{id:guid}/aprobacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> AprobarDesdeLaBandeja(Guid id, CancellationToken ct)
+    {
+        // BUG-042: {id} es la solicitud de la fila; se resuelve su contrato y el servicio comprueba que
+        // siga siendo la vigente. La idempotencia usa la ruta del contrato para compartirla con la ficha.
+        Guid contratoId;
+        try
+        {
+            contratoId = await aprobaciones.ContratoDeLaSolicitudAsync(id, ct);
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+
+        return await ConIdempotenciaAsync(new { id = contratoId }, $"/api/v1/contratos/{contratoId:D}/aprobacion", ct,
+            m => contratos.AprobarAsync(contratoId, UsuarioDeLaPeticion(), Ip(), m, ct, id));
+    }
+
+    /// <summary>
+    /// Rechazar desde la bandeja. Mismo servicio y mismo motivo que la aprobación: la bandeja no
+    /// decide, solo llama. Exige comentario igual que el rechazo de la ficha (§3.5).
+    /// </summary>
+    [HttpPost("solicitudes/{id:guid}/rechazo")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> RechazarDesdeLaBandeja(
+        Guid id,
+        ContratoRechazoPeticion peticion,
+        CancellationToken ct)
+    {
+        Guid contratoId;
+        try
+        {
+            contratoId = await aprobaciones.ContratoDeLaSolicitudAsync(id, ct);
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+
+        return await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{contratoId:D}/rechazo", ct,
+            m => contratos.RechazarAsync(contratoId, peticion, UsuarioDeLaPeticion(), Ip(), m, ct, id));
+    }
+
+    /// <summary>Activación: el contrato toma la unidad y copia su inventario (F2-08).</summary>
+    [HttpPost("{id:guid}/activacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Activar(Guid id, CancellationToken ct) =>
+        await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/activacion", ct,
+            m => contratos.ActivarAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>Baja programada con su fecha efectiva de fin. El contrato sigue bloqueando la unidad.</summary>
+    [HttpPost("{id:guid}/baja")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Baja(Guid id, ContratoBajaPeticion peticion, CancellationToken ct) =>
+        await ConIdempotenciaAsync(peticion, $"/api/v1/contratos/{id:D}/baja", ct,
+            m => contratos.DarBajaAsync(id, peticion, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>Anula una baja que aún no ha llegado a su fecha.</summary>
+    [HttpPost("{id:guid}/anular-baja")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> AnularBaja(Guid id, CancellationToken ct) =>
+        await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/anular-baja", ct,
+            m => contratos.AnularBajaAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>Fin de la relación: libera la unidad.</summary>
+    [HttpPost("{id:guid}/finalizacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Finalizar(Guid id, CancellationToken ct) =>
+        await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/finalizacion", ct,
+            m => contratos.FinalizarAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>Liquidación (F2-09 cierra inventario de salida, fianza y saldos).</summary>
+    [HttpPost("{id:guid}/liquidacion")]
+    [Accion(Acciones.ContratoEstado)]
+    public async Task<IActionResult> Liquidar(Guid id, CancellationToken ct) =>
+        await ConIdempotenciaAsync(new { id }, $"/api/v1/contratos/{id:D}/liquidacion", ct,
+            m => contratos.LiquidarAsync(id, UsuarioDeLaPeticion(), Ip(), m, ct));
+
+    /// <summary>
+    /// PDF del contrato (<c>docs/DESIGN.md §7</c>), como el de la cotización (F2-02).
+    /// <para>
+    /// Lectura pura, así que va con <c>cliente.ver</c>: la fila 2 de §2 es "Ver clientes, unidades,
+    /// reservas y contratos", y el PDF es el contrato. El documento sale de la plantilla congelada
+    /// al aprobar, no del catálogo: editar la plantilla después no cambia un contrato ya firmado.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/pdf")]
+    [Accion(Acciones.ClienteVer)]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var pdf = await plantillas.PdfContratoAsync(id, ct);
+            return File(pdf, "application/pdf", $"contrato-{id:D}.pdf");
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (InvalidOperationException conflicto)
+        {
+            return Conflicto(conflicto.Message);
+        }
+    }
+
+    // ---------------------------------------------------------------- internos
+
+    /// <summary>
+    /// Idempotencia para los botones de transición, que no llevan cuerpo o cuyo cuerpo es el propio
+    /// identificador: la clave sale de la cabecera <c>Idempotency-Key</c> y de la ruta.
+    /// </summary>
+    private async Task<IActionResult> ConIdempotenciaAsync(
+        object cuerpo,
+        string ruta,
+        CancellationToken ct,
+        Func<MutacionIdempotente?, Task<ContratoResumen>> operacion)
+    {
+        var mutacion = Mutar(cuerpo, ruta);
+        var repetida = await RepetidaAsync(mutacion, ct);
+        if (repetida is not null)
+        {
+            return repetida;
+        }
+
+        return await GuardarAsync(() => operacion(mutacion));
+    }
+
+    /// <summary>
+    /// Traduce los fallos de la mutación. Un <see cref="DbUpdateException"/> con un SQLSTATE de
+    /// ocupación es el candado de la unidad: al activar un contrato sobre una unidad ocupada sale un
+    /// 409 de disponibilidad y la transacción se deshace entera, así que no queda bloqueada sin
+    /// contrato.
+    /// </summary>
+    private async Task<IActionResult> GuardarAsync<TResultado>(
+        Func<Task<TResultado>> operacion,
+        bool creado = false)
+    {
+        try
+        {
+            var resultado = await operacion();
+            return creado ? StatusCode(StatusCodes.Status201Created, resultado) : Ok(resultado);
+        }
+        catch (PermisoDenegadoException)
+        {
+            return Problemas.Construir(
+                StatusCodes.Status403Forbidden,
+                Problemas.PermisoDenegado,
+                "Permiso denegado",
+                "Tu usuario no tiene permiso para esta operación.");
+        }
+        catch (Exception e) when (EsFalloDeOcupacion(e) || EsFalloDeOcupacion(e.InnerException))
+        {
+            return Problemas.Construir(
+                StatusCodes.Status409Conflict,
+                Problemas.UnidadNoDisponible,
+                "Unidad no disponible",
+                "La unidad no está disponible para esas fechas: la tiene un contrato, otra reserva "
+                + "o ya está completo el día (2 medios días o 1 día completo).");
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (InvalidOperationException conflicto)
+        {
+            return Conflicto(conflicto.Message);
+        }
+        catch (DbUpdateException)
+        {
+            return Conflicto("No se pudo guardar el contrato.");
+        }
+    }
+
+    private static bool EsFalloDeOcupacion(Exception? e) =>
+        e is PostgresException
+        {
+            SqlState: ServicioDisponibilidad.SqlstateSolapamiento or ServicioDisponibilidad.SqlstateOcupacion,
+        };
+
+    private async Task<IActionResult> ResponderAsync<T>(Func<Task<T>> operacion)
+    {
+        try
+        {
+            return Ok(await operacion());
+        }
+        catch (KeyNotFoundException noExiste)
+        {
+            return NoEncontrado(noExiste.Message);
+        }
+        catch (InvalidOperationException conflicto)
+        {
+            return Conflicto(conflicto.Message);
+        }
+    }
+}

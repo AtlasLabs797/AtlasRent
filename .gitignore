@@ -40,3 +40,8 @@ logs/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+# E2E: capturas y resultados de Playwright
+frontend/e2e/capturas/
+frontend/e2e/resultados/
+frontend/test-results/
+frontend/playwright-report/

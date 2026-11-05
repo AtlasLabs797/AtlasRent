@@ -1,0 +1,1 @@
+Inside the Registrar cobro dialog/drawer (Gerente/Admin only). Never list invoices from another contract of the same client — money doesn't move between contracts automatically. Disable save while "Excede el importe recibido" shows.

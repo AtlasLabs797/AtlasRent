@@ -1,0 +1,70 @@
+/* Modo oscuro — paridad completa con el claro.
+   Mecanismo: la app SIEMPRE fija data-theme="light" | "dark" en <html> (la preferencia "sistema"
+   se resuelve en JS con matchMedia antes del primer pintado). Así hay un único bloque que mantener.
+   Base: tema oscuro de la familia Atlas Labs (_ds/.../tokens/themes.css), traducido a los nombres de Atlas Rent.
+   Diferencia deliberada: --surface-inverse sigue siendo una superficie oscura (más clara que la tarjeta)
+   con texto blanco, para que toasts, tooltips, KPI destacado y slots ocupados no cambien de lógica.
+   Contraste (WCAG) sobre --surface-card #1D1D1F: texto ≥ 4.5:1, indicadores y bordes de foco ≥ 3:1. */
+[data-theme="dark"]{
+color-scheme:dark;
+/* Superficies */
+--surface-app:#000000;
+--surface-card:#1D1D1F;
+--surface-sunken:#151517;
+--surface-muted:#252527;
+--surface-hover:rgba(255,255,255,.08);
+--surface-active:rgba(255,255,255,.12);
+--surface-inverse:#3A3A3C;
+--surface-sidebar:color-mix(in srgb,var(--surface-card) 70%,transparent);
+--glass-surface:color-mix(in srgb,var(--surface-card) 70%,transparent);
+--glass-blur:saturate(180%) blur(24px); /* @kind other */
+/* Texto */
+--text-strong:#F5F5F7;
+--text-body:#F5F5F7;
+--text-muted:#CCCCCC;
+--text-subtle:var(--gray-400);
+--text-disabled:var(--gray-600);
+--text-inverse:var(--white);
+/* Bordes */
+--border-subtle:rgba(255,255,255,.07);
+--border-default:rgba(255,255,255,.12);
+--border-strong:rgba(255,255,255,.2);
+/* Acento: sólido un paso más claro; texto en hibisco-300 */
+--accent:var(--hibisco-500);
+--accent-hover:var(--hibisco-600);
+--accent-press:var(--hibisco-700);
+--accent-text:var(--hibisco-300);
+--accent-soft:color-mix(in srgb,var(--hibisco-500) 16%,var(--surface-card));
+--accent-soft-strong:color-mix(in srgb,var(--hibisco-500) 24%,var(--surface-card));
+--accent-soft-border:color-mix(in srgb,var(--hibisco-500) 34%,var(--surface-card));
+--accent-ring:color-mix(in srgb,var(--hibisco-400) 40%,transparent);
+/* Estados: texto en la rampa 300; los fondos con texto blanco usan *-solid */
+--success:var(--green-300);--success-soft:color-mix(in srgb,var(--green-500) 18%,var(--surface-card));--success-border:color-mix(in srgb,var(--green-500) 32%,var(--surface-card));
+--warning:var(--amber-300);--warning-soft:color-mix(in srgb,var(--amber-500) 18%,var(--surface-card));--warning-border:color-mix(in srgb,var(--amber-500) 32%,var(--surface-card));
+--danger:var(--crimson-300);--danger-solid:var(--crimson-600);--danger-hover:var(--crimson-700);--danger-soft:color-mix(in srgb,var(--crimson-500) 18%,var(--surface-card));--danger-border:color-mix(in srgb,var(--crimson-500) 32%,var(--surface-card));
+--info:var(--cobalt-300);--info-soft:color-mix(in srgb,var(--cobalt-600) 18%,var(--surface-card));--info-border:color-mix(in srgb,var(--cobalt-600) 32%,var(--surface-card));
+--neutral:#A6AEBC;--neutral-soft:rgba(255,255,255,.08);--neutral-border:rgba(255,255,255,.14);
+/* IA */
+--ai:var(--violet-300);--ai-solid:var(--violet-600);--ai-hover:var(--violet-500);--ai-text:var(--violet-300);
+--ai-soft:color-mix(in srgb,var(--violet-500) 16%,var(--surface-card));--ai-border:color-mix(in srgb,var(--violet-500) 32%,var(--surface-card));--ai-soft-hover:color-mix(in srgb,var(--violet-500) 26%,var(--surface-card));
+/* Dinero */
+--amount-positive:var(--green-300);--amount-negative:var(--crimson-300);
+/* Estados de unidad */
+--unit-disponible:var(--green-500);
+--unit-reservado:var(--cobalt-300);
+--unit-ocupado:var(--gray-300);
+--unit-mantenimiento:var(--amber-500);
+--unit-fuera:var(--gray-600);
+/* Elevación */
+--shadow-lg:0 8px 28px rgba(0,0,0,.5);
+--shadow-xl:0 18px 60px rgba(0,0,0,.6);
+--overlay-scrim:rgba(0,0,0,.62);
+}
+/* Componentes que usan la rampa de grises directamente (pensados solo para claro) */
+[data-theme="dark"] .ar-control:hover:not(:focus-within),
+[data-theme="dark"] .ar-textarea:hover:not(:focus){border-color:var(--gray-600)}
+[data-theme="dark"] .ar-searchbtn:hover{background:var(--surface-active)}
+[data-theme="dark"] .ar-switch button:not([aria-checked=true]){background:var(--gray-700)}
+[data-theme="dark"] .ar-skel{background-image:linear-gradient(90deg,var(--surface-muted) 0%,var(--surface-sunken) 50%,var(--surface-muted) 100%)}
+[data-theme="dark"] *{scrollbar-color:var(--gray-700) transparent}
+[data-theme="dark"] ::-webkit-scrollbar-thumb{background:var(--gray-700)}

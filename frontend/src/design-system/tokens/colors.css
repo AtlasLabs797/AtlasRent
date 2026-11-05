@@ -1,0 +1,70 @@
+:root{
+/* Neutrals — Atlas Labs warm-neutral grey family (shared by every Atlas product, never changes) */
+--white:#FFFFFF;--black:#000000;
+--gray-25:#FDFDFD;--gray-50:#F5F5F7;--gray-100:#EDEDEF;--gray-200:#E0E0E2;--gray-300:#D2D2D7;--gray-400:#A1A1A6;--gray-500:#86868B;--gray-600:#6E6E73;--gray-700:#48484A;--gray-800:#333336;--gray-900:#1D1D1F;--gray-950:#0B0B0C;
+--parchment:#F5F5F7;--pearl:#FAFAFC;--tile-1:#272729;--tile-2:#2A2A2C;--tile-3:#252527;--hairline:#E0E0E0;--divider-soft:#F0F0F0;
+/* Legacy ink-* names resolve into the Atlas Labs grey ramp */
+--ink-0:var(--white);--ink-25:var(--gray-25);--ink-50:var(--gray-50);--ink-100:var(--gray-100);--ink-200:var(--gray-200);--ink-300:var(--gray-300);--ink-400:var(--gray-400);--ink-500:var(--gray-500);--ink-600:var(--gray-600);--ink-700:var(--gray-700);--ink-800:var(--gray-800);--ink-900:var(--gray-900);--ink-950:var(--gray-950);
+/* Atlas Rent accent — Hibisco. Free hue in the family: Labs blue, Balance cobalt, Connect ember, Peak teal, AI violet. */
+--hibisco-50:#FCEEF5;--hibisco-100:#F9DCEB;--hibisco-200:#F2B7D5;--hibisco-300:#E98DBD;--hibisco-400:#DB5FA2;--hibisco-500:#C7378A;--hibisco-600:#AD2275;--hibisco-700:#8A1A5D;--hibisco-800:#6E1549;--hibisco-900:#4F0F35;
+/* Status ramps — identical to Atlas Labs */
+--green-50:#E7F5EC;--green-100:#CDEBD9;--green-300:#78C79A;--green-500:#1C8A4B;--green-600:#176A3A;--green-700:#11512C;
+--amber-50:#FDF3E1;--amber-100:#FAE6C2;--amber-300:#F0BE6B;--amber-500:#B87400;--amber-600:#8A5200;--amber-700:#6A3F00;
+--crimson-50:#FDECEE;--crimson-100:#FBD9DD;--crimson-300:#EE909B;--crimson-500:#C92B3F;--crimson-600:#A82234;--crimson-700:#821A28;
+--cobalt-50:#E6EEFC;--cobalt-100:#D2E0FA;--cobalt-300:#8AABEF;--cobalt-600:#285BD9;--cobalt-700:#214CAD;
+--violet-50:#F3F0FE;--violet-100:#E8E2FD;--violet-300:#B9A7F7;--violet-500:#8B5CF6;--violet-600:#7340E0;--violet-700:#5A2FB4;
+--red-50:var(--crimson-50);--red-100:var(--crimson-100);--red-500:var(--crimson-500);--red-600:var(--crimson-600);--red-700:var(--crimson-700);
+--blue-50:var(--cobalt-50);--blue-100:var(--cobalt-100);--blue-600:var(--cobalt-600);--blue-700:var(--cobalt-700);
+
+/* Surfaces */
+--surface-app:var(--parchment);
+--surface-card:var(--white);
+--surface-sunken:var(--gray-100);
+--surface-muted:var(--pearl);
+--surface-hover:rgba(29,29,31,.04);
+--surface-active:rgba(29,29,31,.08);
+--surface-selected:var(--accent-soft);
+--surface-inverse:var(--tile-1);
+--surface-sidebar:color-mix(in srgb,var(--white) 72%,transparent);
+--glass-surface:color-mix(in srgb,var(--white) 72%,transparent);
+/* Text */
+--text-strong:var(--gray-900);
+--text-body:var(--gray-900);
+--text-muted:var(--gray-600);
+--text-subtle:var(--gray-500);
+--text-disabled:var(--gray-400);
+--text-inverse:var(--white);
+--text-link:var(--accent-text);
+/* Borders — three intents, always 1px */
+--border-subtle:var(--divider-soft);
+--border-default:var(--hairline);
+--border-strong:var(--gray-300);
+--border-focus:var(--accent);
+/* Accent channel */
+--accent:var(--hibisco-600);
+--accent-hover:var(--hibisco-500);
+--accent-press:var(--hibisco-700);
+--accent-text:var(--hibisco-600);
+--accent-on-dark:var(--hibisco-300);
+--accent-soft:color-mix(in srgb,var(--hibisco-500) 8%,var(--white));
+--accent-soft-strong:color-mix(in srgb,var(--hibisco-500) 14%,var(--white));
+--accent-soft-border:color-mix(in srgb,var(--hibisco-500) 22%,var(--white));
+--accent-ring:color-mix(in srgb,var(--hibisco-500) 28%,transparent);
+--on-accent:var(--white);
+/* Status — bg / border / text triplets */
+--success:var(--green-600);--success-soft:var(--green-50);--success-border:var(--green-100);
+--warning:var(--amber-600);--warning-soft:var(--amber-50);--warning-border:var(--amber-100);
+--danger:var(--crimson-600);--danger-solid:var(--crimson-600);--danger-hover:var(--crimson-700);--danger-soft:var(--crimson-50);--danger-border:var(--crimson-100);
+--info:var(--cobalt-700);--info-soft:var(--cobalt-50);--info-border:var(--cobalt-100);
+--neutral:var(--gray-600);--neutral-soft:var(--gray-100);--neutral-border:var(--gray-200);
+/* AI channel — violet in every Atlas app, never the accent */
+--ai:var(--violet-600);--ai-solid:var(--violet-600);--ai-hover:var(--violet-700);--ai-text:var(--violet-700);--ai-soft:color-mix(in srgb,var(--violet-500) 8%,var(--white));--ai-border:color-mix(in srgb,var(--violet-500) 24%,var(--white));--ai-soft-hover:var(--violet-100);
+/* Money */
+--amount-positive:var(--green-600);--amount-negative:var(--crimson-600);
+/* Domain — unit states (accent is not a state colour) */
+--unit-disponible:var(--green-500);
+--unit-reservado:var(--cobalt-600);
+--unit-ocupado:var(--gray-800);
+--unit-mantenimiento:var(--amber-500);
+--unit-fuera:var(--gray-400);
+}

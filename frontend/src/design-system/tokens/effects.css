@@ -1,0 +1,29 @@
+:root{
+/* Flat: depth comes from surface change and hairlines. Only detached layers float. */
+--shadow-xs:none;
+--shadow-sm:none;
+--shadow-md:none;
+--shadow-lg:0 8px 28px rgba(0,0,0,.10);
+--shadow-xl:0 18px 60px rgba(0,0,0,.14);
+--ring-focus:0 0 0 3px var(--accent-ring);
+--ring-danger:0 0 0 3px color-mix(in srgb,var(--crimson-500) 26%,transparent);
+--overlay-scrim:rgba(0,0,0,.48);
+--blur-overlay:blur(4px); /* @kind other */
+--glass-blur:saturate(180%) blur(20px); /* @kind other */
+--ease-out:cubic-bezier(.22,1,.36,1); /* @kind other */
+--ease-in-out:cubic-bezier(.22,1,.36,1); /* @kind other */
+--dur-instant:100ms; /* @kind other */
+--dur-fast:120ms; /* @kind other */
+--dur-base:180ms; /* @kind other */
+--dur-slow:240ms; /* @kind other */
+--dur-deliberate:420ms; /* @kind other */
+--press-scale:.95; /* @kind other */
+}
+@media (prefers-reduced-motion:reduce){:root{
+--dur-instant:1ms; /* @kind other */
+--dur-fast:1ms; /* @kind other */
+--dur-base:1ms; /* @kind other */
+--dur-slow:1ms; /* @kind other */
+--dur-deliberate:1ms; /* @kind other */
+--press-scale:1; /* @kind other */
+}}

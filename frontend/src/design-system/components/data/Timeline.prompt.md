@@ -1,0 +1,1 @@
+Newest first. Renewals are history entries, never annexes ("Renovación automática · +6 meses · hasta 31/03/2027").

@@ -8,7 +8,7 @@ Pasos fijos para las tareas que se repiten. Valen para cualquier persona o agent
 
 1. Lee `AGENTS.md` y `docs/PLAN.md`.
 2. Busca una tarea EN CURSO a nombre de quien te lo pide. Si no hay, toma la primera PENDIENTE cuyas dependencias estén HECHAS y que no esté BLOQUEADA. Si la que toca está bloqueada por una pregunta abierta (A#) o por una tarea de Fase 0, dilo y propón otra libre.
-3. Crea la rama `tarea/<ID>-<nombre-corto>` desde `main` y marca la tarea EN CURSO en `docs/PLAN.md`.
+3. Trabaja en la rama `V-01.05` (no se crean ramas por tarea) y marca la tarea EN CURSO en `docs/PLAN.md`.
 4. Lee la sección de `docs/ESPECIFICACION.md` que cita la tarea y la parte de `docs/DOC_TECNICA.md` del módulo. Si toca interfaz o PDF, lee también `docs/DESIGN.md`.
 5. Presenta en unas 5 líneas qué vas a tocar y qué test cubrirá cada criterio de aceptación. **Espera confirmación antes de escribir código.**
 

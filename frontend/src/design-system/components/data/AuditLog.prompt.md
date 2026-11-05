@@ -1,0 +1,1 @@
+Auditoría screen and the "Historial" tab of any record. Deleted invoices/cobros stay here — "anuló FAC-A-…" with the motivo — never disappear.

@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/AtlasRent.Api/AtlasRent.Api.csproj" />
+    <Project Path="backend/AtlasRent.Watchdog/AtlasRent.Watchdog.csproj" />
+    <Project Path="backend/AtlasRent.Tests/AtlasRent.Tests.csproj" />
+  </Folder>
+</Solution>

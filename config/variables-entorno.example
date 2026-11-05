@@ -10,16 +10,30 @@ TZ_NEGOCIO=America/Santo_Domingo
 ConnectionStrings__Default=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_app;Password=<secreto>
 ConnectionStrings__Migraciones=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_migrador;Password=<secreto>
 ConnectionStrings__Backup=Host=localhost;Port=5432;Database=atlas_rent;Username=rent_backup;Password=<secreto>
+# SEC-020: servidor de jobs (Hangfire). Rol rent_jobs, dueño solo de atlas_rent_jobs; la base se fija en código.
+ConnectionStrings__Jobs=Host=localhost;Port=5432;Database=atlas_rent_jobs;Username=rent_jobs;Password=<secreto>
+# Servidor de jobs (Hangfire) de este proceso. true (por defecto) lo levanta; false solo para una segunda instancia sin planificador.
+Jobs__ServidorActivo=true
 
 Kestrel__Certificates__Default__Path=<ruta .pfx>
 Kestrel__Certificates__Default__Password=<secreto>
 
 Seguridad__JwtClave=<secreto 64 bytes base64>
+Seguridad__BcryptRondas=12
 Seguridad__CifradoClave=<secreto 32 bytes base64>
 Seguridad__CifradoVersion=1
 Seguridad__HmacDocumentoClave=<secreto 32 bytes base64>
 Seguridad__IpListaBlanca=<IP oficina separadas por coma>
 Seguridad__ProxiesConfianza=<vacío si no hay proxy>
+
+# Límites de peticiones y bloqueos (F1-05). Los valores por defecto son los del checklist.
+Seguridad__Limites__GlobalPorMinuto=300
+Seguridad__Limites__LoginPorMinuto=20
+Seguridad__Limites__IntentosParaBloquearIp=10
+Seguridad__Limites__VentanaIpMinutos=15
+Seguridad__Limites__IntentosParaBloquearCuenta=5
+Seguridad__Limites__MinutosBloqueoCuenta=30
+Seguridad__Limites__DiasConservarIntentosLogin=90
 
 Almacen__Documentos=C:\AtlasRent\data\documentos
 Backup__CarpetaLocal=C:\AtlasRent\data\backups
@@ -27,17 +41,81 @@ Backup__GoogleDrive__Carpeta=<id carpeta propia de Atlas Rent>
 Backup__GoogleDrive__Credenciales=<secreto>
 Backup__ClaveCifrado=<secreto>
 Backup__Conservar=4
+# SEC-021: clave PUBLICA ECDSA P-256 (SubjectPublicKeyInfo en base64) para verificar la firma .sig de los
+# paquetes de actualizacion. No es secreta; la privada nunca sale del equipo de release.
+Watchdog__ClavePublicaActualizacion=<base64>
 
-Smtp__Host=smtp.gmail.com
-Smtp__Puerto=587
-Smtp__Usuario=<cuenta>
-Smtp__Password=<contraseña de aplicación>
-Smtp__Remitente=<email>
+# F4-02: servidor de correo para el envío de documentos (docs/ESPECIFICACION.md §3.14).
+# La clave vive AQUÍ, en variables de entorno o en «dotnet user-secrets», y nunca en la base de datos
+# ni en un fichero del repositorio (docs/SEGURIDAD.md §A.7): hay variables de despliegue que se copian
+# a los servidores y ficheros que acaban en un backup sin querer.
+# Sin Correo__Host y Correo__Remitente el envío NO se hace: sale un 409 que dice qué escribir. Un
+# ajuste que se permite sin que nadie haya escrito un valor es una pérdida silenciosa (BUG-007).
+# Correo__Ssl a true es STARTTLS (el 587 de siempre) y a false es TLS implícito (el 465). No hay modo
+# sin cifrar: un correo con datos de factura no viaja en claro.
+# Correo__Usuario y Correo__Clave son opcionales; hacen falta los dos a la vez, y solo si el servidor
+# pide autenticación (el de una red local puede no pedirla).
+Correo__Host=smtp.gmail.com
+Correo__Puerto=587
+Correo__Usuario=<cuenta>
+Correo__Clave=<contraseña de aplicación>
+Correo__Ssl=true
+Correo__Remitente=<email>
+Correo__NombreRemitente=Atlas Rent
 
-TipoCambio__Url=https://v6.exchangerate-api.com/v6
+# F3-01: fuente del tipo de cambio diario (docs/ESPECIFICACION.md §3.12).
+# Sin TipoCambio__ApiKey se usa el endpoint abierto, que no necesita dar de alta nada.
+# Con clave, la ruta es la del plan de pago (https://v6.exchangerate-api.com/v6/{CLAVE}/latest/USD) y
+# TipoCambio__Url deja de usarse: son dos servicios distintos y el segundo devuelve la tabla en
+# "conversion_rates" en vez de "rates".
+TipoCambio__Url=https://open.er-api.com/v6/latest/USD
 TipoCambio__ApiKey=<secreto>
+
+# F3-07: la tolerancia de la diferencia de cambio NO es una variable de entorno. Vive en la tabla
+# ajuste_general (tolerancia_cambio_usd / tolerancia_cambio_dop) y la escribe el administrador desde
+# Configuración → Ajustes generales (PUT /api/v1/config/ajustes). Nacen a NULL y mientras no se
+# escriban no se permite ningún ajuste por diferencia de cambio.
 
 WhatsApp__Proveedor=<pendiente A1>
 WhatsApp__Token=<secreto>
 WhatsApp__AppSecret=<secreto>
 WhatsApp__VerifyToken=<secreto>
+
+# F6-01: tokens de agente (docs/DOC_TECNICA.md §7). Ninguno es un secreto: son los valores por
+# defecto que usa el alta cuando el administrador no dice otra cosa. Un token siempre caduca; la
+# vida se pide en días y el máximo (Agentes__VidaDiasTokenMaxima) es el tope que no se puede pasar
+# desde la API.
+Agentes__VidaDiasToken=90
+Agentes__VidaDiasTokenMaxima=365
+Agentes__LimiteConsultasDia=500
+
+# F6-02: asistente de consultas de solo lectura (docs/DOC_TECNICA.md §7). Un proveedor por sección,
+# con la misma forma en los cuatro. Solo la clave es secreta; las claves de los proveedores que no
+# se usan se dejan sin poner. Sin clave configurada, o con Ia__Activado=false, el asistente
+# responde 503 y no llama a nadie.
+#
+# El límite va en número de consultas, no en dinero: los precios por millón de tokens cambian sin
+# avisar y ponerlos en el código es una deuda que caduca mal.
+Ia__Activado=true
+Ia__Proveedor=anthropic
+Ia__TopeConsultasMes=2000
+Ia__MaxTokensSalida=1024
+
+Ia__Anthropic__Clave=<secreto>
+Ia__Anthropic__BaseUrl=https://api.anthropic.com
+Ia__Anthropic__Modelo=<modelo>
+
+Ia__Openai__Clave=<secreto>
+Ia__Openai__BaseUrl=https://api.openai.com/v1
+Ia__Openai__Modelo=<modelo>
+
+Ia__Openrouter__Clave=<secreto>
+Ia__Openrouter__BaseUrl=https://openrouter.ai/api/v1
+Ia__Openrouter__Modelo=<modelo>
+# Cabeceras opcionales de atribución de OpenRouter. Si no se poner, el cliente las omite.
+Ia__Openrouter__Referer=
+Ia__Openrouter__Titulo=Atlas Rent
+
+Ia__Minimax__Clave=<secreto>
+Ia__Minimax__BaseUrl=https://api.minimax.io/v1
+Ia__Minimax__Modelo=<modelo>

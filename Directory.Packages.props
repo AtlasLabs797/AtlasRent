@@ -1,0 +1,45 @@
+﻿<Project>
+  <!-- Versiones exactas de docs/DOC_TECNICA.md §2 (consultadas el 14/10/2026).
+       Gestión centralizada: cambiar una versión aquí obliga a justificarlo en DOC_TECNICA §2. -->
+  <ItemGroup>
+    <!-- ASP.NET Core / EF Core -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.13" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+    <!-- Serilog -->
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <!-- Autenticación (F1-04): JWT de acceso en cookie y hash de contraseñas -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
+    <PackageVersion Include="BCrypt.Net-Next" Version="4.2.1" />
+    <!-- F1-06: TOTP del segundo factor. El QR lo dibuja el frontend; aquí no hay librería de imagen. -->
+    <PackageVersion Include="Otp.NET" Version="1.4.1" />
+    <!-- F1-12: disparo de los jobs diarios. Hangfire.AspNetCore integra el servidor de jobs con
+         la API; Hangfire.PostgreSql es el almacenamiento (docs/DOC_TECNICA.md §2 y §8). -->
+    <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
+    <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
+    <!-- F1-12: Hangfire.Core 1.8.25 declara Newtonsoft.Json 11.0.1, con CVE-2024-21907 (alta,
+         denegación de servicio por JSON anidado). Se fija la versión parcheada que ya resolutions
+         el proyecto de la API por EF Core, para que ningún proyecto quede con la vulnerable. -->
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <!-- F4-02: MailKit 4.18.1 arrastra System.Security.Cryptography.Pkcs 10.0.0, con dos avisos de
+         vulnerabilidad conocidos (GHSA-2fmv-rv2c-59x7 y GHSA-846f-f764-76mx). Se fija a la versión
+         parcheada de la misma línea 10.0.13 que el resto de paquetes de Microsoft del repo, con el
+         mismo criterio que Newtonsoft.Json en F1-12: el grafo entero queda sin vulnerabilidades
+         conocidas y la comprobación de paquetes vulnerables de la CI sigue limpia. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <!-- F2-02: PDF por código, sin HTML (docs/DESIGN.md §7). Licencia Community: no pide clave ni contacto. -->
+    <PackageVersion Include="QuestPDF" Version="2026.9.1" />
+    <!-- F4-02: envío de correo por SMTP (docs/ESPECIFICACION.md §3.14). MailKit arrastra MimeKit
+         4.18.1, que es quien arma el mensaje; la versión es la de DOC_TECNICA §2. -->
+    <PackageVersion Include="MailKit" Version="4.18.1" />
+    <!-- F5-02: exportación de informes a Excel (docs/ESPECIFICACION.md §3.15). El CSV se escribe a
+         mano porque son doce columnas; la versión es la de DOC_TECNICA §2. -->
+    <PackageVersion Include="ClosedXML" Version="0.105.1" />
+    <!-- Tests -->
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
+  </ItemGroup>
+</Project>

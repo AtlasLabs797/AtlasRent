@@ -1,0 +1,1 @@
+Square (5px) badge, so it never reads as a status pill. Show next to the record ID in detail headers and in audit rows. Imported invoices also show their original number.

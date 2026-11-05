@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AtlasRent.Watchdog</RootNamespace>
+    <AssemblyName>AtlasRent.Watchdog</AssemblyName>
+    <UserSecretsId>atlas-rent-watchdog</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- F1-12: el Watchdog restaura las copias que hace la API, así que reutiliza su servicio de
+         copia y su descifrado en lugar de reescribirlos. El paquete de Google Drive no está. -->
+    <ProjectReference Include="..\AtlasRent.Api\AtlasRent.Api.csproj" />
+  </ItemGroup>
+</Project>
