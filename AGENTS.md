@@ -148,6 +148,7 @@ backend\AtlasRent.Tests\bin\Release\net10.0\AtlasRent.Tests.exe -class <ns.Clase
 ```
 En Linux (la CI): `dotnet backend/AtlasRent.Tests/bin/Release/net10.0/AtlasRent.Tests.dll`. El runner sale con 0 aunque se ejecuten 0 pruebas, así que la CI también falla si el total es 0 (BUG-047).
 Es también la forma de no lanzar la suite entera cuando solo toca comprobar una tarea: **dos ejecuciones a la vez se pelean por `bin\AtlasRent.Tests.dll`**, una espera a que la otra suelte el binario, y la suite tarda 15 minutos en vez de 10 por eso. Compila antes de ejecutar, que el binario es de la configuración `Release`.
+**Aviso (05/11/2026):** una suite verde en Windows **no** dice que la CI esté verde. La CI corre en Linux, y hay tres cosas que cambian el resultado sin que se note en local: la **cultura** del servidor (invariante en Linux: los importes salían "1.68" y no "1,68"), la **zona horaria** (las fechas de negocio son America/Santo_Domingo y no UTC) y el **orden** en que xUnit ejecuta las pruebas de una clase (un doble de prueba compartido se lleva el estado de la anterior). Cuando la CI falle en pruebas que en local pasaban, mira primero esas tres cosas antes de suspectar del código.
 Frontend (cuando exista `frontend/`):
 ```
 npm --prefix frontend ci
