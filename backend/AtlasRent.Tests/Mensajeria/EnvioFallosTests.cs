@@ -42,40 +42,51 @@ public sealed class EnvioFallosTests(ContenedorBdFixture bd, ApiTestFactoryCorre
         var escenario = await AyudaCuentas.EscenarioAsync(admin, bd, ct);
         var facturaId = await AyudaCuentas.EmitidaAsync(admin, escenario, escenario.Hoy.AddDays(10), 300m, ct);
 
-        api.Doble.Fallar = new InvalidOperationException(
-            "no se pudo conectar a smtp.ejemplo.invalid con el usuario usuario-de-ejemplo "
-            + "y la clave clave-secreta-de-ejemplo");
-
-        var destino = AyudaEnvios.CorreoDePrueba();
-        var respuesta = await admin.PostAsync(
-            "/api/v1/envios", AyudaEnvios.PeticionFactura(facturaId, destino), ct);
-
-        // Un fallo del servidor de correo no es un error de la petición: la petición era buena, así
-        // que el envío sale con su fila y el 201 implícito. Quien pidió el correo tiene que poder ver
-        // lo que pasó, no recibir un error sin explicación.
-        respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
-
-        var envioId = (await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
-        var fila = await AyudaEnvios.FilaAsync(bd, envioId, ct);
-
-        fila.Estado.Should().Be(EstadoEnvio.Fallido);
-        fila.UltimoError.Should().NotBeNullOrWhiteSpace("un fallo sin motivo no se puede reintentar a ciegas");
-        fila.EnviadoAt.Should().BeNull("nunca llegó a salir");
-        fila.PdfCopia.Should().NotBeEmpty("la copia es lo que se intentó mandar, también cuando falló");
-
-        foreach (var secreto in new[] { "usuario-de-ejemplo", "clave-secreta-de-ejemplo", "smtp.ejemplo.invalid" })
+        try
         {
-            fila.UltimoError.Should().NotContain(secreto, "el motivo de un fallo no puede llevar credenciales");
+            api.Doble.Fallar = new InvalidOperationException(
+                "no se pudo conectar a smtp.ejemplo.invalid con el usuario usuario-de-ejemplo "
+                + "y la clave clave-secreta-de-ejemplo");
+
+            var destino = AyudaEnvios.CorreoDePrueba();
+            var respuesta = await admin.PostAsync(
+                "/api/v1/envios", AyudaEnvios.PeticionFactura(facturaId, destino), ct);
+
+            // Un fallo del servidor de correo no es un error de la petición: la petición era buena, así
+            // que el envío sale con su fila y el 201 implícito. Quien pidió el correo tiene que poder ver
+            // lo que pasó, no recibir un error sin explicación.
+            respuesta.StatusCode.Should().Be(HttpStatusCode.OK, await respuesta.Cuerpo());
+
+            var envioId = (await respuesta.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
+            var fila = await AyudaEnvios.FilaAsync(bd, envioId, ct);
+
+            fila.Estado.Should().Be(EstadoEnvio.Fallido);
+            fila.UltimoError.Should().NotBeNullOrWhiteSpace("un fallo sin motivo no se puede reintentar a ciegas");
+            fila.EnviadoAt.Should().BeNull("nunca llegó a salir");
+            fila.PdfCopia.Should().NotBeEmpty("la copia es lo que se intentó mandar, también cuando falló");
+
+            foreach (var secreto in new[] { "usuario-de-ejemplo", "clave-secreta-de-ejemplo", "smtp.ejemplo.invalid" })
+            {
+                fila.UltimoError.Should().NotContain(secreto, "el motivo de un fallo no puede llevar credenciales");
+            }
+
+            fila.UltimoError.Should().Be("InvalidOperationException sin detalle.");
+
+            // El log de la instancia tampoco puede llevar nada de eso: se lee en cuanto algo sale mal y las
+            // tres cosas son credenciales o infraestructura.
+            var log = await LeerLogAsync(api.RutaLog, ct);
+            foreach (var secreto in new[] { "usuario-de-ejemplo", "clave-secreta-de-ejemplo", "smtp.ejemplo.invalid" })
+            {
+                log.Should().NotContain(secreto, "el log no puede llevar credenciales del servidor de correo");
+            }
         }
-
-        fila.UltimoError.Should().Be("InvalidOperationException sin detalle.");
-
-        // El log de la instancia tampoco puede llevar nada de eso: se lee en cuanto algo sale mal y las
-        // tres cosas son credenciales o infraestructura.
-        var log = await LeerLogAsync(api.RutaLog, ct);
-        foreach (var secreto in new[] { "usuario-de-ejemplo", "clave-secreta-de-ejemplo", "smtp.ejemplo.invalid" })
+        finally
         {
-            log.Should().NotContain(secreto, "el log no puede llevar credenciales del servidor de correo");
+            // El doble de correo es de la clase, no de la prueba. Si una prueba lo deja fallando, la
+            // siguiente lo hereda y falla por un motivo que no es el suyo: según el orden en que
+            // xUnit ejecuta las pruebas de la clase, la del antidiplicado se ejecutaba con el doble
+            // todavía caído y su primer envío fallaba (BUG-063).
+            api.Doble.Restablecer();
         }
     }
 

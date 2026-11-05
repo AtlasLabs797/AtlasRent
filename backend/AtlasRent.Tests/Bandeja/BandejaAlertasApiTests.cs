@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AtlasRent.Api.Authorization;
 using AtlasRent.Api.Data;
+using AtlasRent.Api.Dominio;
 using AtlasRent.Api.Services;
 using AtlasRent.Tests.Infra;
 using AwesomeAssertions;
@@ -292,14 +293,18 @@ public sealed class BandejaAlertasApiTests(ContenedorBdFixture bd, ApiTestFactor
             await sesion.GetAsync($"/api/v1/auditoria?accion={accion}&entidadId=E1", ct), ct);
         porEntidadId.Should().ContainSingle();
 
-        var futuro = DateTime.UtcNow.AddDays(10).ToString("yyyy-MM-dd");
-        (await FilasAsync(await sesion.GetAsync($"/api/v1/auditoria?accion={accion}&desde={futuro}", ct), ct))
+        // `desde` y `hasta` son fechas de negocio (America/Santo_Domingo), no fechas UTC: el
+        // endpoint las convierte a la medianoche de esa zona. Con fechas UTC, el test solo
+        // pasaba si la suite corría después de las 04:00Z, y en la CI (que corre de madrugada)
+        // el rango dejaba fuera las filas recién sembradas (BUG-061).
+        var hoy = TiempoNegocio.Hoy();
+        var futuro = hoy.AddDays(10);
+        (await FilasAsync(await sesion.GetAsync($"/api/v1/auditoria?accion={accion}&desde={futuro:yyyy-MM-dd}", ct), ct))
             .Should().BeEmpty();
-        var hoy = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        (await FilasAsync(await sesion.GetAsync($"/api/v1/auditoria?accion={accion}&desde={hoy}&hasta={futuro}", ct), ct))
+        (await FilasAsync(await sesion.GetAsync($"/api/v1/auditoria?accion={accion}&desde={hoy:yyyy-MM-dd}&hasta={futuro:yyyy-MM-dd}", ct), ct))
             .Should().HaveCount(3);
 
-        (await sesion.GetAsync($"/api/v1/auditoria?desde={futuro}&hasta={hoy}", ct))
+        (await sesion.GetAsync($"/api/v1/auditoria?desde={futuro:yyyy-MM-dd}&hasta={hoy:yyyy-MM-dd}", ct))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }

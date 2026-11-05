@@ -18,7 +18,10 @@ test('las fuentes vienen de @fontsource, sin Google Fonts', () => {
 
   const fuentes = leer('src/design-system/tokens/fonts.css');
   assert.ok(!fuentes.includes('http'), 'tokens/fonts.css no debe pedir nada por red');
-  assert.ok(!leer('src/design-system/styles.css').includes('fonts.googleapis.com'));
+  assert.ok(
+    !/fonts\.googleapis\.com/.test(leer('src/design-system/styles.css')),
+    'styles.css no debe pedir las fuentes a Google Fonts',
+  );
 });
 
 test('ningún archivo fuente pide recursos de red en tiempo de ejecución', () => {

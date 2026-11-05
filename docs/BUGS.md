@@ -22,6 +22,54 @@ Cada bug detectado o corregido se registra aquí. Lo más reciente arriba. No se
 
 ## Registro
 
+### BUG-064 · La prueba del rango de fechas de la auditoría usaba fechas UTC y solo pasaba a partir de las 04:00Z
+- Fecha detectado: 05/11/2026 · Fecha corregido: 05/11/2026
+- Gravedad: **Baja** · Estado: CORREGIDO · Módulo: pruebas / auditoría
+- Detectado por: CI del PR #2 (`LaAuditoriaFiltraPaginaYNoDevuelveCamposSensibles`)
+- Síntoma: la prueba pedía 3 filas de auditoría para el rango "hoy → hoy+10" y recibía 0.
+- Cómo reproducir: ejecutar la suite entre las 00:00 y las 04:00 UTC (la CI corre de madrugada). Fuera de esa franja, la prueba pasaba.
+- Causa raíz: `desde` y `hasta` del endpoint de auditoría son **fechas de negocio** (America/Santo_Domingo), y el endpoint las convierte a la medianoche de esa zona (`ServicioLecturaAuditoria.InicioDelDia`). La prueba las calculaba con `DateTime.UtcNow`, que es la fecha UTC: entre medianoche y las 04:00 UTC la fecha UTC va un día por delante de la fecha de negocio, el rango empezaba después de las filas recién sembradas y no entraba ninguna.
+- Solución: la prueba usa `TiempoNegocio.Hoy()`, la misma zona que usa el endpoint. Así pasa a cualquier hora del día.
+- Test que lo cubre: `Bandeja/BandejaAlertasApiTests.LaAuditoriaFiltraPaginaYNoDevuelveCamposSensibles`.
+- Commit/PR: rama `V-01.05`, pendiente del orquestador.
+- Datos afectados: ninguno.
+
+### BUG-063 · El doble de correo compartido dejaba una prueba rota y hacía fallar otra que no tenía nada que ver
+- Fecha detectado: 05/11/2026 · Fecha corregido: 05/11/2026
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: pruebas / mensajería (F4-02)
+- Detectado por: CI del PR #2 (`ElAntidiplicadoSeExcluyeSalvoForzado` falló en Linux con 200 en vez de 409)
+- Síntoma: la prueba del antidiplicado recibía un 200 en vez del 409 que espera, y la fila de envío salía con `intentos: 2` y estado `Fallido`. El primer envío, que debía salir bien, se quedaba en `Fallido`.
+- Cómo reproducir: en una clase de pruebas que usa `ApiTestFactoryCorreo`, dejar `api.Doble.Fallar` puesto y no devolverlo; la **siguiente** prueba de la misma clase hereda el fallo y su primer envío falla. En local pasaba o no según el orden en que xUnit ejecutaba las pruebas de la clase; en la CI (Linux) falló siempre.
+- Causa raíz: `CorreoDoble.Fallar` es estado de la **clase**, no de la prueba: la fábrica es un `IClassFixture` y el doble vive en ella. `UnFalloDelCorreoDejaElEnvioFallidoSinCredenciales` lo dejaba caído y no lo restauraba, así que la prueba del antidiplicado —que necesita que el primer envío **salga** para que exista un duplicado que excluir— se ejecutaba con el servidor de correo caído. Y como un envío `Fallido` no bloquea (por diseño, §3.14), no había duplicado: el segundo envío pasaba.
+- Solución: todas las pruebas que encienden el fallo del doble lo restauran en un `finally`, que es lo que ya hacían `PropuestaAprobacionTests` y `EnvioReintentoSueltoTests`. Ahora lo hacen también `EnvioFallosTests`, `EnvioFiltrosTests`, `EnvioMasivoReintentoTests` y `RecordatorioAlertasTests`, que lo restauraban **después** de las aserciones: si una de ellas fallaba, el doble se quedaba caído para las siguientes.
+- Test que lo cubre: `Mensajeria/EnvioFallosTests`, dentro de la suite completa en verde.
+- Commit/PR: rama `V-01.05`, pendiente del orquestador.
+- Datos afectados: ninguno. Es un fallo de pruebas.
+
+### BUG-062 · Dos refrescos simultáneos del mismo cliente revocaban la sesión que el primero acababa de abrir
+- Fecha detectado: 05/11/2026 · Fecha corregido: 05/11/2026
+- Gravedad: **Alta** · Estado: CORREGIDO · Módulo: backend / sesión (F1-04, docs/SEGURIDAD.md A.2)
+- Detectado por: CI del PR #2 (`DosRefrescosSimultaneosDelMismoTokenDanUnoOkYOtro401`)
+- Síntoma: dos peticiones de refresco con el mismo token, a la vez, devolvían una 200 y una 401 como se espera, pero en la base quedaban **0 sesiones vivas** en vez de 1. Es decir: el usuario se quedaba fuera de la app.
+- Cómo reproducir: dos `POST /api/v1/auth/refresh` en paralelo con la misma cookie de refresco (doble clic, dos pestañas, un reintento). Depende del orden: si el perdedor lee la fila **después** del commit del ganador, entra por la rama de reutilización; si la lee antes, el `UPDATE` condicional lo rechaza sin revocar nada.
+- Causa raíz: `ServicioAutenticacion.RefrescarAsync` comprueba la reutilización **antes** del `UPDATE` condicional que decide quién gana. La rama de reutilización (token ya rotado) revocaba la familia entera, y esa familia incluye la sesión que el ganador acababa de emitir. El comentario del propio código (BUG-044) ya decía que el perdedor debe recibir un 401 **sin** revocar la familia: la rama de reutilización se adelantaba a ese arbitraje y no había forma de distinguir el robo de la carrera.
+- Solución: lo que separa los dos casos no es el token de refresco —que en los dos es el mismo— sino el **token de acceso** que llega con la petición. En la carrera, el cliente todavía tiene el de la sesión que se está rotando (aún no le ha llegado la respuesta que se lo cambia); en el robo, ya tiene el de la sesión nueva. Con el `sid` del JWT de acceso validado (firma, emisor y audiencia; la caducidad se perdona, porque el caso normal del refresco es un token de acceso caducado) se distingue: si el `sid` es el de la sesión que se está reutilizando, es la carrera → 401 sin tocar la familia; si es otro o no hay token de acceso válido, es robo → la familia cae como antes. La detección de robo por reutilización (SEGURIDAD A.2) se mantiene intacta.
+- Test que lo cubre: `Auth/SesionesConcurrenciaTests.DosRefrescosSimultaneosDelMismoTokenDanUnoOkYOtro401` (3 rondas) y `Auth/AuthEndpointsTests.ReutilizarUnTokenDeRefrescoRevocaLaFamiliaCompleta`, que es el que comprueba que el robo **sigue** tirando la familia.
+- Commit/PR: rama `V-01.05`, pendiente del orquestador.
+- Datos afectados: ninguno.
+
+### BUG-061 · Los mensajes con importes salían con la cultura del servidor: "1.68" en Linux y "1,68" en Windows
+- Fecha detectado: 05/11/2026 · Fecha corregido: 05/11/2026
+- Gravedad: **Media** · Estado: CORREGIDO · Módulo: backend / cobros y fianzas
+- Detectado por: CI del PR #2 (`UnPendientePorEncimaDeLaToleranciaSeRechazaYToleraLaFactura`)
+- Síntoma: el 409 que explica por qué no se ajusta una diferencia de cambio decía "tiene 1.68 USD pendientes" en la CI y "tiene 1,68 USD pendientes" en el equipo de desarrollo.
+- Cómo reproducir: la misma petición en una máquina con cultura es-DO y en una con cultura invariante (el runner de Linux).
+- Causa raíz: el mensaje interpolaba los `decimal` crudos, así que se formateaban con la cultura del proceso. Todo el resto del proyecto formatea con cultura explícita (`CultureInfo.InvariantCulture` y el cambio manual de `.` a `,`), pero estos mensajes se colaron. El defecto era **sistémico**: los cinco mensajes con importes de `ServicioCobros` y `ServicioFianzas` tenían el mismo problema, aunque solo uno lo comprobaba.
+- Solución: los importes de los mensajes se formatean con `FormatoDocumentoPdf.Numero`, que es el formato del negocio (`1.234,56`, coma decimal y punto de miles) y no depende de la máquina. Se corrigieron los cinco sitios, no solo el que fallaba.
+- Test que lo cubre: `Cobros/CobroAjusteDiferenciaCambioTests.UnPendientePorEncimaDeLaToleranciaSeRechazaYToleraLaFactura`, que comprueba "1,68" y "1,00".
+- Commit/PR: rama `V-01.05`, pendiente del orquestador.
+- Datos afectados: ninguno.
+
 ### BUG-060 · La API no arrancaba con el planificador de jobs activo: `AddOrUpdate` recibía `options: null`
 - Fecha detectado: 02/11/2026 · Fecha corregido: 02/11/2026
 - Gravedad: **Alta** · Estado: CORREGIDO · Módulo: backend / jobs (F1-12)

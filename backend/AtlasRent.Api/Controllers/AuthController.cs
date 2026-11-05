@@ -90,6 +90,10 @@ public sealed class AuthController(
 
         var resultado = await autenticacion.RefrescarAsync(
             token,
+            // El token de acceso dice si quien llega va en la carrera de un refresco simultáneo o
+            // reutilizando un token robado (BUG-062). Puede estar caducado —refresh es justo el
+            // caso en que el token de acceso caducó— y por eso se lee sin mirar la caducidad.
+            Request.Cookies[NombresCookies.Acceso],
             IpDeLaPeticion(),
             Request.Headers.UserAgent.ToString() is { Length: > 0 } agente ? agente : null,
             HttpContext.RequestAborted);

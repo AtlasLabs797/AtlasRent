@@ -52,9 +52,16 @@ public sealed class EnvioMasivoReintentoTests(ContenedorBdFixture bd, ApiTestFac
 
         await AyudaEnviosMasivo.EjecutarTrabajoAsync(api, salePrimero, usuario, ct);
 
-        api.Doble.Fallar = new InvalidOperationException("El servidor de correo no responde.");
-        await AyudaEnviosMasivo.EjecutarTrabajoAsync(api, seQuedaEnElTintero, usuario, ct);
-        api.Doble.Restablecer();
+        try
+        {
+            api.Doble.Fallar = new InvalidOperationException("El servidor de correo no responde.");
+            await AyudaEnviosMasivo.EjecutarTrabajoAsync(api, seQuedaEnElTintero, usuario, ct);
+        }
+        finally
+        {
+            // El doble es de la clase: si una prueba lo deja caído, la siguiente hereda el fallo (BUG-063).
+            api.Doble.Restablecer();
+        }
 
         await AyudaEnviosMasivo.EjecutarTrabajoAsync(api, saleTercero, usuario, ct);
 
@@ -179,9 +186,16 @@ public sealed class EnvioMasivoReintentoTests(ContenedorBdFixture bd, ApiTestFac
 
         var envioId = api.Cola.Encolados[0];
 
-        api.Doble.Fallar = new InvalidOperationException("Cayó a mitad.");
-        await AyudaEnviosMasivo.EjecutarTrabajoAsync(api, envioId, usuario, ct);
-        api.Doble.Restablecer();
+        try
+        {
+            api.Doble.Fallar = new InvalidOperationException("Cayó a mitad.");
+            await AyudaEnviosMasivo.EjecutarTrabajoAsync(api, envioId, usuario, ct);
+        }
+        finally
+        {
+            // El doble es de la clase: si una prueba lo deja caído, la siguiente hereda el fallo (BUG-063).
+            api.Doble.Restablecer();
+        }
 
         api.Cola.Vaciar();
         await AyudaEnviosMasivo.ReintentarAsync(admin, loteId, ct);

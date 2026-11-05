@@ -116,12 +116,13 @@ public sealed class ServicioAutenticacion(
     }
 
     /// <summary>
-    /// Rota el token de refresco. Si llega un token que ya se rotó, es que alguien copió uno de los
-    /// tokens de la cadena: se revoca la familia completa y se responde con el mismo error que un
-    /// token desconocido (docs/SEGURIDAD.md A.2).
+    /// Rota el token de refresco. Si llega un token que ya se rotó y no es la carrera de un refresco
+    /// simultáneo, es que alguien copió uno de los tokens de la cadena: se revoca la familia completa
+    /// y se responde con el mismo error que un token desconocido (docs/SEGURIDAD.md A.2).
     /// </summary>
     public async Task<ResultadoSesion?> RefrescarAsync(
         string tokenRefresco,
+        string? tokenAcceso,
         string ip,
         string? userAgent,
         CancellationToken ct)
@@ -136,14 +137,30 @@ public sealed class ServicioAutenticacion(
         var usuario = anterior.Usuario;
 
         // Token ya rotado: es reutilización de un token de la familia. Se cae la familia entera.
+        // Pero hay un caso que no es robo: dos refrescos del mismo cliente a la vez (doble clic,
+        // dos pestañas, un reintento) rotan el mismo token, y el perdedor llega con el token viejo.
+        // Si cayera la familia, cerraría la sesión que el ganador acaba de abrir, y un doble clic
+        // expulsaría al usuario de la app.
+        // <para>
+        // Lo que separa los dos casos no es el token de refresco, que en los dos es el mismo, sino el
+        // token de acceso que llega con la petición: en la carrera el cliente todavía tiene el de la
+        // sesión que se está rotando (aún no ha llegado la respuesta que se la cambia), y en el robo
+        // ya tiene el de la sesión nueva. Por eso el perdedor recibe un 401 sin que caiga la familia,
+        // y el robo sí la tira (BUG-062).
+        /// </para>
         if (anterior.RevocadaAt is not null && anterior.MotivoRevocacion == MotivosRevocacion.Rotacion)
         {
-            await sesiones.RevocarFamiliaAsync(
-                anterior.FamiliaId,
-                MotivosRevocacion.ReutilizacionDetectada,
-                anterior.UsuarioId,
-                ip,
-                ct);
+            var sesionDelTokenDeAcceso = await emisor.SesionIdDe(tokenAcceso);
+            if (sesionDelTokenDeAcceso != anterior.Id)
+            {
+                await sesiones.RevocarFamiliaAsync(
+                    anterior.FamiliaId,
+                    MotivosRevocacion.ReutilizacionDetectada,
+                    anterior.UsuarioId,
+                    ip,
+                    ct);
+            }
+
             return null;
         }
 

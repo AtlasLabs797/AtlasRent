@@ -37,10 +37,17 @@ public sealed class EnvioFiltrosTests(ContenedorBdFixture bd, ApiTestFactoryCorr
         var fallida = await AyudaCuentas.EmitidaAsync(admin, escenario, escenario.Hoy.AddDays(11), 400m, ct);
         var enviada = await AyudaCuentas.EmitidaAsync(admin, escenario, escenario.Hoy.AddDays(12), 500m, ct);
 
-        // El envío que falla deja su fila en «Fallido» y no llega al cliente.
-        api.Doble.Fallar = new InvalidOperationException("el servidor de correo no responde");
-        await AyudaEnvios.EnviarAsync(admin, AyudaEnvios.PeticionFactura(fallida, AyudaEnvios.CorreoDePrueba()), ct);
-        api.Doble.Restablecer();
+        try
+        {
+            // El envío que falla deja su fila en «Fallido» y no llega al cliente.
+            api.Doble.Fallar = new InvalidOperationException("el servidor de correo no responde");
+            await AyudaEnvios.EnviarAsync(admin, AyudaEnvios.PeticionFactura(fallida, AyudaEnvios.CorreoDePrueba()), ct);
+        }
+        finally
+        {
+            // El doble es de la clase: si una prueba lo deja caído, la siguiente hereda el fallo (BUG-063).
+            api.Doble.Restablecer();
+        }
 
         await AyudaEnvios.EnviarAsync(admin, AyudaEnvios.PeticionFactura(enviada, AyudaEnvios.CorreoDePrueba()), ct);
 

@@ -129,6 +129,16 @@
 - ¿Hubo exposición real? Sí/No. Si sí: qué datos y a quién se notificó.
 ```
 
+### SEC-035 · Dos refrescos simultáneos revocaban la sesión del ganador (la detección de robo se adelantaba al arbitraje)
+- Fecha detectado: 05/11/2026 · Fecha resuelto: 05/11/2026 · Gravedad: **Media** · Estado: **MITIGADO** · Componente: API / sesión
+- Detectado por: CI del PR #2 (la prueba `SesionesConcurrenciaTests.DosRefrescosSimultaneosDelMismoTokenDanUnoOkYOtro401`)
+- Descripción: `ServicioAutenticacion.RefrescarAsync` comprobaba la reutilización de un token ya rotado **antes** del `UPDATE` condicional que decide quién gana entre dos refrescos simultáneos. La rama de reutilización revocaba la familia entera, y la familia incluye la sesión que el ganador acababa de emitir: dos refrescos a la vez (doble clic, dos pestañas, un reintento) dejaban al usuario **sin ninguna sesión viva**. El defecto era de disponibilidad, no de exposición: el perdedor recibía un 401 y no obtenía tokens.
+- Solución: la reutilización solo se trata como robo si el **token de acceso** que llega con la petición no es el de la sesión que se está reutilizando. En la carrera de dos refrescos simultáneos el cliente todavía tiene el token de acceso de la sesión que se rota; en el robo ya tiene el de la sesión nueva. El `sid` del JWT se lee validando firma, emisor y audiencia, pero sin mirar la caducidad (el caso normal del refresco es un token de acceso caducado). Si el `sid` es el de la sesión reutilizada, es la carrera → 401 sin tocar la familia; si es otro, o no hay token de acceso válido, es robo → la familia cae como antes. El arbitraje por `UPDATE` condicional (BUG-044) se queda igual.
+- Verificación: `Auth/SesionesConcurrenciaTests.DosRefrescosSimultaneosDelMismoTokenDanUnoOkYOtro401` (3 rondas), `Auth/AuthEndpointsTests.ReutilizarUnTokenDeRefrescoRevocaLaFamiliaCompleta` y la suite completa.
+- Commit/PR: rama `V-01.05`, pendiente del orquestador.
+- **Riesgo residual (ABIERTO):** un atacante con un token de refresco **copiado junto con el token de acceso de la misma sesión** se presenta como la carrera: no se le da ninguna sesión válida (el token ya estaba rotado) y la familia no cae, pero el robo no se detecta hasta el siguiente refresco legítimo del usuario. **Pendiente:** una prueba de extremo a extremo con un cliente distinto que compruebe que la familia sí cae, y decidir si la ventana de la carrera debe acotarse además por tiempo.
+- ¿Hubo exposición real? Exposición real: no consta (no está en producción).
+
 ### SEC-034 · Endurecimientos menores de la revisión de cierre
 - Fecha detectado: 29/10/2026 · Gravedad: Baja · Estado: **ABIERTO** · Componente: API / logs / despliegue
 - Detectado por: revisión de seguridad de cierre AUD-10 (agente, 29/10/2026); informe en el registro de AUD-10 del CHANGELOG

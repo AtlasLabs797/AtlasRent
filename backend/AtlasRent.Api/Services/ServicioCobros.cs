@@ -624,9 +624,12 @@ public sealed class ServicioCobros(
         {
             // El 409 lleva la tolerancia dentro porque §3.10.2 manda lo que el mensaje dice, y no
             // solo lo que impide: quien lo lee tiene que poder decidir sin abrir la configuración.
+            // Los importes se formatean con el formato del negocio y no con la cultura del
+            // servidor: el mismo 409 decía "1.68" en Linux y "1,68" en Windows, y un mensaje que
+            // cambia de forma según la máquina no dice nada (BUG-061).
             throw new InvalidOperationException(
-                $"La factura {NumeroDe(factura)} tiene {pendiente} {factura.Moneda} pendientes y la "
-                    + $"tolerancia de diferencia de cambio es de {tolerancia}. Con una diferencia mayor no se "
+                $"La factura {NumeroDe(factura)} tiene {FormatoDocumentoPdf.Numero(pendiente)} {factura.Moneda} pendientes y la "
+                    + $"tolerancia de diferencia de cambio es de {FormatoDocumentoPdf.Numero(tolerancia)}. Con una diferencia mayor no se "
                     + "ajusta: o el cliente paga la diferencia en un cobro nuevo, o se corrige el cambio del cobro "
                     + "anterior registrando de nuevo el mismo pago con el cambio que se usó de verdad.");
         }
@@ -1180,7 +1183,7 @@ public sealed class ServicioCobros(
             if (importe <= 0m)
             {
                 throw new InvalidOperationException(
-                    $"La asignación a {DescripcionDelDestino(pedida)} es de {importe}: tiene que ser mayor que cero.");
+                    $"La asignación a {DescripcionDelDestino(pedida)} es de {FormatoDocumentoPdf.Numero(importe)}: tiene que ser mayor que cero.");
             }
 
             var cambio = pedida.FianzaId is { } fianzaId
@@ -1282,8 +1285,8 @@ public sealed class ServicioCobros(
         if (importe > pendiente)
         {
             throw new InvalidOperationException(
-                $"La asignación a la factura {NumeroDe(factura)} es de {importe} y a esa factura le "
-                    + $"quedan {pendiente} pendientes.");
+                $"La asignación a la factura {NumeroDe(factura)} es de {FormatoDocumentoPdf.Numero(importe)} y a esa factura le "
+                    + $"quedan {FormatoDocumentoPdf.Numero(pendiente)} pendientes.");
         }
 
         // Lo que sale de la caja por esta línea. En la moneda del cobro es el importe tal cual; en
@@ -1332,8 +1335,8 @@ public sealed class ServicioCobros(
         if (importe > pendiente)
         {
             throw new InvalidOperationException(
-                $"La asignación a la fianza del contrato '{fianza.ContratoId:D}' es de {importe} y a esa "
-                    + $"fianza le exigieron {fianza.ImporteExigido} de los que ya hay {cifras.Cobrado} cobrados.");
+                $"La asignación a la fianza del contrato '{fianza.ContratoId:D}' es de {FormatoDocumentoPdf.Numero(importe)} y a esa "
+                    + $"fianza le exigieron {FormatoDocumentoPdf.Numero(fianza.ImporteExigido)} de los que ya hay {FormatoDocumentoPdf.Numero(cifras.Cobrado)} cobrados.");
         }
 
         var recibido = cambio is null ? importe : Redondeo.Importe(importe * cambio.Value);

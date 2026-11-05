@@ -281,8 +281,8 @@ public sealed class ServicioFianzas(
         if (total > saldo)
         {
             throw new InvalidOperationException(
-                $"La devolución pide {total} ({importe} devueltos y {descontado} retenidos) y la fianza del "
-                    + $"contrato '{fianza.ContratoId:D}' solo tiene {saldo} de saldo: no se puede devolver más "
+                $"La devolución pide {FormatoDocumentoPdf.Numero(total)} ({FormatoDocumentoPdf.Numero(importe)} devueltos y {FormatoDocumentoPdf.Numero(descontado)} retenidos) y la fianza del "
+                    + $"contrato '{fianza.ContratoId:D}' solo tiene {FormatoDocumentoPdf.Numero(saldo)} de saldo: no se puede devolver más "
                     + "de lo que se ha cobrado.");
         }
 

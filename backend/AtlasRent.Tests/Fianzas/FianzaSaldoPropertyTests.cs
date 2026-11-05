@@ -73,7 +73,10 @@ public sealed class FianzaSaldoPropertyTests(ContenedorBdFixture bd, ApiTestFact
         {
             // Devolver más de lo cobrado: 409 con el saldo y lo pedido, y el saldo no se toca.
             respuesta.StatusCode.Should().Be(HttpStatusCode.Conflict);
-            (await respuesta.Cuerpo()).Should().Contain("3000");
+            // El saldo sale con el formato del negocio (punto de miles y coma decimal), no con el de
+            // la máquina: el mismo mensaje no puede decir "3000" en un sitio y "3.000,00" en otro
+            // (BUG-061).
+            (await respuesta.Cuerpo()).Should().Contain("3.000,00");
             cifrasTras.Saldo.Should().Be(saldo, "un 409 no toca el saldo");
             cifrasTras.Devuelto.Should().Be(0m);
             return;

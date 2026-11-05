@@ -55,6 +55,52 @@ public sealed class EmisorTokens(OpcionesSeguridad opciones, TimeProvider reloj)
     }
 
     /// <summary>
+    /// Sesión a la que pertenece un JWT de acceso, sin mirar si el token ha caducado.
+    /// <para>
+    /// Lo usa el refresco para distinguir la **carrera** de dos refrescos simultáneos de un **robo**
+    /// de un token de refresco (BUG-062): quien va perdido por la carrera todavía tiene el token de
+    /// acceso de la sesión que se está rotando, y quien roba ya tiene el de la sesión nueva.
+    /// </para>
+    /// <para>
+    /// La firma, el emisor y la audiencia se validan igual que en el resto del pipeline. Lo único que
+    /// se perdona es la **caducidad**, porque el caso normal del refresco es justamente un token de
+    /// acceso caducado. Un token inválido devuelve <c>null</c>: el que llega sin un token de acceso
+    /// válido no puede demostrar que va en la carrera.
+    /// </para>
+    /// </summary>
+    public async Task<Guid?> SesionIdDe(string? jwtAcceso)
+    {
+        if (string.IsNullOrWhiteSpace(jwtAcceso))
+        {
+            return null;
+        }
+
+        var validacion = await _manejador.ValidateTokenAsync(
+            jwtAcceso,
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = OpcionesSeguridad.Emisor,
+                ValidateAudience = true,
+                ValidAudience = OpcionesSeguridad.Audiencia,
+                ValidateLifetime = false,
+                ClockSkew = TimeSpan.Zero,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(opciones.ClaveJwt),
+                RoleClaimType = "rol",
+                NameClaimType = "sub",
+            });
+
+        if (!validacion.IsValid)
+        {
+            return null;
+        }
+
+        var sid = validacion.ClaimsIdentity?.FindFirst("sid")?.Value;
+        return Guid.TryParse(sid, out var sesionId) ? sesionId : null;
+    }
+
+    /// <summary>
     /// Hash SHA-256 en hexadecimal de un token de refresco. Es lo único que se guarda de él
     /// (docs/SEGURIDAD.md A.2): con el hash no se puede refrescar la sesión.
     /// </summary>
